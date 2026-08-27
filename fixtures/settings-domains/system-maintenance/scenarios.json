@@ -1,0 +1,379 @@
+{
+  "domain_id": "system-maintenance",
+  "data_kind": "generated-scenario-fixture",
+  "synthetic_only": true,
+  "field_ids": [
+    "system.firmware.build",
+    "system.storage.status",
+    "system.update.channel",
+    "system.update.check",
+    "system.boot.safe-mode",
+    "system.diagnostics.export",
+    "system.settings.reset-ui",
+    "system.settings.reset-all-cfw",
+    "system.legal.notices",
+    "system.legal.provenance",
+    "system.power.shutdown",
+    "system.power.restart",
+    "system.stock-passthrough.status"
+  ],
+  "protected_classes": [
+    "user.roms",
+    "user.bios",
+    "cfw.saves",
+    "cfw.states",
+    "cfw.credentials",
+    "cfw.provenance",
+    "cfw.release-content",
+    "hardware.storage"
+  ],
+  "scenarios": [
+    {
+      "id": "normal-information-display",
+      "category": "normal_behavior",
+      "field_ids": [
+        "system.firmware.build",
+        "system.storage.status",
+        "system.legal.notices",
+        "system.legal.provenance",
+        "system.stock-passthrough.status"
+      ],
+      "input": {
+        "fixture_identity": "synthetic-system-a",
+        "evidence": "valid-synthetic-read-only"
+      },
+      "expected": {
+        "outcome": "displayed",
+        "unavailable_values_remain_visible": true,
+        "mutation": "none",
+        "persistence": "none"
+      }
+    },
+    {
+      "id": "normal-update-channel-selection",
+      "category": "normal_behavior",
+      "field_ids": [
+        "system.update.channel"
+      ],
+      "input": {
+        "channel": "stable",
+        "channel_policy": "valid-synthetic-policy"
+      },
+      "expected": {
+        "outcome": "preference-accepted",
+        "selected_channel": "stable",
+        "release_changed": false,
+        "mutation": "typed-update-preference-only",
+        "persistence": "typed-setting-only"
+      }
+    },
+    {
+      "id": "normal-update-check-candidate",
+      "category": "normal_behavior",
+      "field_ids": [
+        "system.update.check"
+      ],
+      "input": {
+        "channel": "stable",
+        "check_capability": "valid-synthetic-non-mutating"
+      },
+      "expected": {
+        "outcome": "check-result-returned",
+        "downloaded": false,
+        "installed": false,
+        "activated": false,
+        "rolled_back": false,
+        "migrated": false,
+        "release_changed": false,
+        "mutation": "none"
+      }
+    },
+    {
+      "id": "normal-diagnostics-export-candidate",
+      "category": "normal_behavior",
+      "field_ids": [
+        "system.diagnostics.export"
+      ],
+      "input": {
+        "export_capability": "valid-synthetic-bounded",
+        "destination": "synthetic-export-target",
+        "records": [
+          "build-id",
+          "logical-storage-status",
+          "recent-cfw-events"
+        ],
+        "contains_rom_bios_bytes": false,
+        "contains_rom_bios_names": false,
+        "contains_rom_bios_paths": false,
+        "contains_rom_bios_hashes": false,
+        "contains_private_credentials": false
+      },
+      "expected": {
+        "outcome": "sanitized-export-candidate-accepted",
+        "exported_records_are_bounded": true,
+        "rom_bios_bytes_exported": false,
+        "rom_bios_names_exported": false,
+        "rom_bios_paths_exported": false,
+        "rom_bios_hashes_exported": false,
+        "credentials_exported": false,
+        "user_content_mutated": false
+      }
+    },
+    {
+      "id": "unsupported-power-and-stock-capabilities",
+      "category": "unsupported_capability",
+      "field_ids": [
+        "system.power.shutdown",
+        "system.power.restart",
+        "system.stock-passthrough.status"
+      ],
+      "input": {
+        "shutdown_request": true,
+        "restart_request": true,
+        "capability_evidence": "unknown"
+      },
+      "expected": {
+        "shutdown": "unavailable",
+        "restart": "unavailable",
+        "stock_passthrough_status": "unknown",
+        "actions_remain_visible": true,
+        "mutation": "none",
+        "persistence": "none",
+        "physical_power_claimed": false,
+        "physical_restart_claimed": false,
+        "stock_chain_claimed": false
+      }
+    },
+    {
+      "id": "invalid-safe-mode-selection",
+      "category": "invalid_input",
+      "field_ids": [
+        "system.boot.safe-mode"
+      ],
+      "input": {
+        "selection": "rescue-runtime-not-defined",
+        "persistence_capability": "valid-synthetic"
+      },
+      "expected": {
+        "outcome": "rejected",
+        "error": "invalid-option",
+        "pending_request": false,
+        "mutation": "none",
+        "persistence": "none",
+        "scheduling_claimed": false
+      }
+    },
+    {
+      "id": "malformed-storage-evidence-fails-closed",
+      "category": "unsupported_capability",
+      "field_ids": [
+        "system.storage.status"
+      ],
+      "input": {
+        "storage_evidence": {
+          "state": "available",
+          "freshness": "malformed",
+          "boundaries": "contradictory"
+        }
+      },
+      "expected": {
+        "outcome": "unavailable",
+        "status_visible": true,
+        "mount_guessed": false,
+        "device_accessed": false,
+        "mutation": "none",
+        "persistence": "none"
+      }
+    },
+    {
+      "id": "safe-mode-next-boot-pending",
+      "category": "pending_change",
+      "field_ids": [
+        "system.boot.safe-mode"
+      ],
+      "input": {
+        "selection": "safe-mode",
+        "persistence_capability": "valid-synthetic",
+        "boot_boundary_reached": false
+      },
+      "expected": {
+        "outcome": "pending-request-recorded",
+        "pending_request": "safe-mode",
+        "consumed": false,
+        "scheduling_claimed": true,
+        "physical_boot_claimed": false,
+        "mutation": "typed-next-boot-state-only"
+      }
+    },
+    {
+      "id": "safe-mode-persistence-failure-not-scheduled",
+      "category": "unsupported_capability",
+      "field_ids": [
+        "system.boot.safe-mode"
+      ],
+      "input": {
+        "selection": "safe-mode",
+        "persistence_capability": "unsupported",
+        "boot_boundary_reached": false
+      },
+      "expected": {
+        "outcome": "unavailable",
+        "pending_request": false,
+        "scheduling_claimed": false,
+        "mutation": "none",
+        "persistence": "none"
+      }
+    },
+    {
+      "id": "reset-ui-settings-only",
+      "category": "reset_behavior",
+      "field_ids": [
+        "system.settings.reset-ui"
+      ],
+      "input": {
+        "request": "reset",
+        "reset_capability": "valid-synthetic",
+        "before": {
+          "ui.theme": "synthetic-dark",
+          "ui.layout": "compact",
+          "cfw.update.channel": "stable"
+        }
+      },
+      "expected": {
+        "outcome": "ui-preferences-reset",
+        "changed_classes": [
+          "cfw.ui-preferences"
+        ],
+        "unchanged_classes": [
+          "cfw.non-ui-settings"
+        ],
+        "user_content_mutated": false,
+        "hardware_touched": false
+      }
+    },
+    {
+      "id": "reset-all-cfw-after-explicit-confirmation",
+      "category": "confirmation",
+      "field_ids": [
+        "system.settings.reset-all-cfw"
+      ],
+      "input": {
+        "confirmation": "confirm",
+        "reset_capability": "valid-synthetic",
+        "before": {
+          "cfw.ui.theme": "synthetic-dark",
+          "cfw.update.channel": "stable",
+          "cfw.safe-mode": "no-change"
+        },
+        "protected_before": {
+          "user.roms": "roms-sentinel-a",
+          "user.bios": "bios-sentinel-a",
+          "cfw.saves": "saves-sentinel-a",
+          "cfw.states": "states-sentinel-a",
+          "cfw.credentials": "credentials-sentinel-a",
+          "cfw.provenance": "provenance-sentinel-a",
+          "cfw.release-content": "release-sentinel-a",
+          "hardware.storage": "storage-sentinel-a"
+        }
+      },
+      "expected": {
+        "outcome": "typed-cfw-settings-reset",
+        "changed_classes": [
+          "cfw.typed-settings"
+        ],
+        "protected_classes_unchanged": {
+          "user.roms": true,
+          "user.bios": true,
+          "cfw.saves": true,
+          "cfw.states": true,
+          "cfw.credentials": true,
+          "cfw.provenance": true,
+          "cfw.release-content": true,
+          "hardware.storage": true
+        },
+        "hardware_touched": false,
+        "release_content_changed": false
+      }
+    },
+    {
+      "id": "reset-all-cfw-cancelled-without-changes",
+      "category": "cancellation",
+      "field_ids": [
+        "system.settings.reset-all-cfw"
+      ],
+      "input": {
+        "confirmation": "cancel",
+        "reset_capability": "valid-synthetic",
+        "before": {
+          "cfw.ui.theme": "synthetic-light",
+          "cfw.update.channel": "stable",
+          "cfw.safe-mode": "no-change"
+        },
+        "protected_before": {
+          "user.roms": "roms-sentinel-b",
+          "user.bios": "bios-sentinel-b",
+          "cfw.saves": "saves-sentinel-b",
+          "cfw.states": "states-sentinel-b",
+          "cfw.credentials": "credentials-sentinel-b",
+          "cfw.provenance": "provenance-sentinel-b",
+          "cfw.release-content": "release-sentinel-b",
+          "hardware.storage": "storage-sentinel-b"
+        }
+      },
+      "expected": {
+        "outcome": "cancelled",
+        "confirmation_cleared": true,
+        "mutation": "none",
+        "persistence": "none",
+        "protected_classes_unchanged": {
+          "user.roms": true,
+          "user.bios": true,
+          "cfw.saves": true,
+          "cfw.states": true,
+          "cfw.credentials": true,
+          "cfw.provenance": true,
+          "cfw.release-content": true,
+          "hardware.storage": true
+        },
+        "hardware_touched": false
+      }
+    },
+    {
+      "id": "unsupported-reset-all-cfw-no-mutation",
+      "category": "unsupported_capability",
+      "field_ids": [
+        "system.settings.reset-all-cfw"
+      ],
+      "input": {
+        "confirmation": "confirm",
+        "reset_capability": "unsupported"
+      },
+      "expected": {
+        "outcome": "unavailable",
+        "mutation": "none",
+        "persistence": "none",
+        "confirmation_consumed": false,
+        "hardware_touched": false
+      }
+    },
+    {
+      "id": "invalid-update-channel-no-persistence",
+      "category": "invalid_input",
+      "field_ids": [
+        "system.update.channel"
+      ],
+      "input": {
+        "channel": "unlisted-synthetic-channel",
+        "channel_policy": "stable-only",
+        "existing_channel": "stable"
+      },
+      "expected": {
+        "outcome": "rejected",
+        "error": "invalid-option",
+        "selected_channel": "stable",
+        "mutation": "none",
+        "persistence": "none"
+      }
+    }
+  ]
+}

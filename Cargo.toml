@@ -17,6 +17,7 @@ members = [
     "crates/wifi-manager",
     "crates/ui-model",
     "crates/media-cache",
+    "crates/emulator-catalog",
 ]
 resolver = "2"
 

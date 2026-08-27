@@ -1,0 +1,10 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "profile",
+  "id": "default",
+  "systemId": "tg4040",
+  "capabilities": ["display", "audio", "input", "rumble", "save-state"],
+  "channel": "stable"
+}

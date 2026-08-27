@@ -1,0 +1,21 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "tg4040-lab",
+  "displayName": "TrimUI Brick Pro TG4040 Lab",
+  "targetSku": "TG4040",
+  "channel": "experimental",
+  "extensions": ["gb"],
+  "biosRequirements": [],
+  "runtimeRequirements": [],
+  "defaultRunner": {"id": "clean-room-libretro-experimental", "version": "1.1.0"},
+  "defaultCore": {"id": "clean-room-gameboy-lab-core", "version": "1.1.0"},
+  "savePath": {"root": "data/saves", "relative": "experimental/gameboy"},
+  "statePath": {"root": "data/states", "relative": "experimental/gameboy"},
+  "capabilities": ["display", "audio", "input", "rumble", "save-state", "rewind"],
+  "deviceLimits": {"maxWidth": 1024, "maxHeight": 768, "maxControllers": 1, "maxAudioChannels": 2},
+  "settingsDefaults": {"displayWidth": 1024, "displayHeight": 768, "displayMode": "fit", "frameSkip": 0, "rumble": false, "audioLatencyMs": 64},
+  "licenseProvenanceUrl": "https://docs.libretro.com/"
+}

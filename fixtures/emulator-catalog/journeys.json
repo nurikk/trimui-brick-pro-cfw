@@ -1,0 +1,82 @@
+{
+  "items": [
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/extension-collision",
+      "channel": "stable",
+      "expectedCode": "extension_collision"
+    },
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/invalid-runner-version",
+      "channel": "stable",
+      "expectedCode": "invalid_version"
+    },
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/invalid-core-version",
+      "channel": "stable",
+      "expectedCode": "invalid_version"
+    },
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/tg3040",
+      "channel": "stable",
+      "expectedCode": "target_forbidden"
+    },
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/unpinned-artifact",
+      "channel": "stable",
+      "expectedCode": "artifact_unpinned"
+    },
+    {
+      "kind": "validate",
+      "path": "fixtures/emulator-catalog/negative/channel-leak",
+      "channel": "stable",
+      "expectedCode": "channel_leak"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/experimental-isolation.json",
+      "channel": "stable",
+      "expectedCode": "unavailable_runner"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/capability-rejection.json",
+      "channel": "stable",
+      "expectedCode": "capability_incompatible"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/device-limit-rejection.json",
+      "channel": "stable",
+      "expectedCode": "device_limit"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/path-escape.json",
+      "channel": "stable",
+      "expectedCode": "path_escape"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/case-collision.json",
+      "channel": "stable",
+      "expectedCode": "case_collision"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/unknown-field.json",
+      "channel": "stable",
+      "expectedCode": "unknown_field"
+    },
+    {
+      "kind": "audit",
+      "path": "catalog",
+      "channel": "stable",
+      "expectedCode": "bios_missing"
+    }
+  ]
+}

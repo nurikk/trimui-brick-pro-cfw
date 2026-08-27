@@ -1,0 +1,26 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "core",
+  "id": "clean-room-gameboy-core",
+  "version": "1.0",
+  "runnerId": "clean-room-libretro",
+  "runnerVersion": "1.0.0",
+  "supportedSystems": [
+    "tg4040"
+  ],
+  "supportedContent": [
+    "gb",
+    "gbc"
+  ],
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "rumble",
+    "save-state"
+  ],
+  "licenseProvenanceUrl": "https://docs.libretro.com/",
+  "channel": "stable"
+}

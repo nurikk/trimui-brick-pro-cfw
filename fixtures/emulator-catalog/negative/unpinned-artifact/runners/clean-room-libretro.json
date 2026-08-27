@@ -1,0 +1,29 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "runner",
+  "id": "clean-room-libretro",
+  "version": "1.0.0",
+  "targetArchitecture": "aarch64-unknown-linux-musl",
+  "artifact": {
+    "id": "synthetic-clean-room-libretro-aarch64-musl",
+    "sha256": null
+  },
+  "supportedSystems": [
+    "tg4040"
+  ],
+  "supportedContent": [
+    "gb",
+    "gbc"
+  ],
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "rumble",
+    "save-state"
+  ],
+  "licenseProvenanceUrl": "https://docs.libretro.com/",
+  "channel": "stable"
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "channel",
+  "id": "stable",
+  "systems": ["tg4040"],
+  "runners": [{"id": "clean-room-libretro", "version": "1.0.0"}],
+  "cores": [{"id": "clean-room-gameboy-core", "version": "1.0.0"}],
+  "profiles": ["default"],
+  "smokeEvidenceId": "tg4040-synthetic-catalog-smoke-v1"
+}

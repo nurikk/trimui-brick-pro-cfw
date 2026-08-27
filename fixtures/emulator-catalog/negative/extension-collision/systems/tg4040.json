@@ -1,0 +1,65 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "tg4040",
+  "displayName": "TrimUI Brick Pro",
+  "targetSku": "TG4040",
+  "channel": "stable",
+  "extensions": [
+    "gb",
+    "GB"
+  ],
+  "biosRequirements": [
+    {
+      "id": "gameboy-system-rom",
+      "expectedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "locations": [
+        {
+          "root": "bios",
+          "relative": "gameboy/system.rom"
+        }
+      ]
+    }
+  ],
+  "runtimeRequirements": [],
+  "defaultRunner": {
+    "id": "clean-room-libretro",
+    "version": "1.0.0"
+  },
+  "defaultCore": {
+    "id": "clean-room-gameboy-core",
+    "version": "1.0.0"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "emulators/gameboy"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "emulators/gameboy"
+  },
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "rumble",
+    "save-state"
+  ],
+  "deviceLimits": {
+    "maxWidth": 1024,
+    "maxHeight": 768,
+    "maxControllers": 1,
+    "maxAudioChannels": 2
+  },
+  "settingsDefaults": {
+    "displayWidth": 1024,
+    "displayHeight": 768,
+    "displayMode": "integer",
+    "frameSkip": 0,
+    "rumble": false,
+    "audioLatencyMs": 64
+  },
+  "licenseProvenanceUrl": "https://docs.libretro.com/"
+}

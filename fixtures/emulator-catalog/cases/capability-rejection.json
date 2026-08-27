@@ -1,0 +1,55 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "resolution-fixture",
+  "channel": "stable",
+  "systemId": "tg4040",
+  "extension": "GB",
+  "contentPath": {
+    "root": "roms",
+    "relative": "games/adventure/game.gb"
+  },
+  "profileId": "default",
+  "requestedCapabilities": [
+    "rewind"
+  ],
+  "deviceCapabilities": [
+    "display",
+    "audio",
+    "input",
+    "rumble",
+    "save-state"
+  ],
+  "overrides": {
+    "device": {
+      "displayWidth": 800
+    },
+    "system": {
+      "displayHeight": 600
+    },
+    "core": {
+      "displayMode": "fit"
+    },
+    "folderAncestors": [
+      {
+        "relative": "games",
+        "settings": {
+          "frameSkip": 1
+        }
+      },
+      {
+        "relative": "games/adventure",
+        "settings": {
+          "frameSkip": 2
+        }
+      }
+    ],
+    "game": {
+      "rumble": true
+    },
+    "session": {
+      "audioLatencyMs": 32
+    }
+  }
+}

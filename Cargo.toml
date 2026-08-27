@@ -22,6 +22,7 @@ members = [
     "crates/input-profile",
     "crates/session-broker",
     "crates/settings-ui",
+    "crates/display-profile",
 ]
 resolver = "2"
 

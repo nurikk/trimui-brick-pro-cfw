@@ -1,0 +1,16 @@
+{
+  "$schema": "https://example.invalid/trimui-display-profile-v1.schema.json",
+  "format": "trimui-display-profile",
+  "schemaVersion": 1,
+  "kind": "fixture-journey",
+  "synthetic": true,
+  "cases": [
+    {"id": "default", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": null, "expectedScaling": "integer", "expectedOverlay": null, "expectedShader": null},
+    {"id": "original-aspect", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": "fixture-original-aspect", "expectedScaling": "original-aspect", "expectedOverlay": null, "expectedShader": null},
+    {"id": "crop", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": "fixture-crop", "expectedScaling": "crop", "expectedOverlay": null, "expectedShader": null},
+    {"id": "fullscreen", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": "fixture-fullscreen", "expectedScaling": "fullscreen", "expectedOverlay": null, "expectedShader": null},
+    {"id": "overlay-and-shader", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": "fixture-overlay-shader", "expectedScaling": "integer", "expectedOverlay": "overlay-neutral-frame", "expectedShader": "shader-neutral-pass"},
+    {"id": "experimental", "channel": "experimental", "systemId": "tg4040-lab", "profileId": "tg4040-lab-profile", "gameId": null, "expectedScaling": "original-aspect", "expectedOverlay": null, "expectedShader": null},
+    {"id": "reset", "channel": "stable", "systemId": "tg4040", "profileId": "tg4040-default", "gameId": "fixture-reset", "expectedScaling": "integer", "expectedOverlay": null, "expectedShader": null}
+  ]
+}

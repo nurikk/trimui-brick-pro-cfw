@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-display-profile-v1.schema.json",
+  "title": "TrimUI TG4040 declarative display-profile consumer contract v1",
+  "description": "Closed metadata-only TG4040 display selections. No renderer instructions, executable paths, URLs, bytes, artwork, shader source, hardware claims, or integration payloads.",
+  "oneOf": [
+    {"$ref": "#/$defs/catalog"},
+    {"$ref": "#/$defs/resolutionRequest"},
+    {"$ref": "#/$defs/resolvedProfile"},
+    {"$ref": "#/$defs/fixtureManifest"}
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "channel": {"enum": ["stable", "experimental"]},
+    "scaling": {"enum": ["integer", "original-aspect", "crop", "fullscreen"]},
+    "logicalOutput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {"width": {"const": 1024}, "height": {"const": 768}}
+    },
+    "identifierSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id"], "properties": {"id": {"$ref": "#/$defs/id"}}
+    },
+    "warningCode": {"enum": ["non-default-scaling", "crop-presentation", "fullscreen-presentation", "overlay-selected", "shader-selected"]},
+    "warning": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "severity", "messageKey"],
+      "properties": {
+        "code": {"$ref": "#/$defs/warningCode"},
+        "severity": {"const": "warning"},
+        "messageKey": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,95}$"}
+      }
+    },
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scaling", "overlaySelection", "shaderSelection", "warnings"],
+      "properties": {
+        "scaling": {"$ref": "#/$defs/scaling"},
+        "overlaySelection": {"anyOf": [{"$ref": "#/$defs/identifierSelection"}, {"type": "null"}]},
+        "shaderSelection": {"anyOf": [{"$ref": "#/$defs/identifierSelection"}, {"type": "null"}]},
+        "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}, "uniqueItems": true}
+      }
+    },
+    "system": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "targetSku", "channel", "logicalOutput", "defaultSelection"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "targetSku": {"const": "TG4040"}, "channel": {"$ref": "#/$defs/channel"},
+        "logicalOutput": {"$ref": "#/$defs/logicalOutput"}, "defaultSelection": {"$ref": "#/$defs/selection"}
+      }
+    },
+    "gameOverride": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["gameId", "action", "selection"], "properties": {"gameId": {"$ref": "#/$defs/id"}, "action": {"const": "set"}, "selection": {"$ref": "#/$defs/selection"}}},
+        {"type": "object", "additionalProperties": false, "required": ["gameId", "action"], "properties": {"gameId": {"$ref": "#/$defs/id"}, "action": {"const": "reset"}}}
+      ]
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "targetSku", "channel", "systemIds", "defaultSelection", "gameOverrides"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "targetSku": {"const": "TG4040"}, "channel": {"$ref": "#/$defs/channel"},
+        "systemIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "defaultSelection": {"$ref": "#/$defs/selection"},
+        "gameOverrides": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/gameOverride"}}
+      }
+    },
+    "catalog": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "format", "schemaVersion", "kind", "targetSku", "logicalOutput", "systems", "profiles"],
+      "properties": {
+        "$schema": {"const": "https://example.invalid/trimui-display-profile-v1.schema.json"},
+        "format": {"const": "trimui-display-profile"}, "schemaVersion": {"const": 1}, "kind": {"const": "catalog"},
+        "targetSku": {"const": "TG4040"}, "logicalOutput": {"$ref": "#/$defs/logicalOutput"},
+        "systems": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/system"}},
+        "profiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/profile"}}
+      }
+    },
+    "requestKind": {"const": "resolution-request"},
+    "resolvedProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["channel", "systemId", "profileId", "logicalOutput", "selection"],
+      "properties": {"channel": {"$ref": "#/$defs/channel"}, "systemId": {"$ref": "#/$defs/id"}, "profileId": {"$ref": "#/$defs/id"}, "logicalOutput": {"$ref": "#/$defs/logicalOutput"}, "selection": {"$ref": "#/$defs/selection"}}
+    },
+    "resolutionRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "format", "schemaVersion", "kind", "channel", "systemId", "profileId", "gameId"],
+      "properties": {
+        "$schema": {"const": "https://example.invalid/trimui-display-profile-v1.schema.json"}, "format": {"const": "trimui-display-profile"}, "schemaVersion": {"const": 1},
+        "kind": {"$ref": "#/$defs/requestKind"}, "channel": {"$ref": "#/$defs/channel"}, "systemId": {"$ref": "#/$defs/id"}, "profileId": {"$ref": "#/$defs/id"}, "gameId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+      }
+    },
+    "fixtureCase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "channel", "systemId", "profileId", "gameId", "expectedScaling", "expectedOverlay", "expectedShader"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "channel": {"$ref": "#/$defs/channel"}, "systemId": {"$ref": "#/$defs/id"}, "profileId": {"$ref": "#/$defs/id"}, "gameId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "expectedScaling": {"$ref": "#/$defs/scaling"}, "expectedOverlay": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "expectedShader": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+      }
+    },
+    "fixtureManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "format", "schemaVersion", "kind", "synthetic", "cases"],
+      "properties": {
+        "$schema": {"const": "https://example.invalid/trimui-display-profile-v1.schema.json"}, "format": {"const": "trimui-display-profile"}, "schemaVersion": {"const": 1}, "kind": {"const": "fixture-journey"}, "synthetic": {"const": true}, "cases": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/fixtureCase"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "$schema": "https://example.invalid/trimui-display-profile-v1.schema.json",
+  "format": "trimui-display-profile",
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "targetSku": "TG4040",
+  "logicalOutput": {
+    "width": 1024,
+    "height": 768
+  },
+  "systems": [
+    {
+      "id": "tg4040",
+      "targetSku": "TG4040",
+      "channel": "stable",
+      "logicalOutput": {
+        "width": 1024,
+        "height": 768
+      },
+      "defaultSelection": {
+        "scaling": "integer",
+        "overlaySelection": null,
+        "shaderSelection": null,
+        "warnings": []
+      }
+    },
+    {
+      "id": "tg4040-lab",
+      "targetSku": "TG4040",
+      "channel": "experimental",
+      "logicalOutput": {
+        "width": 1024,
+        "height": 768
+      },
+      "defaultSelection": {
+        "scaling": "original-aspect",
+        "overlaySelection": null,
+        "shaderSelection": null,
+        "warnings": []
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "id": "tg4040-default",
+      "targetSku": "TG4040",
+      "channel": "stable",
+      "systemIds": [
+        "tg4040"
+      ],
+      "defaultSelection": {
+        "scaling": "integer",
+        "overlaySelection": null,
+        "shaderSelection": null,
+        "warnings": []
+      },
+      "gameOverrides": [
+        {
+          "gameId": "fixture-original-aspect",
+          "action": "set",
+          "selection": {
+            "scaling": "stretch",
+            "overlaySelection": null,
+            "shaderSelection": null,
+            "warnings": [
+              {
+                "code": "non-default-scaling",
+                "severity": "warning",
+                "messageKey": "display.warning.scaling.non-default"
+              }
+            ]
+          }
+        },
+        {
+          "gameId": "fixture-crop",
+          "action": "set",
+          "selection": {
+            "scaling": "crop",
+            "overlaySelection": null,
+            "shaderSelection": null,
+            "warnings": [
+              {
+                "code": "non-default-scaling",
+                "severity": "warning",
+                "messageKey": "display.warning.scaling.non-default"
+              },
+              {
+                "code": "crop-presentation",
+                "severity": "warning",
+                "messageKey": "display.warning.presentation.crop"
+              }
+            ]
+          }
+        },
+        {
+          "gameId": "fixture-fullscreen",
+          "action": "set",
+          "selection": {
+            "scaling": "fullscreen",
+            "overlaySelection": null,
+            "shaderSelection": null,
+            "warnings": [
+              {
+                "code": "non-default-scaling",
+                "severity": "warning",
+                "messageKey": "display.warning.scaling.non-default"
+              },
+              {
+                "code": "fullscreen-presentation",
+                "severity": "warning",
+                "messageKey": "display.warning.presentation.fullscreen"
+              }
+            ]
+          }
+        },
+        {
+          "gameId": "fixture-overlay-shader",
+          "action": "set",
+          "selection": {
+            "scaling": "integer",
+            "overlaySelection": {
+              "id": "overlay-neutral-frame"
+            },
+            "shaderSelection": {
+              "id": "shader-neutral-pass"
+            },
+            "warnings": [
+              {
+                "code": "overlay-selected",
+                "severity": "warning",
+                "messageKey": "display.warning.overlay.selected"
+              },
+              {
+                "code": "shader-selected",
+                "severity": "warning",
+                "messageKey": "display.warning.shader.selected"
+              }
+            ]
+          }
+        },
+        {
+          "gameId": "fixture-reset",
+          "action": "reset"
+        }
+      ]
+    },
+    {
+      "id": "tg4040-lab-profile",
+      "targetSku": "TG4040",
+      "channel": "experimental",
+      "systemIds": [
+        "tg4040-lab"
+      ],
+      "defaultSelection": {
+        "scaling": "original-aspect",
+        "overlaySelection": null,
+        "shaderSelection": null,
+        "warnings": []
+      },
+      "gameOverrides": []
+    }
+  ]
+}

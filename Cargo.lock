@@ -740,6 +740,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "settings-ui"
+version = "0.1.0"
+dependencies = [
+ "regex-automata",
+ "serde",
+ "serde_json",
+ "settings-schema",
+ "ui-model",
+ "virtual-keyboard",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

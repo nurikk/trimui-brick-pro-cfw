@@ -21,6 +21,7 @@ members = [
     "crates/emulator-catalog",
     "crates/input-profile",
     "crates/session-broker",
+    "crates/settings-ui",
 ]
 resolver = "2"
 

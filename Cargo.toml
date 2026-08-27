@@ -16,6 +16,7 @@ members = [
     "crates/virtual-keyboard",
     "crates/wifi-manager",
     "crates/ui-model",
+    "crates/media-cache",
 ]
 resolver = "2"
 
@@ -33,3 +34,5 @@ jiff = "0.2.31"
 signal-hook = "0.3"
 png = "0.17"
 sdl2 = "0.37"
+
+libc = "0.2"

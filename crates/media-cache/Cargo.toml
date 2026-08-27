@@ -1,0 +1,21 @@
+[package]
+name = "media-cache"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "media_cache"
+path = "src/lib.rs"
+
+[[bin]]
+name = "media-cache-journey"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

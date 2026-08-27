@@ -1,0 +1,17 @@
+{
+  "format": "media-cache-fixture-journey",
+  "version": 1,
+  "inputs": ["png", "jpeg", "alpha-png", "orientation-jpeg"],
+  "transport": "generated-fixture-only",
+  "network": false,
+  "expected": {
+    "profiles": 4,
+    "orientation": "exif-1-to-8-normalized-before-resize",
+    "failureCategories": ["corrupt", "oversized-transfer", "pixel-limit", "dimension-limit", "decode-time", "mime", "malformed-exif", "http", "private-address", "userinfo", "malformed-port", "localhost", "ipv6", "redirect", "interrupted-body", "corrupted-existing-record"],
+    "protectedTrees": "unchanged",
+    "externalCleanup": "root-identity-scoped; removes only files older than twice the transfer deadline; retains the threshold boundary",
+    "sharedTemporaryRoot": "fresh same-cache partial retained; older scoped stale partial removed",
+    "publication": "collision-safe create_new retries; no-replace rename validates object, metadata, and index winners; distributedArtifacts=0",
+    "publicOutput": "opaque-ids-and-aggregate-counts"
+  }
+}

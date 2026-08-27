@@ -1,0 +1,297 @@
+{
+  "fixture_shape": "local-domain-scenarios",
+  "domain": "input-controller",
+  "contract_revision": "mvp",
+  "synthetic_only": true,
+  "scenarios": [
+    {
+      "id": "scenario-normal",
+      "scenario_class": "normal",
+      "capabilities": {
+        "cap.input_configuration": true,
+        "cap.rumble": true,
+        "cap.rumble_intensity": true,
+        "cap.hall_calibration": true,
+        "cap.external_controller": true,
+        "cap.external_pairing": true,
+        "cap.input_test": true,
+        "cap.settings_reset": true
+      },
+      "state": {
+        "effective": {
+          "input.confirm_cancel_layout": "confirm_primary_cancel_secondary",
+          "input.menu_hotkey_chord": ["menu", "select"],
+          "input.analog_deadzone": 10,
+          "input.analog_sensitivity": 100,
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 50,
+          "input.hall_calibration.status": "idle",
+          "input.external_controller.status": "unpaired"
+        },
+        "staged": {},
+        "operation_status": {
+          "input.test.start": "idle"
+        }
+      },
+      "actions": [
+        {
+          "id": "input.hall_calibration.start",
+          "request": "invoke",
+          "confirmation": "confirmed",
+          "expected_status": "pending"
+        },
+        {
+          "id": "input.external_controller.pair",
+          "request": "invoke",
+          "confirmation": "confirmed",
+          "expected_status": "pairing_pending"
+        },
+        {
+          "id": "input.test.start",
+          "request": "invoke",
+          "confirmation": "confirmed",
+          "expected_status": "pending"
+        }
+      ],
+      "expected_result": {
+        "outcome": "accepted",
+        "visible_ids_include": [
+          "input.confirm_cancel_layout",
+          "input.menu_hotkey_chord",
+          "input.analog_deadzone",
+          "input.analog_sensitivity",
+          "input.rumble_enabled",
+          "input.rumble_intensity",
+          "input.hall_calibration.start",
+          "input.hall_calibration.status",
+          "input.external_controller.status",
+          "input.external_controller.pair",
+          "input.test.start",
+          "input.restore_defaults"
+        ],
+        "operation_states_are_metadata_only": true
+      }
+    },
+    {
+      "id": "scenario-unsupported-capabilities",
+      "scenario_class": "unsupported",
+      "capabilities": {
+        "cap.input_configuration": true,
+        "cap.rumble": false,
+        "cap.rumble_intensity": false,
+        "cap.hall_calibration": false,
+        "cap.external_controller": false,
+        "cap.external_pairing": false,
+        "cap.input_test": false,
+        "cap.settings_reset": false
+      },
+      "state": {
+        "effective": {
+          "input.rumble_enabled": false,
+          "input.hall_calibration.status": "unavailable",
+          "input.external_controller.status": "unavailable"
+        },
+        "staged": {}
+      },
+      "actions": [
+        {
+          "id": "input.hall_calibration.start",
+          "request": "invoke",
+          "expected_error": "unsupported"
+        },
+        {
+          "id": "input.external_controller.pair",
+          "request": "invoke",
+          "expected_error": "unsupported"
+        },
+        {
+          "id": "input.test.start",
+          "request": "invoke",
+          "expected_error": "unsupported"
+        },
+        {
+          "id": "input.restore_defaults",
+          "request": "invoke",
+          "expected_error": "unsupported"
+        }
+      ],
+      "expected_result": {
+        "outcome": "fail_closed",
+        "hidden_ids_include": [
+          "input.rumble_enabled",
+          "input.rumble_intensity",
+          "input.hall_calibration.start",
+          "input.hall_calibration.status",
+          "input.external_controller.status",
+          "input.external_controller.pair",
+          "input.test.start",
+          "input.restore_defaults"
+        ],
+        "no_action_is_started": true
+      }
+    },
+    {
+      "id": "scenario-invalid-values",
+      "scenario_class": "invalid",
+      "capabilities": {
+        "cap.input_configuration": true
+      },
+      "state": {
+        "effective": {
+          "input.menu_hotkey_chord": ["menu", "select"],
+          "input.analog_deadzone": 10,
+          "input.analog_sensitivity": 100
+        },
+        "staged": {}
+      },
+      "edits": [
+        {
+          "id": "input.analog_deadzone",
+          "value": 101,
+          "expected_error": "invalid"
+        },
+        {
+          "id": "input.analog_sensitivity",
+          "value": 0,
+          "expected_error": "invalid"
+        },
+        {
+          "id": "input.menu_hotkey_chord",
+          "value": ["menu", "menu"],
+          "expected_error": "invalid"
+        }
+      ],
+      "expected_result": {
+        "outcome": "rejected_without_coercion",
+        "effective_unchanged": true,
+        "staged": {},
+        "error_values_are_not_replaced_with_defaults": true
+      }
+    },
+    {
+      "id": "scenario-pending-change",
+      "scenario_class": "pending-change",
+      "capabilities": {
+        "cap.input_configuration": true,
+        "cap.rumble": true,
+        "cap.rumble_intensity": true
+      },
+      "state": {
+        "effective": {
+          "input.rumble_enabled": false,
+          "input.rumble_intensity": 50,
+          "input.analog_sensitivity": 100
+        },
+        "staged": {
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 80,
+          "input.analog_sensitivity": 125
+        }
+      },
+      "expected_result": {
+        "outcome": "pending_confirmation",
+        "effective_unchanged": true,
+        "staged_values_are_valid": true,
+        "rumble_intensity_is_visible_for_staged_parent": true
+      }
+    },
+    {
+      "id": "scenario-confirm-change",
+      "scenario_class": "confirm",
+      "capabilities": {
+        "cap.input_configuration": true,
+        "cap.rumble": true,
+        "cap.rumble_intensity": true
+      },
+      "state": {
+        "effective": {
+          "input.rumble_enabled": false,
+          "input.rumble_intensity": 50,
+          "input.analog_sensitivity": 100
+        },
+        "staged": {
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 80,
+          "input.analog_sensitivity": 125
+        }
+      },
+      "decision": "confirm",
+      "expected_result": {
+        "outcome": "applied",
+        "effective": {
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 80,
+          "input.analog_sensitivity": 125
+        },
+        "staged": {}
+      }
+    },
+    {
+      "id": "scenario-cancel-change",
+      "scenario_class": "cancel",
+      "capabilities": {
+        "cap.input_configuration": true,
+        "cap.rumble": true,
+        "cap.rumble_intensity": true
+      },
+      "state": {
+        "effective": {
+          "input.rumble_enabled": false,
+          "input.rumble_intensity": 50,
+          "input.analog_sensitivity": 100
+        },
+        "staged": {
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 80,
+          "input.analog_sensitivity": 125
+        }
+      },
+      "decision": "cancel",
+      "expected_result": {
+        "outcome": "discarded",
+        "effective": {
+          "input.rumble_enabled": false,
+          "input.rumble_intensity": 50,
+          "input.analog_sensitivity": 100
+        },
+        "staged": {}
+      }
+    },
+    {
+      "id": "scenario-reset-defaults",
+      "scenario_class": "reset",
+      "capabilities": {
+        "cap.settings_reset": true
+      },
+      "state": {
+        "effective": {
+          "input.confirm_cancel_layout": "cancel_primary_confirm_secondary",
+          "input.menu_hotkey_chord": ["menu", "start"],
+          "input.analog_deadzone": 30,
+          "input.analog_sensitivity": 150,
+          "input.rumble_enabled": true,
+          "input.rumble_intensity": 90
+        },
+        "staged": {}
+      },
+      "action": {
+        "id": "input.restore_defaults",
+        "request": "invoke",
+        "confirmation": "confirmed"
+      },
+      "expected_result": {
+        "outcome": "applied",
+        "effective": {
+          "input.confirm_cancel_layout": "confirm_primary_cancel_secondary",
+          "input.menu_hotkey_chord": ["menu", "select"],
+          "input.analog_deadzone": 10,
+          "input.analog_sensitivity": 100,
+          "input.rumble_enabled": false,
+          "input.rumble_intensity": 50
+        },
+        "staged": {},
+        "only_domain_profile_values_reset": true
+      }
+    }
+  ]
+}

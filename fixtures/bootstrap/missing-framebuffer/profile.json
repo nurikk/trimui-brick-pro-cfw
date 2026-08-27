@@ -1,0 +1,32 @@
+{
+  "firmware": {
+    "contractId": "synthetic-tg4040-firmware-v1",
+    "supported": true
+  },
+  "input": {
+    "capabilities": [
+      "dpad",
+      "face-primary",
+      "start",
+      "select",
+      "menu"
+    ]
+  },
+  "model": {
+    "sku": "TG4040"
+  },
+  "realDeviceFingerprintApproved": false,
+  "schema": "brickpro-bootstrap-profile/v1",
+  "storage": {
+    "data": true,
+    "logicalSd": true,
+    "roms": true,
+    "systemReadOnly": true,
+    "systemSlots": [
+      "A",
+      "B"
+    ],
+    "update": true
+  },
+  "syntheticProfileApproved": true
+}

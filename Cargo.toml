@@ -5,6 +5,8 @@ members = [
     "crates/host-platform",
     "crates/launcher",
     "crates/storage-layout",
+    "crates/bootstrap-probe",
+    "crates/brick-recovery",
 ]
 resolver = "2"
 

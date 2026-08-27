@@ -1,0 +1,66 @@
+{
+  "candidateStatus": "no-device-bootstrap-candidate",
+  "display": {
+    "expected": {
+      "format": "rgba8888",
+      "height": 768,
+      "strideBytes": 4096,
+      "width": 1024
+    },
+    "status": "synthetic-contract-value-not-physically-verified"
+  },
+  "firmware": {
+    "approvalState": "real-device-empty-pending",
+    "approvedRealFirmware": [],
+    "syntheticContractId": "synthetic-tg4040-firmware-v1",
+    "status": "synthetic-contract-only"
+  },
+  "input": {
+    "requiredSemanticCapabilities": [
+      "dpad",
+      "face-primary",
+      "start",
+      "select",
+      "menu"
+    ],
+    "status": "synthetic-contract-only"
+  },
+  "realDevice": {
+    "activationEnabled": false,
+    "approvedFingerprints": [],
+    "fingerprintApprovalState": "empty-pending"
+  },
+  "schemaVersion": "1.0.0",
+  "storage": {
+    "requiredLogicalFeatures": [
+      "system-slots-A-B",
+      "read-only-system",
+      "data",
+      "roms",
+      "update-record-boundary"
+    ],
+    "status": "logical-contract-only-no-mounts",
+    "systemSlots": [
+      "A",
+      "B"
+    ]
+  },
+  "targetSku": "TG4040",
+  "syntheticFixtureInterface": {
+    "approvedFixtureIds": [
+      "supported",
+      "wrong-model",
+      "unsupported-firmware",
+      "missing-framebuffer",
+      "invalid-framebuffer",
+      "missing-input",
+      "unsupported-storage",
+      "missing-storage",
+      "no-real-fingerprint",
+      "recovery-chord",
+      "recovery-next-boot"
+    ],
+    "interface": "brickpro-synthetic-bootstrap-fixture/v1",
+    "status": "generated-fixtures-only"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "fixtureId": "recovery-next-boot",
+  "mode": "synthetic",
+  "realDeviceActivation": false,
+  "schema": "brickpro-synthetic-bootstrap-fixture/v1",
+  "syntheticApproval": true,
+  "targetSku": "TG4040"
+}

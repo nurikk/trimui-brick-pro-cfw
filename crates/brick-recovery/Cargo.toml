@@ -1,0 +1,13 @@
+[package]
+name = "brick-recovery"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "brick-recovery"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+bootstrap-probe = { path = "../bootstrap-probe" }

@@ -1,0 +1,16 @@
+[package]
+name = "bootstrap-probe"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bootstrap_probe"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bootstrap-probe"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

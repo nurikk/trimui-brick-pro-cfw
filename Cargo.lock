@@ -881,6 +881,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-broker"
+version = "0.1.0"
+dependencies = [
+ "launch-contract",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sim-platform-contract",
+]
+
+[[package]]
 name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

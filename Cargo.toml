@@ -19,6 +19,7 @@ members = [
     "crates/media-cache",
     "crates/emulator-catalog",
     "crates/input-profile",
+    "crates/session-broker",
 ]
 resolver = "2"
 

@@ -1,0 +1,377 @@
+{
+  "domain": "power-battery",
+  "contract": "docs/settings/power-battery.md",
+  "data_policy": "synthetic_non_physical",
+  "scenarios": [
+    {
+      "id": "power-battery.normal-supported-domain",
+      "category": "normal",
+      "capabilities": {
+        "cap.power.sleep-policy": "supported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "supported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "supported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "supported"
+      },
+      "initial": {
+        "current": {
+          "power.sleep-timeout-seconds": 300,
+          "power.auto-shutdown-timeout-seconds": 1800,
+          "power.low-battery-warning-threshold-percent": 20,
+          "power.low-battery-save-exit-policy": "warn-only",
+          "power.suspend-candidate": true,
+          "power.performance-profile": "balanced",
+          "power.charging-status": "not-charging",
+          "power.external-power-status": "disconnected",
+          "power.battery-level-percent": 64,
+          "power.battery-health": "good",
+          "power.battery-status": "normal"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "read",
+          "expect": {
+            "result": "ok",
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.sleep-timeout-seconds",
+          "value": 600,
+          "expect": {
+            "result": "pending",
+            "current-value": 300,
+            "pending-value": 600
+          }
+        },
+        {
+          "operation": "confirm",
+          "field": "power.sleep-timeout-seconds",
+          "expect": {
+            "result": "applied",
+            "current-value": 600,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.battery-health",
+          "value": "degraded",
+          "expect": {
+            "result": "rejected",
+            "reason": "read-only",
+            "current-value": "good",
+            "pending": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-battery.unsupported-capabilities",
+      "category": "unsupported",
+      "capabilities": {
+        "cap.power.sleep-policy": "unsupported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "unsupported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "unsupported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "unsupported"
+      },
+      "initial": {
+        "current": {
+          "power.auto-shutdown-timeout-seconds": 1800,
+          "power.low-battery-warning-threshold-percent": 20,
+          "power.low-battery-save-exit-policy": "warn-only",
+          "power.performance-profile": "balanced",
+          "power.external-power-status": "unknown"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "read",
+          "field": "power.sleep-timeout-seconds",
+          "expect": {
+            "result": "unsupported",
+            "visible": false,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.suspend-candidate",
+          "value": false,
+          "expect": {
+            "result": "unsupported",
+            "visible": false,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "read",
+          "field": "power.battery-health",
+          "expect": {
+            "result": "unsupported",
+            "visible": false,
+            "pending": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-battery.invalid-policy-values",
+      "category": "invalid",
+      "capabilities": {
+        "cap.power.sleep-policy": "supported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "supported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "supported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "supported"
+      },
+      "initial": {
+        "current": {
+          "power.sleep-timeout-seconds": 300,
+          "power.low-battery-warning-threshold-percent": 20,
+          "power.performance-profile": "balanced"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "propose-change",
+          "field": "power.sleep-timeout-seconds",
+          "value": -1,
+          "expect": {
+            "result": "rejected",
+            "reason": "invalid",
+            "current-value": 300,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.low-battery-warning-threshold-percent",
+          "value": 51,
+          "expect": {
+            "result": "rejected",
+            "reason": "invalid",
+            "current-value": 20,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.performance-profile",
+          "value": null,
+          "expect": {
+            "result": "rejected",
+            "reason": "invalid",
+            "current-value": "balanced",
+            "pending": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-battery.pending-multiple-policy-changes",
+      "category": "pending-change",
+      "capabilities": {
+        "cap.power.sleep-policy": "supported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "supported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "supported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "supported"
+      },
+      "initial": {
+        "current": {
+          "power.sleep-timeout-seconds": 300,
+          "power.auto-shutdown-timeout-seconds": 1800,
+          "power.low-battery-save-exit-policy": "warn-only",
+          "power.performance-profile": "balanced"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "propose-change",
+          "field": "power.sleep-timeout-seconds",
+          "value": 900,
+          "expect": {
+            "result": "pending",
+            "current-value": 300,
+            "pending-value": 900
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.performance-profile",
+          "value": "quiet",
+          "expect": {
+            "result": "pending",
+            "current-value": "balanced",
+            "pending-value": "quiet"
+          }
+        },
+        {
+          "operation": "read",
+          "expect": {
+            "result": "ok",
+            "current": {
+              "power.sleep-timeout-seconds": 300,
+              "power.performance-profile": "balanced"
+            },
+            "pending": {
+              "power.sleep-timeout-seconds": 900,
+              "power.performance-profile": "quiet"
+            }
+          }
+        },
+        {
+          "operation": "cancel",
+          "field": "power.sleep-timeout-seconds",
+          "expect": {
+            "result": "cancelled",
+            "current-value": 300,
+            "pending": {
+              "power.performance-profile": "quiet"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-battery.confirm-and-cancel-policy-changes",
+      "category": "confirm-cancel",
+      "capabilities": {
+        "cap.power.sleep-policy": "supported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "supported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "supported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "supported"
+      },
+      "initial": {
+        "current": {
+          "power.low-battery-save-exit-policy": "warn-only",
+          "power.performance-profile": "balanced"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "propose-change",
+          "field": "power.performance-profile",
+          "value": "performance",
+          "expect": {
+            "result": "pending",
+            "current-value": "balanced",
+            "pending-value": "performance"
+          }
+        },
+        {
+          "operation": "cancel",
+          "field": "power.performance-profile",
+          "expect": {
+            "result": "cancelled",
+            "current-value": "balanced",
+            "pending": {}
+          }
+        },
+        {
+          "operation": "propose-change",
+          "field": "power.low-battery-save-exit-policy",
+          "value": "save-and-exit",
+          "expect": {
+            "result": "pending",
+            "current-value": "warn-only",
+            "pending-value": "save-and-exit"
+          }
+        },
+        {
+          "operation": "confirm",
+          "field": "power.low-battery-save-exit-policy",
+          "expect": {
+            "result": "applied",
+            "current-value": "save-and-exit",
+            "pending": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-battery.reset-to-domain-defaults",
+      "category": "reset",
+      "capabilities": {
+        "cap.power.sleep-policy": "supported",
+        "cap.power.shutdown-policy": "supported",
+        "cap.power.low-battery-policy": "supported",
+        "cap.power.suspend-policy": "supported",
+        "cap.power.performance-policy": "supported",
+        "cap.power.charging-observation": "supported",
+        "cap.power.external-power-observation": "supported",
+        "cap.power.battery-observation": "supported"
+      },
+      "initial": {
+        "current": {
+          "power.sleep-timeout-seconds": 900,
+          "power.performance-profile": "quiet"
+        },
+        "pending": {}
+      },
+      "steps": [
+        {
+          "operation": "reset",
+          "field": "power.sleep-timeout-seconds",
+          "expect": {
+            "result": "pending",
+            "pending-value": 300,
+            "current-value": 900
+          }
+        },
+        {
+          "operation": "confirm",
+          "field": "power.sleep-timeout-seconds",
+          "expect": {
+            "result": "applied",
+            "current-value": 300,
+            "pending": {}
+          }
+        },
+        {
+          "operation": "reset",
+          "field": "power.performance-profile",
+          "expect": {
+            "result": "pending",
+            "pending-value": "balanced",
+            "current-value": "quiet"
+          }
+        },
+        {
+          "operation": "cancel",
+          "field": "power.performance-profile",
+          "expect": {
+            "result": "cancelled",
+            "current-value": "quiet",
+            "pending": {}
+          }
+        }
+      ]
+    }
+  ]
+}

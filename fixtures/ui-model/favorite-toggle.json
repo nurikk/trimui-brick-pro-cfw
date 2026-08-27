@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "journey": "favorite-toggle",
+  "generated": true,
+  "actions": [
+    { "type": "toggle-favorite", "target": "generated-game-01" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "home",
+    "selection": "generated-game-01",
+    "status": "favorite-changed",
+    "assertion": "Favorite intent changes the selected generated game without an external side effect."
+  }
+}

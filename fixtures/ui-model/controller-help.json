@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "journey": "controller-help",
+  "generated": true,
+  "actions": [
+    { "type": "render-help-strip", "target": "primary-secondary-menu-start" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "home",
+    "assertion": "The model exposes a readable controller help strip for full-screen menus."
+  }
+}

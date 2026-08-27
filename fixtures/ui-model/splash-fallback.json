@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "journey": "splash-fallback",
+  "generated": true,
+  "actions": [
+    { "type": "show-fallback", "target": "missing-content" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "recovery",
+    "status": "safe-fallback",
+    "assertion": "Fallback state uses a generated placeholder and routes to Recovery without loading media."
+  }
+}

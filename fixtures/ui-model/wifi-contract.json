@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "journey": "wifi-contract",
+  "generated": true,
+  "actions": [
+    { "type": "wifi-scan", "target": "generated-network" },
+    { "type": "wifi-select-access-point", "target": "generated-network" },
+    { "type": "wifi-open-manual-ssid", "target": "manual" },
+    { "type": "wifi-enter-ssid", "target": "generated-manual-ssid", "value": "generated-manual-ssid" },
+    { "type": "wifi-request-masked-password-keyboard", "target": "generated-manual-ssid" },
+    { "type": "wifi-connect", "target": "generated-network" },
+    { "type": "wifi-disconnect", "target": "generated-network" },
+    { "type": "wifi-forget", "target": "generated-network" },
+    { "type": "wifi-retry", "target": "generated-network" },
+    { "type": "wifi-cancel", "target": "generated-network" },
+    { "type": "wifi-error", "value": "generated-radio-unavailable" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "wifi-error",
+    "selection": "generated-manual-ssid",
+    "status": "typed-error",
+    "capability": "wifi",
+    "assertion": "Wi-Fi state carries scan, manual SSID entry, masked keyboard request, progress, cancellation, retry, and typed error intent only."
+  }
+}

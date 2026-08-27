@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "identity": "Artbook",
+  "route": "home",
+  "menu": { "fullScreen": true, "controllerFirst": true, "selected": "systems", "enabled": true },
+  "preferences": { "artworkMode": "large", "metadataVisibility": "full", "fontScale": "standard", "colorScheme": "ink" },
+  "layout": { "aspectRatio": "four-by-three", "logicalWidth": 320, "logicalHeight": 240 },
+  "affordances": {
+    "clock": { "visible": true, "value": "12:00" },
+    "battery": { "visible": true, "percent": 100, "charging": false }
+  },
+  "contractStates": ["home", "systems", "games", "search", "favorites", "settings", "game-switcher", "recovery"]
+}

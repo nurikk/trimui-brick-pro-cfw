@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "identity": "Artbook",
+  "key": "ui.preferences",
+  "preferences": {
+    "artworkMode": "large",
+    "metadataVisibility": "full",
+    "fontScale": "standard",
+    "colorScheme": "ink"
+  }
+}

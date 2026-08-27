@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "journey": "scraper-contract",
+  "generated": true,
+  "actions": [
+    { "type": "scraper-queue", "target": "generated-game-01" },
+    { "type": "scraper-progress", "value": "1-of-1" },
+    { "type": "scraper-pause" },
+    { "type": "scraper-resume" },
+    { "type": "scraper-cancel" },
+    { "type": "scraper-ambiguous-choice", "target": "generated-game-01" },
+    { "type": "scraper-select-ambiguous-candidate", "target": "generated-candidate-b" },
+    { "type": "scraper-non-blocking-error", "value": "generated-status" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "scraper-settings",
+    "selection": "generated-candidate-b",
+    "status": "non-blocking-error",
+    "assertion": "Scraper state is a typed non-networking reservation for settings, queue, progress, ambiguity selection, pause, resume, cancel, and status."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "journey": "artbook-4x3",
+  "generated": true,
+  "actions": [
+    { "type": "set-preference", "target": "artwork-mode", "value": "large" },
+    { "type": "set-preference", "target": "metadata-visibility", "value": "full" },
+    { "type": "set-preference", "target": "font-scale", "value": "standard" },
+    { "type": "set-preference", "target": "color-scheme", "value": "ink" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "home",
+    "status": "four-by-three",
+    "assertion": "The default Artbook composition is large-artwork, full-metadata, standard-font, ink at four-by-three."
+  }
+}

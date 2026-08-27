@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "journey": "modal-handling",
+  "generated": true,
+  "actions": [
+    { "type": "show-modal", "target": "info" },
+    { "type": "dismiss-modal" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "home",
+    "status": "modal-dismissed",
+    "assertion": "Back or dismiss clears a modal before changing the underlying route."
+  }
+}

@@ -15,6 +15,7 @@ members = [
     "crates/settings-schema",
     "crates/virtual-keyboard",
     "crates/wifi-manager",
+    "crates/ui-model",
 ]
 resolver = "2"
 

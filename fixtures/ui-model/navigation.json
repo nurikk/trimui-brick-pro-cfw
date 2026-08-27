@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "journey": "navigation",
+  "generated": true,
+  "actions": [
+    { "type": "finish-splash" },
+    { "type": "move-selection", "target": "systems" },
+    { "type": "activate-selected" },
+    { "type": "open-system", "target": "generated-system-alpha" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "games",
+    "selection": "generated-system-alpha",
+    "assertion": "Controller navigation moves from Home through Systems into a generated game list."
+  }
+}

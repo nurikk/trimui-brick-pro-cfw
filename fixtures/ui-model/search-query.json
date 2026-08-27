@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "journey": "search-query",
+  "generated": true,
+  "actions": [
+    { "type": "set-search-query", "value": "Puzzle" },
+    { "type": "move-selection", "target": "generated-game-02" }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "search",
+    "selection": "generated-game-02",
+    "assertion": "Search keeps the query in model state and presents matching generated rows."
+  }
+}

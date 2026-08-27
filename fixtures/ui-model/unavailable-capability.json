@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "journey": "unavailable-capability",
+  "generated": true,
+  "actions": [
+    { "type": "wifi-open-scan", "enabled": false }
+  ],
+  "expected": {
+    "identity": "Artbook",
+    "route": "home",
+    "status": "capability-unavailable",
+    "capability": "wifi",
+    "assertion": "Unavailable capability input produces a typed modal and does not perform an operation."
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ui-preferences-v1",
+  "title": "Artbook persisted preferences",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "identity", "key", "preferences"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "identity": { "const": "Artbook" },
+    "key": { "const": "ui.preferences" },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artworkMode", "metadataVisibility", "fontScale", "colorScheme"],
+      "properties": {
+        "artworkMode": { "enum": ["large", "compact", "off"] },
+        "metadataVisibility": { "enum": ["full", "compact", "hidden"] },
+        "fontScale": { "enum": ["small", "standard", "large"] },
+        "colorScheme": { "enum": ["ink", "paper", "high-contrast"] }
+      }
+    }
+  }
+}

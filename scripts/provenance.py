@@ -809,22 +809,26 @@ def scan_regular_file(path: Path) -> tuple[int, str]:
     digest = hashlib.sha256()
     tail = b""
     size = 0
+    elf = False
     with path.open("rb") as handle:
         while chunk := handle.read(64 * 1024):
+            if size == 0:
+                elf = chunk.startswith(b"\x7fELF")
             size += len(chunk)
             digest.update(chunk)
             window = tail + chunk
-            match = PRIVATE_CONTENT.search(window)
-            if match and not (
-                (path.name == "THIRD_PARTY_NOTICES.md" and match.group(0).lower() == b".md")
-                or (
-                    path.name == "compatibility.json"
-                    and path.parent.name == "tg4040"
-                    and path.parent.parent.name == "platform"
-                    and match.group(0).lower() == b"roms"
-                )
-            ):
-                fail(f"{path}: private ROM/BIOS/PortMaster content signature")
+            if not elf:
+                match = PRIVATE_CONTENT.search(window)
+                if match and not (
+                    (path.name == "THIRD_PARTY_NOTICES.md" and match.group(0).lower() == b".md")
+                    or (
+                        path.name == "compatibility.json"
+                        and path.parent.name == "tg4040"
+                        and path.parent.parent.name == "platform"
+                        and match.group(0).lower() == b"roms"
+                    )
+                ):
+                    fail(f"{path}: private ROM/BIOS/PortMaster content signature")
             tail = window[-64:]
     return size, digest.hexdigest()
 

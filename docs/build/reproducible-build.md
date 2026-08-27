@@ -54,8 +54,9 @@ audit. It produces exactly:
 - `build-info.json`
 
 The archive contains only static AArch64 `bootstrap-probe`, `brick-recovery`,
-and `brickpro-diagnostics`, the existing POSIX bootstrap/recovery scripts, the TG4040
-compatibility JSON, and the generated license notice. It contains no manifest;
+`brickpro-diagnostics`, `boot-state`, `update-agent`, and `userspace-supervisor`,
+the existing POSIX bootstrap/recovery scripts, the TG4040 compatibility JSON,
+and the generated license notice. It contains no manifest;
 `manifest.json` is an external sidecar so it cannot hash itself.
 
 ## Inspect and reproduce
@@ -69,11 +70,20 @@ python3 -m json.tool "$OUT/manifest.json" >/dev/null
 python3 -m json.tool "$OUT/build-info.json" >/dev/null
 file "$OUT/extracted/usr/bin/brickpro-bootstrap-probe" \
      "$OUT/extracted/usr/bin/brickpro-recovery" \
-     "$OUT/extracted/usr/bin/brickpro-diagnostics"
-readelf -h "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
-readelf -h "$OUT/extracted/usr/bin/brickpro-diagnostics"
-readelf -l "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
-readelf -d "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
+     "$OUT/extracted/usr/bin/brickpro-diagnostics" \
+     "$OUT/extracted/usr/bin/brickpro-boot-state" \
+     "$OUT/extracted/usr/bin/brickpro-update-agent" \
+     "$OUT/extracted/usr/bin/brickpro-userspace-supervisor"
+for binary in "$OUT/extracted/usr/bin/brickpro-bootstrap-probe" \
+              "$OUT/extracted/usr/bin/brickpro-recovery" \
+              "$OUT/extracted/usr/bin/brickpro-diagnostics" \
+              "$OUT/extracted/usr/bin/brickpro-boot-state" \
+              "$OUT/extracted/usr/bin/brickpro-update-agent" \
+              "$OUT/extracted/usr/bin/brickpro-userspace-supervisor"; do
+    readelf -h "$binary"
+    readelf -l "$binary"
+    readelf -d "$binary"
+done
 ```
 
 The ELF checks prove only compiler/ISA output: AArch64, no interpreter, and no

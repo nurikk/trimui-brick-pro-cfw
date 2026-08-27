@@ -164,6 +164,9 @@ mkdir -p "$STAGE/usr/bin" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
 install -m 0755 "$WORK/payload/bootstrap-probe" "$STAGE/usr/bin/brickpro-bootstrap-probe"
 install -m 0755 "$WORK/payload/brick-recovery" "$STAGE/usr/bin/brickpro-recovery"
 install -m 0755 "$WORK/payload/brickpro-diagnostics" "$STAGE/usr/bin/brickpro-diagnostics"
+install -m 0755 "$WORK/payload/boot-state" "$STAGE/usr/bin/brickpro-boot-state"
+install -m 0755 "$WORK/payload/update-agent" "$STAGE/usr/bin/brickpro-update-agent"
+install -m 0755 "$WORK/payload/userspace-supervisor" "$STAGE/usr/bin/brickpro-userspace-supervisor"
 install -m 0755 "$ROOT/bootstrap/boot.sh" "$STAGE/bootstrap/boot.sh"
 install -m 0755 "$ROOT/bootstrap/recovery.sh" "$STAGE/bootstrap/recovery.sh"
 install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
@@ -354,7 +357,13 @@ for script in bootstrap/boot.sh bootstrap/recovery.sh; do
         --entrypoint busybox "$IMAGE" ash -n "/stage/$script"
 done
 
-for binary in "$WORK/payload/bootstrap-probe" "$WORK/payload/brick-recovery" "$WORK/payload/brickpro-diagnostics"; do
+for binary in \
+    "$WORK/payload/bootstrap-probe" \
+    "$WORK/payload/brick-recovery" \
+    "$WORK/payload/brickpro-diagnostics" \
+    "$WORK/payload/boot-state" \
+    "$WORK/payload/update-agent" \
+    "$WORK/payload/userspace-supervisor"; do
     file_output=$(file "$binary")
     printf '%s\n' "$file_output" | grep -Eiq 'AArch64' || fail "payload is not AArch64: $binary"
     readelf -h "$binary" | grep -Eq 'Machine:[[:space:]]+AArch64' || fail "payload ELF machine is not AArch64: $binary"

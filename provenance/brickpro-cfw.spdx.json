@@ -17,10 +17,10 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "251cadcffe486c03833f273e0859ad6881c0d7cb24e10e1f4f1676fb26da78df"
+          "checksumValue": "58d4a9e8a10f76369c03dfddb652f7caa2a14dd865960bebe97e66d94784437f"
         }
       ],
-      "comment": "{\"artifactId\":\"artifact-baseline-third-party-notices-md\",\"byteSize\":561,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "comment": "{\"artifactId\":\"artifact-baseline-third-party-notices-md\",\"byteSize\":675,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
       "fileName": "THIRD_PARTY_NOTICES.md",
       "licenseConcluded": "MIT",
@@ -77,14 +77,30 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-boot-state",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "fd1ef3c91bbb96577e72565f241e685fb76d63825fa395ed94d0f6a6c8dcb1c3"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-boot-state\",\"byteSize\":859984,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-boot-state",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-bootstrap-probe",
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "097cc3fc18dc688f6fbdc6281befa8cf6c5dd89a721e627775aedd4c14124bef"
+          "checksumValue": "bc80ec244a79e90cae83a54d11d428f5874cde1cf763c96df5fe5988d6bb09b7"
         }
       ],
-      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-bootstrap-probe\",\"byteSize\":751512,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-bootstrap-probe\",\"byteSize\":751376,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
       "fileName": "usr/bin/brickpro-bootstrap-probe",
       "licenseConcluded": "MIT",
@@ -113,12 +129,44 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "8e4db88110565bc52c7dabedd8a79cdc37d5655e9cc7978fd09a9568c718cf9a"
+          "checksumValue": "113544bc4fde51bed2f40baec0778579d42cdf89a7843d2ff98a485f40f20897"
         }
       ],
-      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-recovery\",\"byteSize\":757080,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-recovery\",\"byteSize\":757016,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
       "fileName": "usr/bin/brickpro-recovery",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-update-agent",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f82fd9fadd645d69328a5c8593d2cb266f2cdd16af2396a52c99fc7ba9d24289"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-update-agent\",\"byteSize\":1155280,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-update-agent",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-userspace-supervisor",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "35794681610b375a42eb6fd81a67841fe07a86adce60940e3819bcfa4a7bc32f"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-userspace-supervisor\",\"byteSize\":759712,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-userspace-supervisor",
       "licenseConcluded": "MIT",
       "licenseInfoInFiles": [
         "MIT"
@@ -160,6 +208,11 @@
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
     },
     {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-boot-state",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
       "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-bootstrap-probe",
       "relationshipType": "CONTAINS",
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
@@ -171,6 +224,16 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-update-agent",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-userspace-supervisor",
       "relationshipType": "CONTAINS",
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
     }

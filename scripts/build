@@ -1,0 +1,363 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+IMAGE=trimui-brick-pro-cfw-baseline:local
+BASE_IMAGE=rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0
+EPOCH=${SOURCE_DATE_EPOCH-}
+WORK=
+
+fail() {
+    printf '%s\n' "build: $*" >&2
+    exit 2
+}
+
+cleanup() {
+    [ -z "${WORK:-}" ] || rm -rf "$WORK"
+}
+trap cleanup EXIT HUP INT TERM
+
+build_definition_digest() {
+    ROOT="$ROOT" python3 - <<'PY'
+import hashlib
+import os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+paths = [
+    Path("containers/baseline/Dockerfile"),
+    Path("Cargo.lock"),
+    Path(".cargo/config.toml"),
+    Path("Cargo.toml"),
+]
+paths.extend(sorted(path.relative_to(root) for path in (root / "crates").rglob("Cargo.toml")))
+digest = hashlib.sha256()
+for path in paths:
+    digest.update(path.as_posix().encode("utf-8"))
+    digest.update(b"\\0")
+    digest.update((root / path).read_bytes())
+    digest.update(b"\\0")
+print(digest.hexdigest())
+PY
+}
+
+if [ "$#" -eq 1 ] && [ "$1" = image ]; then
+    command -v docker >/dev/null 2>&1 || fail "docker is required"
+    command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+    BUILD_DEFINITION_SHA256=$(build_definition_digest)
+    docker build --platform linux/amd64 \
+        --build-arg "BUILD_DEFINITION_SHA256=$BUILD_DEFINITION_SHA256" \
+        -f "$ROOT/containers/baseline/Dockerfile" \
+        -t "$IMAGE" "$ROOT"
+    printf '%s\n' "baseline image ready: $IMAGE"
+    exit 0
+fi
+
+[ "$#" -eq 3 ] || fail "usage: ./scripts/build image | release --out <absolute-external-dir>"
+[ "$1" = release ] || fail "unknown command: $1"
+[ "$2" = --out ] || fail "unknown argument: $2"
+OUT=$3
+[ -n "$OUT" ] || fail "--out requires a directory"
+case "$OUT" in
+    /*) ;;
+    *) fail "--out must be an absolute path" ;;
+esac
+case "$EPOCH" in
+    ''|*[!0-9]*) fail "SOURCE_DATE_EPOCH must be a positive integer" ;;
+esac
+[ "$EPOCH" -gt 0 ] || fail "SOURCE_DATE_EPOCH must be a positive integer"
+
+[ -d "$OUT" ] || fail "--out must already exist as a directory"
+OUT=$(CDPATH= cd -- "$OUT" && pwd -P) || fail "cannot resolve --out"
+[ "$OUT" != / ] || fail "--out cannot be /"
+case "$OUT" in
+    "$ROOT"|"$ROOT"/*) fail "--out must be outside the repository" ;;
+esac
+[ -z "$(find "$OUT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+    || fail "--out must be a fresh empty directory"
+
+command -v docker >/dev/null 2>&1 || fail "docker is required"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+command -v dash >/dev/null 2>&1 || fail "dash is required"
+command -v file >/dev/null 2>&1 || fail "file is required"
+command -v readelf >/dev/null 2>&1 || fail "readelf is required"
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+DOCKERFILE_SHA256=$(sha256sum "$ROOT/containers/baseline/Dockerfile" | awk '{print $1}')
+BUILD_DEFINITION_SHA256=$(build_definition_digest)
+
+PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/provenance.py" check >/dev/null
+IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro-cfw.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro-cfw.build-definition-sha256" }}' 2>/dev/null) \
+    || fail "baseline image is missing; run ./scripts/build image"
+[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$BUILD_DEFINITION_SHA256" ] \
+    || fail "baseline image is stale or missing its exact build-definition label; run ./scripts/build image"
+
+WORK=$OUT/.baseline-work
+mkdir -m 0703 "$WORK"
+mkdir -m 0703 "$WORK/payload" "$WORK/host"
+
+docker run --rm \
+    --platform linux/amd64 \
+    --network none \
+    --read-only \
+    --cap-drop=ALL \
+    --security-opt=no-new-privileges \
+    --user "$(id -u):$(id -g)" \
+    --mount "type=bind,src=$ROOT,dst=/src,readonly" \
+    --mount "type=bind,src=$WORK,dst=/work" \
+    --tmpfs /tmp:rw,exec,nosuid,nodev \
+    --workdir /src \
+    --entrypoint /bin/sh \
+    "$IMAGE" -eu -c '
+        rm -rf /tmp/cargo-home /tmp/cargo-target
+        mkdir -p /tmp/cargo-home /tmp/cargo-target /work/payload /work/host
+        cp -a /opt/cargo-home/. /tmp/cargo-home/
+        export CARGO_HOME=/tmp/cargo-home
+        export CARGO_TARGET_DIR=/tmp/cargo-target
+        export CARGO_NET_OFFLINE=true
+        cargo fmt --check
+        cargo clippy --locked --offline --release -p bootstrap-probe -p brick-recovery -- -D warnings
+        cargo build --locked --offline --release -p bootstrap-probe -p brick-recovery
+        cargo build --locked --offline --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery
+        install -m 0755 /tmp/cargo-target/release/bootstrap-probe /work/host/bootstrap-probe
+        install -m 0755 /tmp/cargo-target/release/brick-recovery /work/host/brick-recovery
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/bootstrap-probe /work/payload/bootstrap-probe
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/brick-recovery /work/payload/brick-recovery
+        cp /usr/share/trimui-baseline-toolchain.txt /work/toolchain.txt
+    '
+
+if "$WORK/host/bootstrap-probe" --simulation-fixture-root "$ROOT/fixtures/bootstrap/supported" >"$WORK/host/probe.json"; then
+    :
+else
+    fail "host bootstrap-probe self-check failed"
+fi
+if "$WORK/host/bootstrap-probe" >"$WORK/host/real-denial.json"; then
+    fail "host bootstrap-probe real-device gate unexpectedly succeeded"
+fi
+grep -Fq '"reason":"real-fingerprint-not-approved"' "$WORK/host/real-denial.json" \
+    || fail "host bootstrap-probe did not deny real-device activation"
+if "$WORK/host/brick-recovery" --real-device-denied >"$WORK/host/recovery-denial.json"; then
+    fail "host brick-recovery real-device gate unexpectedly succeeded"
+fi
+grep -Fq '"reason":"real-fingerprint-not-approved"' "$WORK/host/recovery-denial.json" \
+    || fail "host brick-recovery did not deny real-device activation"
+
+"$ROOT/tools/sim/journeys/bootstrap-recovery.sh" "$WORK/host"
+
+STAGE=$WORK/stage
+mkdir -p "$STAGE/usr/bin" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
+install -m 0755 "$WORK/payload/bootstrap-probe" "$STAGE/usr/bin/brickpro-bootstrap-probe"
+install -m 0755 "$WORK/payload/brick-recovery" "$STAGE/usr/bin/brickpro-recovery"
+install -m 0755 "$ROOT/bootstrap/boot.sh" "$STAGE/bootstrap/boot.sh"
+install -m 0755 "$ROOT/bootstrap/recovery.sh" "$STAGE/bootstrap/recovery.sh"
+install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
+    "$STAGE/config/platform/tg4040/compatibility.json"
+install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
+
+ROOT="$ROOT" STAGE="$STAGE" WORK="$WORK" OUT="$OUT" EPOCH="$EPOCH" IMAGE="$IMAGE" \
+BASE_IMAGE="$BASE_IMAGE" BUILD_DEFINITION_SHA256="$BUILD_DEFINITION_SHA256" \
+DOCKERFILE_SHA256="$DOCKERFILE_SHA256" python3 - <<'PY'
+import hashlib
+import json
+import os
+import shutil
+import stat
+import tarfile
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+stage = Path(os.environ["STAGE"])
+work = Path(os.environ["WORK"])
+out = Path(os.environ["OUT"])
+epoch = int(os.environ["EPOCH"])
+image = os.environ["IMAGE"]
+base_image = os.environ["BASE_IMAGE"]
+build_definition_sha256 = os.environ["BUILD_DEFINITION_SHA256"]
+dockerfile_sha256 = os.environ["DOCKERFILE_SHA256"]
+
+metadata = json.loads((root / "packaging/tg4040/baseline.json").read_text(encoding="utf-8"))
+if metadata["targetSku"] != "TG4040" or metadata["activation"]["enabled"]:
+    raise SystemExit("invalid baseline metadata")
+
+for path in sorted(stage.rglob("*.json")):
+    json.loads(path.read_text(encoding="utf-8"))
+
+payload = []
+for path in sorted(stage.rglob("*"), key=lambda item: item.relative_to(stage).as_posix()):
+    if not path.is_file() or path.is_symlink():
+        continue
+    relative = path.relative_to(stage).as_posix()
+    data = path.read_bytes()
+    payload.append({
+        "path": relative,
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "size": len(data),
+        "mode": format(stat.S_IMODE(path.stat().st_mode), "04o"),
+    })
+
+for directory in sorted((path for path in stage.rglob("*") if path.is_dir()), key=lambda item: item.relative_to(stage).as_posix()):
+    directory.chmod(0o755)
+    os.utime(directory, (epoch, epoch), follow_symlinks=False)
+for path in stage.rglob("*"):
+    os.utime(path, (epoch, epoch), follow_symlinks=False)
+
+archive = out / "trimui-brick-pro-cfw-baseline.tar"
+with tarfile.open(archive, "w", format=tarfile.USTAR_FORMAT) as handle:
+    entries = sorted(stage.rglob("*"), key=lambda item: item.relative_to(stage).as_posix())
+    for path in entries:
+        relative = path.relative_to(stage).as_posix()
+        info = tarfile.TarInfo(relative)
+        mode = stat.S_IMODE(path.lstat().st_mode)
+        info.mode = mode
+        info.uid = 0
+        info.gid = 0
+        info.uname = ""
+        info.gname = ""
+        info.mtime = epoch
+        if path.is_dir():
+            info.type = tarfile.DIRTYPE
+            info.size = 0
+            handle.addfile(info)
+        elif path.is_file():
+            info.type = tarfile.REGTYPE
+            info.size = path.stat().st_size
+            with path.open("rb") as source:
+                handle.addfile(info, source)
+        else:
+            raise SystemExit(f"unsupported staged entry: {relative}")
+os.chmod(archive, 0o644)
+os.utime(archive, (epoch, epoch))
+
+toolchain_lines = (work / "toolchain.txt").read_text(encoding="utf-8").splitlines()
+def section(name):
+    try:
+        start = toolchain_lines.index(name + ":") + 1
+    except ValueError:
+        raise SystemExit(f"missing toolchain section: {name}")
+    values = []
+    while start < len(toolchain_lines) and not toolchain_lines[start].endswith(":"):
+        values.append(toolchain_lines[start])
+        start += 1
+    return values
+
+toolchain = {
+    "rustc": section("rustc")[0],
+    "cargo": section("cargo")[0],
+    "target": "aarch64-unknown-linux-musl",
+    "installedTargets": section("target"),
+    "installedComponents": section("components"),
+    "busybox": section("busybox")[0],
+}
+base = dict(metadata)
+base.update({
+    "buildImage": base_image,
+    "buildImageLocalTag": image,
+    "buildDefinitionSha256": build_definition_sha256,
+    "buildDockerfileSha256": dockerfile_sha256,
+    "sourceDateEpoch": epoch,
+    "source": {
+        "relationship": "local-clean-room-checkout",
+        "immutableRevision": None,
+        "revisionReason": "Current bootstrap work is uncommitted; parent delivery revision is pending.",
+    },
+    "toolchain": toolchain,
+    "payload": payload,
+})
+manifest = out / "manifest.json"
+manifest.write_text(json.dumps(base, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+os.chmod(manifest, 0o644)
+os.utime(manifest, (epoch, epoch))
+
+for name in ("brickpro-cfw.spdx.json", "THIRD_PARTY_NOTICES.md"):
+    source = root / (Path("provenance") / name if name.endswith(".json") else name)
+    shutil.copyfile(source, out / name)
+    os.chmod(out / name, 0o644)
+    os.utime(out / name, (epoch, epoch))
+
+def digest(path):
+    data = path.read_bytes()
+    return {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+build_info = {
+    "schema": "trimui-brick-pro-cfw-build-info/v1",
+    "targetSku": "TG4040",
+    "status": "candidate-no-device-non-activating",
+    "platform": base["platform"],
+    "buildImage": base_image,
+    "buildImageLocalTag": image,
+    "buildDefinitionSha256": build_definition_sha256,
+    "buildDockerfileSha256": dockerfile_sha256,
+    "toolchain": toolchain,
+    "sourceDateEpoch": epoch,
+    "source": base["source"],
+    "entrypointPolicy": base["entrypointPolicy"],
+    "storage": base["storage"],
+    "realDeviceAllowlist": {
+        "approvedFingerprints": [],
+        "approvedFirmware": [],
+        "activationEnabled": False,
+    },
+    "artifacts": {
+        name: digest(out / name)
+        for name in (
+            "trimui-brick-pro-cfw-baseline.tar",
+            "manifest.json",
+            "brickpro-cfw.spdx.json",
+            "THIRD_PARTY_NOTICES.md",
+        )
+    },
+    "checksumFile": "SHA256SUMS",
+    "checksumFileExcludesSelf": True,
+}
+build_info_path = out / "build-info.json"
+build_info_path.write_text(json.dumps(build_info, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+os.chmod(build_info_path, 0o644)
+os.utime(build_info_path, (epoch, epoch))
+
+checksums = out / "SHA256SUMS"
+names = (
+    "trimui-brick-pro-cfw-baseline.tar",
+    "manifest.json",
+    "brickpro-cfw.spdx.json",
+    "THIRD_PARTY_NOTICES.md",
+    "build-info.json",
+)
+checksums.write_text("".join(f"{digest(out / name)['sha256']}  {name}\n" for name in names), encoding="utf-8")
+os.chmod(checksums, 0o644)
+os.utime(checksums, (epoch, epoch))
+PY
+
+PYTHONDONTWRITEBYTECODE=1 "$ROOT/scripts/audit-dist" "$STAGE" \
+    "$ROOT/policy/distribution-allowlist.json" \
+    --inventory "$ROOT/provenance/components.json" >/dev/null
+
+for script in bootstrap/boot.sh bootstrap/recovery.sh; do
+    dash -n "$STAGE/$script"
+    docker run --rm --network none --read-only --cap-drop=ALL \
+        --mount "type=bind,src=$STAGE,dst=/stage,readonly" \
+        --entrypoint busybox "$IMAGE" ash -n "/stage/$script"
+done
+
+for binary in "$WORK/payload/bootstrap-probe" "$WORK/payload/brick-recovery"; do
+    file_output=$(file "$binary")
+    printf '%s\n' "$file_output" | grep -Eiq 'AArch64' || fail "payload is not AArch64: $binary"
+    readelf -h "$binary" | grep -Eq 'Machine:[[:space:]]+AArch64' || fail "payload ELF machine is not AArch64: $binary"
+    if readelf -l "$binary" | grep -q INTERP; then
+        fail "payload contains a dynamic interpreter: $binary"
+    fi
+    if readelf -d "$binary" 2>/dev/null | grep -q NEEDED; then
+        fail "payload contains dynamic dependencies: $binary"
+    fi
+done
+
+PYTHONDONTWRITEBYTECODE=1 python3 - "$STAGE" <<'PY'
+import json
+import sys
+from pathlib import Path
+for path in Path(sys.argv[1]).rglob("*.json"):
+    json.loads(path.read_text(encoding="utf-8"))
+PY
+
+rm -rf "$WORK"
+WORK=
+trap - EXIT HUP INT TERM
+printf '%s\n' "baseline build complete: $OUT"

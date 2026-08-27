@@ -1,0 +1,27 @@
+{
+  "schema": "trimui-brick-pro-cfw-baseline-metadata/v1",
+  "targetSku": "TG4040",
+  "candidateStatus": "no-device-bootstrap-candidate",
+  "activation": {
+    "enabled": false,
+    "realDeviceFingerprintAllowlist": [],
+    "realFirmwareAllowlist": []
+  },
+  "platform": {
+    "architecture": "aarch64",
+    "target": "aarch64-unknown-linux-musl",
+    "linkage": "static",
+    "abiCompatibility": "unknown",
+    "evidenceBoundary": "compiler-and-ISA-only"
+  },
+  "storage": {
+    "model": "logical-removable-sd",
+    "systemPolicy": "read-only",
+    "deviceAccess": "none"
+  },
+  "entrypointPolicy": {
+    "defaultAction": "deny-real-device-activation",
+    "simulationAction": "generated-fixture-only",
+    "physicalLaunch": false
+  }
+}

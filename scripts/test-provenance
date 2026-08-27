@@ -156,7 +156,7 @@ def main() -> None:
         base = Path(temporary)
         empty = base / "empty"
         empty.mkdir()
-        run(str(ROOT / "scripts/audit-dist"), str(empty), expect=True)
+        run(str(ROOT / "scripts/audit-dist"), str(empty), expect=False)
 
         inventory_path, allowlist, stage, output_dir = make_fixture(base)
         before = sorted(path.relative_to(stage).as_posix() for path in stage.rglob("*"))

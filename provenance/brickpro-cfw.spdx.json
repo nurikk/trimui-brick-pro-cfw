@@ -7,11 +7,152 @@
     ]
   },
   "dataLicense": "CC0-1.0",
-  "documentDescribes": [],
-  "documentNamespace": "https://github.com/nurikk/trimui-brick-pro-cfw/spdx/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b",
-  "files": [],
+  "documentDescribes": [
+    "SPDXRef-Candidate-project-authored-baseline-payload"
+  ],
+  "documentNamespace": "https://github.com/nurikk/trimui-brick-pro-cfw/spdx/local-clean-room-pending-parent-delivery",
+  "files": [
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-third-party-notices-md",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "251cadcffe486c03833f273e0859ad6881c0d7cb24e10e1f4f1676fb26da78df"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-third-party-notices-md\",\"byteSize\":561,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "THIRD_PARTY_NOTICES.md",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-bootstrap-boot-sh",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c551095b498f4ba66f8ee31f01419cbad1e3c543dbf4046681b9056489709be6"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-bootstrap-boot-sh\",\"byteSize\":1358,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "bootstrap/boot.sh",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-bootstrap-recovery-sh",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7278f3d012024c292547a1307ac2acd78540a0dba58c9134c8deec710ed6136c"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-bootstrap-recovery-sh\",\"byteSize\":649,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "bootstrap/recovery.sh",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-config-platform-tg4040-compatibility-json",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d45959c0a890115bfa3395f15383a03ef4af43bf0a2595b16d50c41f2d4087cd"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-config-platform-tg4040-compatibility-json\",\"byteSize\":1562,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "config/platform/tg4040/compatibility.json",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-bootstrap-probe",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "097cc3fc18dc688f6fbdc6281befa8cf6c5dd89a721e627775aedd4c14124bef"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-bootstrap-probe\",\"byteSize\":751512,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-bootstrap-probe",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8e4db88110565bc52c7dabedd8a79cdc37d5655e9cc7978fd09a9568c718cf9a"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-recovery\",\"byteSize\":757080,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-recovery",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    }
+  ],
   "name": "trimui-brick-pro-cfw-distribution",
-  "packages": [],
-  "relationships": [],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Candidate-project-authored-baseline-payload",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "downloadLocation": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "TrimUI Brick Pro CFW baseline payload",
+      "versionInfo": "NOASSERTION"
+    }
+  ],
+  "relationships": [
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-third-party-notices-md",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-bootstrap-boot-sh",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-bootstrap-recovery-sh",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-config-platform-tg4040-compatibility-json",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-bootstrap-probe",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    }
+  ],
   "spdxVersion": "SPDX-2.3"
 }

@@ -29,6 +29,7 @@ require_run_dir() {
     case "$RUN_REAL" in
         "$ROOT"|"$ROOT"/*) fail "--run-dir must be outside the repository" ;;
     esac
+    [ ${#RUN_REAL} -le 87 ] || fail "--run-dir is too long for control.sock; use a shorter path"
 }
 
 container_name() {
@@ -37,14 +38,34 @@ container_name() {
 
 reject_stale_evidence() {
     for artifact in \
-        readiness.json route-selection.json launch.json session.json exit-status.json \
+        readiness.json route-selection.json launch.json session.json exit-status.json control.sock \
         .readiness.json.tmp .route-selection.json.tmp .launch.json.tmp \
         .session.json.tmp .exit-status.json.tmp logs/launcher.jsonl; do
         [ ! -e "$RUN_REAL/$artifact" ] || fail "--run-dir contains existing simulator evidence: $artifact"
     done
-    for artifact in "$RUN_REAL"/screenshots/screen-*.png; do
-        [ ! -e "$artifact" ] || fail "--run-dir contains existing simulator evidence: screenshots"
+    for directory in screenshots checkpoints; do
+        if [ -d "$RUN_REAL/$directory" ] && find "$RUN_REAL/$directory" -type f -print -quit | grep -q .; then
+            fail "--run-dir contains existing simulator evidence: $directory"
+        fi
     done
+}
+
+verify_container() {
+    docker inspect "$NAME" 2>/dev/null | python3 -c '
+import json, os, sys
+try:
+    record = json.load(sys.stdin)[0]
+    label_key, label_value = sys.argv[2].split("=", 1)
+    if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
+    mounts = [mount for mount in record.get("Mounts", []) if mount.get("Destination") == "/evidence"]
+    if len(mounts) != 1 or os.path.realpath(mounts[0].get("Source", "")) != os.path.realpath(sys.argv[1]): raise ValueError
+except (IndexError, OSError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+' "$RUN_REAL" "$LABEL"
+}
+
+verify_running_container() {
+    verify_container && docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'
 }
 
 json_readiness_valid() {
@@ -55,11 +76,13 @@ import sys
 try:
     with open(sys.argv[1], encoding="utf-8") as stream:
         record = json.load(stream)
-    if set(record) != {"schema", "lane", "targetSku", "ready", "elapsedMs", "reason"}:
+    if set(record) != {"schema", "lane", "targetSku", "runId", "ready", "elapsedMs", "reason"}:
         raise ValueError
     if record["schema"] != "sim-readiness/v1":
         raise ValueError
     if record["lane"] != "host-native userspace simulator":
+        raise ValueError
+    if type(record["runId"]) is not str or not record["runId"].startswith("run-"):
         raise ValueError
     if record["targetSku"] != "TG4040" or record["ready"] is not True:
         raise ValueError
@@ -79,6 +102,7 @@ import sys
 
 try:
     previous_sequence = -1
+    run_id = None
     with open(sys.argv[1], encoding="utf-8") as stream:
         for line in stream:
             record = json.loads(line)
@@ -86,8 +110,11 @@ try:
                 raise ValueError
             sequence = record["sequence"]
             at_ms = record["atMs"]
+            if run_id is None:
+                run_id = record["runId"]
             if (type(sequence) is not int or sequence < 0 or sequence <= previous_sequence
                     or type(at_ms) is not int or at_ms < 0
+                    or record["runId"] != run_id
                     or record["lane"] != "host-native userspace simulator"):
                 raise ValueError
             previous_sequence = sequence
@@ -153,7 +180,10 @@ run_sim() {
     docker image inspect "$IMAGE" >/dev/null 2>&1 || fail "image is missing; run ./scripts/sim build first"
     NAME=$(container_name)
     chmod 0777 "$RUN_REAL" || fail "--run-dir must be writable"
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    if docker container inspect "$NAME" >/dev/null 2>&1; then
+        verify_container || fail "existing container is not the simulator for --run-dir"
+        docker rm -f "$NAME" >/dev/null 2>&1 || fail "cannot remove existing simulator container"
+    fi
     set -- --backend="$BACKEND"
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
     docker run -d \
@@ -218,9 +248,13 @@ stop_sim() {
     parse_run_options "$@"
     NAME=$(container_name)
     if docker container inspect "$NAME" >/dev/null 2>&1; then
-        docker stop --time 10 "$NAME" >/dev/null || fail "failed to stop simulator"
-        docker rm "$NAME" >/dev/null 2>&1 || true
+        verify_container || fail "named container does not belong to --run-dir"
+        if docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'; then
+            docker stop --time 10 "$NAME" >/dev/null || fail "failed to stop simulator"
+        fi
+        docker rm "$NAME" >/dev/null 2>&1 || fail "failed to remove simulator"
     fi
+    [ ! -e "$RUN_REAL/control.sock" ] || fail "control socket was not removed during clean shutdown"
     [ -f "$RUN_REAL/logs/launcher.jsonl" ] || fail "launcher log is missing"
     grep -q '"event":"clean_shutdown"' "$RUN_REAL/logs/launcher.jsonl" \
         || fail "clean_shutdown was not recorded"
@@ -233,15 +267,17 @@ clean_run() {
     parse_run_options "$@"
     NAME=$(container_name)
     if docker container inspect "$NAME" >/dev/null 2>&1; then
+        verify_container || fail "named container does not belong to --run-dir"
         docker stop --time 10 "$NAME" >/dev/null 2>&1 || true
         docker rm "$NAME" >/dev/null 2>&1 || true
     fi
-    rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" \
+    rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" "$RUN_REAL/checkpoints" \
         "$RUN_REAL/readiness.json" "$RUN_REAL/route-selection.json" \
         "$RUN_REAL/launch.json" "$RUN_REAL/session.json" "$RUN_REAL/exit-status.json" \
         "$RUN_REAL/.readiness.json.tmp" "$RUN_REAL/.route-selection.json.tmp" \
         "$RUN_REAL/.launch.json.tmp" "$RUN_REAL/.session.json.tmp" \
-        "$RUN_REAL/.exit-status.json.tmp"
+        "$RUN_REAL/.exit-status.json.tmp" \
+        "$RUN_REAL/control.sock"
     run_sim "$@"
 }
 

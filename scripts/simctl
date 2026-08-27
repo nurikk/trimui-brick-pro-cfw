@@ -1,0 +1,162 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+LABEL=org.trimui-brick-pro-cfw.simulator=host-native
+
+emit_error() {
+    printf '%s\n' "{\"version\":\"sim-control/v1\",\"id\":\"\",\"ok\":false,\"result\":null,\"error\":{\"code\":\"$1\",\"message\":\"$2\"}}"
+    exit "$3"
+}
+
+usage() { emit_error usage "invalid simctl arguments" 2; }
+
+[ "$#" -ge 2 ] || usage
+if [ "$1" = "--socket" ]; then
+    shift
+    [ "$#" -gt 0 ] || usage
+    SOCKET=$1
+    shift
+elif case "$1" in --socket=*) true ;; *) false ;; esac; then
+    SOCKET=${1#--socket=}
+    shift
+else
+    usage
+fi
+[ -n "$SOCKET" ] || usage
+case "$SOCKET" in /*) ;; *) emit_error usage "socket must be an absolute path" 2 ;; esac
+[ "$(basename -- "$SOCKET")" = control.sock ] || emit_error usage "socket must be RUN/control.sock" 2
+RUN_DIR=$(dirname -- "$SOCKET")
+[ -d "$RUN_DIR" ] || emit_error unavailable "run directory is unavailable" 3
+RUN_REAL=$(CDPATH= cd -- "$RUN_DIR" && pwd -P) || emit_error unavailable "run directory is unavailable" 3
+case "$RUN_REAL" in "$ROOT"|"$ROOT"/*) emit_error usage "run directory must be outside the repository" 2 ;; esac
+[ ${#RUN_REAL} -le 87 ] || emit_error usage "run directory is too long for control.sock" 2
+SOCKET="$RUN_REAL/control.sock"
+NAME=$(printf '%s' "$RUN_REAL" | cksum | awk '{print "trimui-sim-" $1}')
+
+verify_container() {
+    docker inspect "$NAME" 2>/dev/null | python3 -c '
+import json, os, sys
+try:
+    record = json.load(sys.stdin)[0]
+    label_key, label_value = sys.argv[2].split("=", 1)
+    if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
+    if record.get("State", {}).get("Running") is not True: raise ValueError
+    mounts = [mount for mount in record.get("Mounts", []) if mount.get("Destination") == "/evidence"]
+    if len(mounts) != 1 or os.path.realpath(mounts[0].get("Source", "")) != os.path.realpath(sys.argv[1]): raise ValueError
+except (IndexError, OSError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+' "$RUN_REAL" "$LABEL"
+}
+
+validate_name() {
+    case "$1" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*) usage ;;
+    esac
+    [ ${#1} -le 48 ] || usage
+}
+
+validate_button() {
+    case "$1" in up|down|left|right|primary|secondary|start|select|menu) ;; *) usage ;; esac
+}
+
+validate_bool() { case "$1" in true|false) ;; *) usage ;; esac; }
+
+validate_hardware() {
+    key=${1%%=*}
+    value=${1#*=}
+    [ "$key" != "$1" ] || usage
+    case "$key" in
+        battery.percent)
+            case "$value" in ''|*[!0-9]*) usage ;; esac
+            [ "$value" -le 100 ] || usage ;;
+        battery.charging|radio.enabled|radio.connected) validate_bool "$value" ;;
+        storage.mode) case "$value" in available|full) ;; *) usage ;; esac ;;
+        suspend.state) case "$value" in active|suspended) ;; *) usage ;; esac ;;
+        suspend.result) case "$value" in none|success|failed) ;; *) usage ;; esac ;;
+        *) usage ;;
+    esac
+}
+
+validate_command() {
+    command=$1
+    shift
+    case "$command" in
+        wait-ready)
+            [ "$#" -eq 2 ] && [ "$1" = --timeout ] || usage
+            case "$2" in ''|*[!0-9]*) usage ;; esac
+            [ "$2" -gt 0 ] && [ "$2" -le 30 ] || usage ;;
+        state) [ "$#" -eq 0 ] || usage ;;
+        button)
+            [ "$#" -eq 4 ] && [ "$1" = --button ] && [ "$3" = --action ] || usage
+            validate_button "$2"
+            case "$4" in press|release) ;; *) usage ;; esac ;;
+        hardware)
+            [ "$#" -ge 2 ] && [ "$1" = set ] || usage
+            shift
+            for assignment do validate_hardware "$assignment"; done ;;
+        fault)
+            [ "$#" -eq 2 ] || usage
+            case "$1" in set|clear) ;; *) usage ;; esac
+            case "$2" in adapter-fail|adapter-crash|input-drop|suspend-fail) ;; *) usage ;; esac ;;
+        adapter)
+            case "$1" in complete|fail|exit|crash) ;; *) usage ;; esac
+            shift
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] || usage
+                case "$1" in
+                    --status) case "$2" in ''|*[!0-9]*) usage ;; esac; [ "$2" -le 255 ] || usage ;;
+                    --value)
+                        case "$2" in -[0-9]*|+[0-9]*|[0-9]*) ;; *) usage ;; esac
+                        case "$2" in *[!0-9+-]*) usage ;; esac ;;
+                    *) usage ;;
+                esac
+                shift 2
+            done ;;
+        screenshot|checkpoint)
+            [ "$#" -eq 2 ] && [ "$1" = --name ] || usage
+            validate_name "$2" ;;
+        *) usage ;;
+    esac
+}
+
+run_client() {
+    status=0
+    output=$(docker exec --user 10001:10001 "$NAME" /usr/local/bin/sim-control --socket /evidence/control.sock "$@" 2>/dev/null) || status=$?
+    status=${status:-0}
+    if [ -z "$output" ]; then
+        emit_error unavailable "control client is unavailable" 3
+    fi
+    printf '%s\n' "$output" | python3 -c 'import json, sys; json.loads(sys.stdin.read())' >/dev/null 2>&1 \
+        || emit_error transport "malformed control response" 5
+    printf '%s\n' "$output"
+    return "$status"
+}
+
+command=$1
+shift
+validate_command "$command" "$@"
+if ! verify_container; then
+    emit_error unavailable "named simulator container is unavailable or does not own this run directory" 3
+fi
+
+if [ "$command" = wait-ready ]; then
+    timeout=$2
+    elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if [ -S "$SOCKET" ]; then
+            status=0
+            run_client "$command" "$@" || status=$?
+            case "$status" in
+                0) exit 0 ;;
+                3) ;;
+                *) exit "$status" ;;
+            esac
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    emit_error timeout "wait-ready timed out" 5
+fi
+[ -S "$SOCKET" ] || emit_error unavailable "control socket is unavailable" 3
+run_client "$command" "$@"

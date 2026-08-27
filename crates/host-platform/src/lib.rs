@@ -4,7 +4,8 @@ use png::{BitDepth, ColorType, Encoder};
 use sdl2::{pixels::PixelFormatEnum, rect::Rect, render::Canvas, video::Window, Sdl};
 use serde::Deserialize;
 use sim_platform_contract::{
-    Button, ButtonAction, ButtonEvent, Platform, PlatformResult, PlatformSnapshot, Screen,
+    Button, ButtonAction, ButtonEvent, HardwareChanges, HardwareState, Platform, PlatformResult,
+    PlatformSnapshot, Screen, StorageMode, SuspendResult, SuspendState,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -98,8 +99,7 @@ struct Audio {
 #[serde(deny_unknown_fields)]
 struct Radio {
     enabled: bool,
-    #[serde(rename = "connected")]
-    _connected: bool,
+    connected: bool,
     #[serde(rename = "rxPackets")]
     _rx_packets: u64,
     #[serde(rename = "txPackets")]
@@ -109,14 +109,14 @@ struct Radio {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Suspend {
-    state: SuspendState,
+    state: ProfileSuspendState,
     #[serde(rename = "wakeReason")]
-    _wake_reason: String,
+    wake_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum SuspendState {
+enum ProfileSuspendState {
     Active,
     Suspended,
 }
@@ -170,6 +170,7 @@ pub struct HostPlatform {
     event_index: usize,
     logical_time_ms: u64,
     snapshot: PlatformSnapshot,
+    hardware: HardwareState,
     target_sku: String,
 }
 
@@ -242,7 +243,22 @@ impl HostPlatform {
             led_on: matches!(profile.led.state, LedState::On),
             audio_enabled: profile.audio.enabled,
             radio_enabled: profile.radio.enabled,
-            suspended: matches!(profile.suspend.state, SuspendState::Suspended),
+            suspended: matches!(profile.suspend.state, ProfileSuspendState::Suspended),
+        };
+        let hardware = HardwareState {
+            battery_percent: profile.battery.level_percent,
+            charging: profile.battery.charging,
+            storage_mode: StorageMode::Available,
+            radio_enabled: profile.radio.enabled,
+            radio_connected: profile.radio.connected,
+            suspend_state: match profile.suspend.state {
+                ProfileSuspendState::Active => SuspendState::Active,
+                ProfileSuspendState::Suspended => SuspendState::Suspended,
+            },
+            suspend_result: match profile.suspend.wake_reason.as_str() {
+                "control" => SuspendResult::Success,
+                _ => SuspendResult::None,
+            },
         };
         Ok(Self {
             _sdl: sdl,
@@ -252,6 +268,7 @@ impl HostPlatform {
             event_index: 0,
             logical_time_ms: profile.clock.start_ms,
             snapshot,
+            hardware,
             target_sku: profile.target_sku,
         })
     }
@@ -324,5 +341,38 @@ impl Platform for HostPlatform {
 
     fn snapshot(&self) -> PlatformSnapshot {
         self.snapshot.clone()
+    }
+
+    fn hardware_state(&self) -> HardwareState {
+        self.hardware.clone()
+    }
+
+    fn mutate_hardware(&mut self, changes: HardwareChanges) -> PlatformResult<()> {
+        if let Some(value) = changes.battery_percent {
+            self.hardware.battery_percent = value;
+            self.snapshot.battery_level_percent = value;
+        }
+        if let Some(value) = changes.charging {
+            self.hardware.charging = value;
+            self.snapshot.charging = value;
+        }
+        if let Some(value) = changes.storage_mode {
+            self.hardware.storage_mode = value;
+        }
+        if let Some(value) = changes.radio_enabled {
+            self.hardware.radio_enabled = value;
+            self.snapshot.radio_enabled = value;
+        }
+        if let Some(value) = changes.radio_connected {
+            self.hardware.radio_connected = value;
+        }
+        if let Some(value) = changes.suspend_state {
+            self.hardware.suspend_state = value.clone();
+            self.snapshot.suspended = matches!(value, SuspendState::Suspended);
+        }
+        if let Some(value) = changes.suspend_result {
+            self.hardware.suspend_result = value;
+        }
+        Ok(())
     }
 }

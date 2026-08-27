@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sim-control.schema.json",
+  "title": "TG4040 simulator control protocol",
+  "description": "Versioned JSON-lines semantic control protocol. It has no shell, process, path, mount, environment, or content fields.",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/state" }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "id", "command", "args"],
+      "properties": {
+        "version": { "const": "sim-control/v1" },
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+        "command": { "enum": ["wait-ready", "state", "button", "hardware.set", "fault.set", "adapter", "screenshot", "checkpoint"] },
+        "args": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "command": { "const": "wait-ready" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/waitArgs" } } } },
+        { "if": { "properties": { "command": { "const": "state" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/empty" } } } },
+        { "if": { "properties": { "command": { "const": "button" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/buttonArgs" } } } },
+        { "if": { "properties": { "command": { "const": "hardware.set" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/hardwareArgs" } } } },
+        { "if": { "properties": { "command": { "const": "fault.set" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/faultArgs" } } } },
+        { "if": { "properties": { "command": { "const": "adapter" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/adapterArgs" } } } },
+        { "if": { "properties": { "command": { "enum": ["screenshot", "checkpoint"] } } }, "then": { "properties": { "args": { "$ref": "#/$defs/artifactArgs" } } } }
+      ]
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "id", "ok", "result", "error"],
+      "properties": {
+        "version": { "const": "sim-control/v1" },
+        "id": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "result": {},
+        "error": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": { "code": { "type": "string" }, "message": { "type": "string" } } }
+          ]
+        }
+      }
+    },
+    "empty": { "type": "object", "additionalProperties": false, "maxProperties": 0 },
+    "waitArgs": { "type": "object", "additionalProperties": false, "required": ["timeoutMs"], "properties": { "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 30000 } } },
+    "buttonArgs": { "type": "object", "additionalProperties": false, "required": ["button", "action"], "properties": { "button": { "enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"] }, "action": { "enum": ["press", "release"] } } },
+    "hardwareArgs": {
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "battery": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" } } },
+        "storage": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "mode": { "enum": ["available", "full"] } } },
+        "radio": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } },
+        "suspend": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "state": { "enum": ["active", "suspended"] }, "result": { "enum": ["none", "success", "failed"] } } }
+      }
+    },
+    "state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "runId", "route", "selectedContentId", "activeFakeSession", "modal", "readinessGeneration", "hardware", "faults"],
+      "properties": {
+        "schema": { "const": "sim-state/v1" },
+        "runId": { "type": "string", "pattern": "^run-[0-9]+$" },
+        "route": { "enum": ["catalog", "session"] },
+        "selectedContentId": { "pattern": "^generated-[a-z0-9-]+$" },
+        "activeFakeSession": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["id", "contentId", "status", "exitStatus", "value"], "properties": { "id": { "type": "string" }, "contentId": { "type": "string" }, "status": { "enum": ["started", "completed", "failed", "crashed"] }, "exitStatus": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0, "maximum": 255 }] }, "value": { "oneOf": [{ "type": "null" }, { "type": "integer" }] } } }] },
+        "modal": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
+        "readinessGeneration": { "type": "integer", "minimum": 1 },
+        "hardware": { "$ref": "#/$defs/hardwareState" },
+        "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] } }
+      }
+    },
+    "hardwareState": { "type": "object", "additionalProperties": false, "required": ["battery", "storage", "radio", "suspend"], "properties": { "battery": { "type": "object", "additionalProperties": false, "required": ["percent", "charging"], "properties": { "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" } } }, "storage": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "enum": ["available", "full"] } } }, "radio": { "type": "object", "additionalProperties": false, "required": ["enabled", "connected"], "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } }, "suspend": { "type": "object", "additionalProperties": false, "required": ["state", "result"], "properties": { "state": { "enum": ["active", "suspended"] }, "result": { "enum": ["none", "success", "failed"] } } } } },
+    "faultArgs": { "type": "object", "additionalProperties": false, "required": ["name", "enabled"], "properties": { "name": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] }, "enabled": { "type": "boolean" } } },
+    "adapterArgs": { "type": "object", "additionalProperties": false, "required": ["action", "status", "value"], "properties": { "action": { "enum": ["complete", "fail", "exit", "crash"] }, "status": { "type": "integer", "minimum": 0, "maximum": 255 }, "value": { "type": "integer", "minimum": -1000000, "maximum": 1000000 } } },
+    "artifactArgs": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$" } } }
+  }
+}

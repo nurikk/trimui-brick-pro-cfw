@@ -2418,11 +2418,7 @@
       }
     ],
     "path": "../Cargo.lock",
-<<<<<<< HEAD
-    "sha256": "5726bbcf51402329a1fbba49942971f83baaeecd310e3a038224f03f79b3daa7"
-=======
-    "sha256": "750815b122535464f13d1a7bc6ddc8343e1f04d3f3457556b4772b2178bca4e5"
->>>>>>> 0403267 (feat: add ROM metadata scraper engine)
+    "sha256": "432d45a233ec21e8e9a623a495ed7169a4c3d212306de8d13ee9248d2e8351cd"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

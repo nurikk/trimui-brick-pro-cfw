@@ -1,0 +1,14 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-scrape-fixtures-v1.schema.json",
+  "schema": "metadata-scraper-fixtures/v1",
+  "synthetic": true,
+  "provider": "fixture",
+  "journeys": [
+    {"contentId": "success", "systemId": "nes", "expected": "succeeded"},
+    {"contentId": "not-found", "systemId": "nes", "expected": "not-found"},
+    {"contentId": "ambiguous", "systemId": "nes", "expected": "ambiguous"},
+    {"contentId": "retry", "systemId": "nes", "expected": "retry-then-succeeded"},
+    {"contentId": "rate-limit", "systemId": "nes", "expected": "retry-after-then-succeeded"},
+    {"contentId": "manual", "systemId": "nes", "expected": "manual-search"}
+  ]
+}

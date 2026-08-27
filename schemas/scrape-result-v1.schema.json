@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-brick-scrape-result-v1.schema.json",
+  "title": "Synthetic metadata scraper result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contentId", "systemId", "provider", "status", "confidence", "metadata", "media"],
+  "properties": {
+    "schema": {"const": "scrape-result/v1"},
+    "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "systemId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "provider": {"enum": ["fixture"]},
+    "status": {"enum": ["matched", "not-found", "ambiguous"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "metadata": {"$ref": "#/$defs/metadata"},
+    "media": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/media"}}
+  },
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalTitle", "alternateNames", "description", "releaseDate", "rating", "players", "genre", "developer", "publisher", "region"],
+      "properties": {
+        "canonicalTitle": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "alternateNames": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
+        "description": {"type": "string", "maxLength": 4096},
+        "releaseDate": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "rating": {"type": ["number", "null"], "minimum": 0, "maximum": 10},
+        "players": {"type": ["integer", "null"], "minimum": 0, "maximum": 255},
+        "genre": {"type": ["string", "null"], "maxLength": 4096},
+        "developer": {"type": ["string", "null"], "maxLength": 4096},
+        "publisher": {"type": ["string", "null"], "maxLength": 4096},
+        "region": {"enum": ["global", "north-america", "europe", "japan", "other", null]}
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "url", "region", "language"],
+      "properties": {
+        "kind": {"enum": ["box-art", "screenshot", "title-screen", "logo"]},
+        "url": {"type": "string", "pattern": "^https://[^\\s@]+$", "maxLength": 2048},
+        "region": {"enum": ["global", "north-america", "europe", "japan", "other"]},
+        "language": {"enum": ["english", "japanese", "french", "german", "spanish", "other"]}
+      }
+    }
+  }
+}

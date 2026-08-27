@@ -1,0 +1,17 @@
+[package]
+name = "metadata-scraper"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "metadata_scraper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "metadata-scraper-fixture"
+path = "src/bin/metadata-scraper-fixture.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

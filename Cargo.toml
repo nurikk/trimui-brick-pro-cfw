@@ -8,6 +8,7 @@ members = [
     "crates/bootstrap-probe",
     "crates/brick-recovery",
     "crates/launch-contract",
+    "crates/metadata-scraper",
 ]
 resolver = "2"
 

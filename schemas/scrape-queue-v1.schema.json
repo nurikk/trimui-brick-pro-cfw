@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-brick-scrape-queue-v1.schema.json",
+  "title": "Synthetic metadata scraper durable queue v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "paused", "jobs"],
+  "properties": {
+    "schema": {"const": "metadata-scraper-checkpoint/v1"},
+    "paused": {"type": "boolean"},
+    "jobs": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/job"}}
+  },
+  "$defs": {
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "state", "attempts", "nextAttemptAt", "overwriteMetadata", "overwriteMedia", "result", "reason"],
+      "properties": {
+        "request": {"type": "object", "additionalProperties": false, "required": ["contentId", "systemId", "romHash", "filename", "title", "manualQuery", "hashLookupConfigured", "regionPriority", "languagePriority"], "properties": {
+          "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+          "systemId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+          "romHash": {"type": ["string", "null"], "maxLength": 4096},
+          "filename": {"type": ["string", "null"], "maxLength": 4096},
+          "title": {"type": ["string", "null"], "maxLength": 4096},
+          "manualQuery": {"type": ["string", "null"], "maxLength": 4096},
+          "hashLookupConfigured": {"type": "boolean"},
+          "regionPriority": {"type": "array", "maxItems": 64, "items": {"enum": ["global", "north-america", "europe", "japan", "other"]}},
+          "languagePriority": {"type": "array", "maxItems": 64, "items": {"enum": ["english", "japanese", "french", "german", "spanish", "other"]}}
+        }},
+        "state": {"enum": ["pending", "running", "retry", "succeeded", "not-found", "ambiguous", "failed", "cancelled"]},
+        "attempts": {"type": "integer", "minimum": 0, "maximum": 100},
+        "nextAttemptAt": {"type": "integer", "minimum": 0},
+        "overwriteMetadata": {"type": "boolean"},
+        "overwriteMedia": {"type": "boolean"},
+        "result": {"anyOf": [{"$ref": "scrape-result-v1.schema.json"}, {"type": "null"}]},
+        "reason": {"type": ["string", "null"], "maxLength": 128}
+      }
+    }
+  }
+}

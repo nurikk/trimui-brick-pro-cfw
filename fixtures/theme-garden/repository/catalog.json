@@ -1,0 +1,110 @@
+{
+  "$schema": "urn:project:theme-catalog-v1",
+  "catalogVersion": "1.0.0",
+  "expires": "2031-01-01T00:00:00Z",
+  "format": "theme-catalog-v1",
+  "schemaVersion": 1,
+  "targetSku": "TG4040",
+  "themes": [
+    {
+      "author": "Project Authors",
+      "id": "artbook",
+      "license": "MIT",
+      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
+      "versions": [
+        {
+          "package": {
+            "compressedBytes": 1178,
+            "expandedBytes": 2128,
+            "length": 1178,
+            "sha256": "7a451490a0ef0d580f084a054d843658b666625230556c0388f08dd2a805ecc1"
+          },
+          "screenshots": {
+            "available": true,
+            "cacheKey": "artbook-1.0.0",
+            "count": 1,
+            "maxBytes": 65536
+          },
+          "targetPath": "themes/artbook/manifest.json",
+          "targetSku": "TG4040",
+          "themeApiCompatibility": ">=1.0.0 <2.0.0",
+          "themeApiVersion": "1.0.0",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    {
+      "author": "Project Authors",
+      "id": "high-contrast",
+      "license": "MIT",
+      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
+      "versions": [
+        {
+          "package": {
+            "compressedBytes": 1185,
+            "expandedBytes": 2142,
+            "length": 1185,
+            "sha256": "2e3e81ec2b0f2d42776d2345ed85a7cd1d3f0485fcb61642ddef62f738f8e0bf"
+          },
+          "screenshots": {
+            "available": true,
+            "cacheKey": "high-contrast-1.0.0",
+            "count": 1,
+            "maxBytes": 65536
+          },
+          "targetPath": "themes/high-contrast/manifest.json",
+          "targetSku": "TG4040",
+          "themeApiCompatibility": ">=1.0.0 <2.0.0",
+          "themeApiVersion": "1.0.0",
+          "version": "1.0.0"
+        },
+        {
+          "package": {
+            "compressedBytes": 1185,
+            "expandedBytes": 2142,
+            "length": 1185,
+            "sha256": "3d1e8b2be5b45a2502c5ad9a9aa9af88420c7feffe787d248e81f4cdfe5efbfd"
+          },
+          "screenshots": {
+            "available": true,
+            "cacheKey": "high-contrast-1.1.0",
+            "count": 1,
+            "maxBytes": 65536
+          },
+          "targetPath": "themes/high-contrast/manifest-1.1.0.json",
+          "targetSku": "TG4040",
+          "themeApiCompatibility": ">=1.0.0 <2.0.0",
+          "themeApiVersion": "1.0.0",
+          "version": "1.1.0"
+        }
+      ]
+    },
+    {
+      "author": "Project Authors",
+      "id": "minimal",
+      "license": "MIT",
+      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
+      "versions": [
+        {
+          "package": {
+            "compressedBytes": 1179,
+            "expandedBytes": 2134,
+            "length": 1179,
+            "sha256": "bf7e0e1c0468201feb130cc7f5a6d9447cd3855b2700763c7e5b918333057441"
+          },
+          "screenshots": {
+            "available": true,
+            "cacheKey": "minimal-1.0.0",
+            "count": 1,
+            "maxBytes": 65536
+          },
+          "targetPath": "themes/minimal/manifest.json",
+          "targetSku": "TG4040",
+          "themeApiCompatibility": ">=1.0.0 <2.0.0",
+          "themeApiVersion": "1.0.0",
+          "version": "1.0.0"
+        }
+      ]
+    }
+  ]
+}

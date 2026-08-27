@@ -323,11 +323,43 @@ pub fn install(
     context: TrustContext,
     options: TransactionOptions,
 ) -> Result<ActivationRecord> {
+    install_with_validation(
+        root,
+        manifest_path,
+        payload_root,
+        target,
+        context,
+        options,
+        |_, _| Ok(()),
+    )
+}
+
+pub fn install_with_validation<F>(
+    root: &Path,
+    manifest_path: &Path,
+    payload_root: &Path,
+    target: &VerifiedTarget,
+    context: TrustContext,
+    options: TransactionOptions,
+    validate_staging: F,
+) -> Result<ActivationRecord>
+where
+    F: FnOnce(&PackageManifest, &Path) -> Result<()>,
+{
     let (manifest, manifest_bytes) = load_manifest(manifest_path)?;
-    if target.path != format!("packages/{}/manifest.json", manifest.id) {
-        bail!("signed target does not match package id")
+    let expected_target = if target.delegated_role == "themes" {
+        if manifest.version == "1.0.0" {
+            format!("themes/{}/manifest.json", manifest.id)
+        } else {
+            format!("themes/{}/manifest-{}.json", manifest.id, manifest.version)
+        }
+    } else {
+        format!("packages/{}/manifest.json", manifest.id)
+    };
+    if target.path != expected_target {
+        bail!("signed target does not match package identity or version")
     }
-    verify_target(target, &manifest_bytes)?;
+    verify_target(target, &manifest_bytes, &manifest)?;
     verify_tier(&manifest, context)?;
     let payload_root = payload_root
         .canonicalize()
@@ -370,7 +402,12 @@ pub fn install(
                 bail!("simulated interrupted install")
             }
         }
-        fs::create_dir_all(version_root.parent().unwrap())?;
+        validate_staging(&manifest, &staging)?;
+        fs::create_dir_all(
+            version_root
+                .parent()
+                .context("package version has no parent")?,
+        )?;
         fs::rename(&staging, &version_root).context("promote complete package")?;
         let record = ActivationRecord {
             format: "brickpro-package-activation".to_string(),
@@ -458,15 +495,27 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     Ok(())
 }
 
-fn verify_target(target: &VerifiedTarget, bytes: &[u8]) -> Result<()> {
+fn verify_target(target: &VerifiedTarget, bytes: &[u8], manifest: &PackageManifest) -> Result<()> {
     let mut path = target.path.split('/');
-    if target.delegated_role != "packages"
-        || path.next() != Some("packages")
-        || path.next().is_none()
-        || path.next() != Some("manifest.json")
-        || path.next().is_some()
-        || bytes.len() as u64 != target.length
-    {
+    let role = path.next();
+    let target_name = path.next();
+    let filename = path.next();
+    let expected_theme_filename = if manifest.version == "1.0.0" {
+        "manifest".to_string()
+    } else {
+        format!("manifest-{}", manifest.version)
+    };
+    let valid_theme_target = target.delegated_role == "themes"
+        && role == Some("themes")
+        && target_name == Some(manifest.id.as_str())
+        && filename == Some(format!("{expected_theme_filename}.json").as_str())
+        && path.next().is_none();
+    let valid_package_target = target.delegated_role == "packages"
+        && role == Some("packages")
+        && target_name == Some(manifest.id.as_str())
+        && filename == Some("manifest.json")
+        && path.next().is_none();
+    if (!valid_theme_target && !valid_package_target) || bytes.len() as u64 != target.length {
         bail!("manifest is not the signed package target")
     }
     let actual = hex::encode(Sha256::digest(bytes));

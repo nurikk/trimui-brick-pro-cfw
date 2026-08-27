@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/theme-catalog-v1.schema.json",
+  "title": "TrimUI Brick Pro Theme Garden catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format",
+    "schemaVersion",
+    "targetSku",
+    "catalogVersion",
+    "expires",
+    "themes"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "urn:project:theme-catalog-v1"
+    },
+    "format": {
+      "const": "theme-catalog-v1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "targetSku": {
+      "const": "TG4040"
+    },
+    "catalogVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "expires": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "themes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "author",
+        "license",
+        "provenanceUrl",
+        "versions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "author": {
+          "const": "Project Authors"
+        },
+        "license": {
+          "const": "MIT"
+        },
+        "provenanceUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://example\\.invalid/"
+        },
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/version"
+          }
+        }
+      }
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "themeApiCompatibility",
+        "themeApiVersion",
+        "targetSku",
+        "targetPath",
+        "package",
+        "screenshots"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "themeApiCompatibility": {
+          "const": ">=1.0.0 <2.0.0"
+        },
+        "themeApiVersion": {
+          "const": "1.0.0"
+        },
+        "targetSku": {
+          "const": "TG4040"
+        },
+        "targetPath": {
+          "type": "string",
+          "pattern": "^themes/[a-z][a-z0-9-]{0,63}/manifest(?:-[0-9]+\\.[0-9]+\\.[0-9]+)?\\.json$"
+        },
+        "package": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sha256",
+            "length",
+            "compressedBytes",
+            "expandedBytes"
+          ],
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "compressedBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "expandedBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            }
+          }
+        },
+        "screenshots": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "available",
+            "count",
+            "maxBytes",
+            "cacheKey"
+          ],
+          "properties": {
+            "available": {
+              "const": true
+            },
+            "count": {
+              "const": 1
+            },
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65536
+            },
+            "cacheKey": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,63}-[0-9]+\\.[0-9]+\\.[0-9]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

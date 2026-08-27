@@ -1,0 +1,46 @@
+{
+  "signatures": [
+    {
+      "keyid": "theme-key",
+      "sig": "b188180adbda96f33f68eaa0d27d7a5737b0874a86c6290fda9f7172d734a518c48edf101e8fad534993c6bef3149ae482917e173ea3590ae3938b965cc6840a"
+    }
+  ],
+  "signed": {
+    "_type": "targets",
+    "expires": "2031-01-01T00:00:00Z",
+    "spec_version": "1.0.0",
+    "targets": {
+      "catalog/theme-catalog.json": {
+        "hashes": {
+          "sha256": "c709990501f94571beedabb0e9fe3cfe50633a5e7f75b89448db92f2458e23b7"
+        },
+        "length": 3313
+      },
+      "themes/artbook/manifest.json": {
+        "hashes": {
+          "sha256": "7a451490a0ef0d580f084a054d843658b666625230556c0388f08dd2a805ecc1"
+        },
+        "length": 1178
+      },
+      "themes/high-contrast/manifest-1.1.0.json": {
+        "hashes": {
+          "sha256": "3d1e8b2be5b45a2502c5ad9a9aa9af88420c7feffe787d248e81f4cdfe5efbfd"
+        },
+        "length": 1185
+      },
+      "themes/high-contrast/manifest.json": {
+        "hashes": {
+          "sha256": "2e3e81ec2b0f2d42776d2345ed85a7cd1d3f0485fcb61642ddef62f738f8e0bf"
+        },
+        "length": 1185
+      },
+      "themes/minimal/manifest.json": {
+        "hashes": {
+          "sha256": "bf7e0e1c0468201feb130cc7f5a6d9447cd3855b2700763c7e5b918333057441"
+        },
+        "length": 1179
+      }
+    },
+    "version": 1
+  }
+}

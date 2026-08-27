@@ -1,0 +1,58 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
+  "capabilities": {
+    "audio": [],
+    "display": [
+      "read"
+    ],
+    "input": [],
+    "network": [],
+    "save": []
+  },
+  "developer": {
+    "enabled": false,
+    "localKeyTrusted": false,
+    "nonRoot": true
+  },
+  "entrypoints": [],
+  "files": [
+    {
+      "class": "immutable",
+      "length": 2134,
+      "path": "immutable/theme.json",
+      "sha256": "5399de0764b8f984873f167851efa37bb51ae70281532516a60b596f3720484d"
+    }
+  ],
+  "format": "brickpro-package",
+  "id": "minimal",
+  "license": {
+    "source": "https://example.invalid/brickpro-theme-garden",
+    "spdx": "MIT"
+  },
+  "provenance": {
+    "sbom": "provenance/brickpro-cfw.spdx.json",
+    "source": "project-authored synthetic Theme v1 fixture"
+  },
+  "runtime": {
+    "dependencies": [],
+    "path": "runtime"
+  },
+  "schemaVersion": 1,
+  "targetSku": "TG4040",
+  "tier": "community",
+  "type": "theme",
+  "uninstall": {
+    "preserve": [
+      "/roms",
+      "/data/saves",
+      "/data/states"
+    ],
+    "remove": [
+      "immutable",
+      "runtime",
+      "cache",
+      "staging"
+    ]
+  },
+  "version": "1.0.0"
+}

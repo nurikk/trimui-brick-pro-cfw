@@ -13,6 +13,7 @@ members = [
     "crates/launcher-theme",
     "crates/package-trust",
     "crates/package-manager",
+    "crates/theme-garden",
     "crates/settings-schema",
     "crates/virtual-keyboard",
     "crates/wifi-manager",

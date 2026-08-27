@@ -1,0 +1,22 @@
+{
+  "$schema": "https://example.invalid/trimui-storage-v1.schema.json",
+  "format": "brickpro-storage-layout",
+  "schemaVersion": 1,
+  "installationUuid": "11111111-2222-3333-4444-555555555555",
+  "activeDataVersion": 1,
+  "completedMigrations": [],
+  "filesystem": {
+    "kind": "fat32",
+    "maxFileBytes": 4294967295,
+    "maxPathBytes": 4096,
+    "maxComponentBytes": 255,
+    "caseSensitive": false,
+    "supportsAtomicRename": true,
+    "supportsFileSync": true,
+    "supportsDirectorySync": true,
+    "supportsSymlinks": false,
+    "supportsPosixOwnership": false,
+    "supportsPosixModes": false
+  },
+  "migrationDescriptor": "data/meta/migrations/storage-v1-to-v2.json"
+}

@@ -1,0 +1,17 @@
+{
+  "format": "brickpro-storage-migration",
+  "schemaVersion": 1,
+  "id": "storage-v1-to-v2",
+  "from": {"dataVersion": 1, "release": "storage-v1"},
+  "to": {"dataVersion": 2, "release": "storage-v2"},
+  "steps": [
+    {
+      "id": "copy-generated-config",
+      "source": "data/config/synthetic-config.json",
+      "target": "data/config/v2/synthetic-config.json",
+      "sha256": "78c4ce27f0e0d640046d71b2bda25d845a3a828f1e31ae997f37440d1f6ad236"
+    }
+  ],
+  "priorReleaseReadable": true,
+  "activation": "blocked-unless-prior-release-readable"
+}

@@ -1,0 +1,14 @@
+[package]
+name = "storage-layout"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "storage-layout"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

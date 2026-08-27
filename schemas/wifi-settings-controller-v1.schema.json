@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-wifi-settings-controller-v1.schema.json",
+  "title": "Project-authored Wi-Fi settings controller workflow v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "capability", "controls", "actions", "securityChoices", "manualSsid", "networkKey", "snapshot"],
+  "properties": {
+    "$schema": {"const": "https://json-schema.org/draft/2020-12/schema"},
+    "format": {"const": "trimui-wifi-settings-controller"},
+    "schemaVersion": {"const": 1},
+    "capability": {"const": "wifi"},
+    "controls": {"type": "array", "minItems": 4, "maxItems": 32, "items": {"$ref": "#/$defs/menu"}},
+    "actions": {"type": "array", "minItems": 5, "maxItems": 32, "items": {"$ref": "#/$defs/menu"}},
+    "securityChoices": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["open", "wpa2-psk", "wpa3-sae"]}},
+    "manualSsid": {"$ref": "#/$defs/inputPolicy"},
+    "networkKey": {"$ref": "#/$defs/inputPolicy"},
+    "snapshot": {"type": "object", "additionalProperties": false, "required": ["fields"], "properties": {"fields": {"type": "array", "minItems": 9, "maxItems": 9, "uniqueItems": true, "items": {"enum": ["canvas", "menu", "networks", "phase", "selection", "saved", "keyboard", "confirmation", "error"]}}}}
+  },
+  "$defs": {
+    "menu": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "order", "label", "help", "operation"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 64},
+        "order": {"type": "integer", "minimum": 0, "maximum": 1023},
+        "label": {"type": "string", "minLength": 1, "maxLength": 128},
+        "help": {"type": "string", "minLength": 1, "maxLength": 256},
+        "operation": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+      }
+    },
+    "inputPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxBytes", "maxScalars", "allowed", "placeholder", "hidden"],
+      "properties": {
+        "maxBytes": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "maxScalars": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "allowed": {"enum": ["any", "ascii", "url-safe"]},
+        "placeholder": {"type": "string", "minLength": 1, "maxLength": 128},
+        "hidden": {"type": "boolean"}
+      }
+    }
+  }
+}

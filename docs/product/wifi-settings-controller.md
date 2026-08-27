@@ -1,0 +1,9 @@
+# Wi-Fi settings controller
+
+`wifi-settings-controller` is a controller-first, render-neutral Wi-Fi settings workflow. It loads `fixtures/wifi-settings-controller/generated-v1/workflow.json` as the authoritative menu, action, capability, security-choice, input-policy, and snapshot-projection metadata. `Metadata::from_json` rejects duplicate JSON keys, unknown fields, unsupported versions/security, invalid references, duplicate IDs/orders, and out-of-bounds text/input/projection values.
+
+The controller composes `wifi-manager::WifiManager<GeneratedWifiBackend>` and `virtual-keyboard::Keyboard`; it does not implement radio, scan collapsing, connection, retry, cancellation, reconnect policy, or persistence semantics. It exposes semantic 1024x768 snapshots and typed controller events/actions only. Network results are projected without network IDs, and public events never carry provider errors or credentials.
+
+Manual SSIDs use the text keyboard and are handed to the manager as hidden networks, which are projected as `Hidden network`. WPA2-PSK and WPA3-SAE use a masked `FieldPolicy::secret` keyboard. A confirmed secret exists only at the handoff that creates the deterministic fixture-only opaque `CredentialReference`; the controller retains no secret or reference. Saved state is reference-only and remains the manager contract. `CredentialReference` debug output is redacted.
+
+`wifi-settings-controller-fixtures` is an executable, no-device journey over generated fixture data. It covers metadata negatives, deterministic navigation/snapshots, scan progress and collapse, Open/WPA2/WPA3, masked input, hidden SSID redaction, reference-only restart/reconnect, disconnect/forget, typed failure reasons, retry/cancel, and public privacy checks. It is not a renderer, radio backend, credential store, device integration, or hardware validation.

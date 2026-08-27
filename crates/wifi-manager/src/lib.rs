@@ -43,7 +43,7 @@ impl<'de> Deserialize<'de> for NetworkId {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CredentialReference(String);
 
 impl CredentialReference {
@@ -73,6 +73,15 @@ impl<'de> Deserialize<'de> for CredentialReference {
         D: Deserializer<'de>,
     {
         Self::new(String::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+impl fmt::Debug for CredentialReference {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("CredentialReference")
+            .field(&"<redacted>")
+            .finish()
     }
 }
 
@@ -543,15 +552,17 @@ pub struct WifiManager<B: WifiBackend> {
 
 impl<B: WifiBackend> WifiManager<B> {
     pub fn new(backend: B) -> Self {
-        Self::from_saved_state(
+        match Self::from_saved_state(
             backend,
             SavedState {
                 enabled: true,
                 automatic_reconnect: true,
                 networks: Vec::new(),
             },
-        )
-        .expect("empty saved state is valid")
+        ) {
+            Ok(manager) => manager,
+            Err(_) => unreachable!("empty saved state is valid"),
+        }
     }
 
     pub fn from_saved_state(backend: B, saved: SavedState) -> Result<Self, ValidationError> {

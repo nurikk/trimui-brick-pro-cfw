@@ -1127,6 +1127,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wifi-settings-controller"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "virtual-keyboard",
+ "wifi-manager",
+]
+
+[[package]]
 name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

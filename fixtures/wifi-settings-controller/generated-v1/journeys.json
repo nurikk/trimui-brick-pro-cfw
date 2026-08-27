@@ -1,0 +1,20 @@
+{
+  "format": "generated-wifi-controller-journeys",
+  "version": 1,
+  "journeys": [
+    "metadata-validation-negatives",
+    "byte-identical-snapshots",
+    "controller-navigation",
+    "scan-progress-and-deduplication",
+    "open-journey",
+    "wpa2-journey",
+    "wpa3-journey",
+    "secret-keyboard-masking",
+    "hidden-ssid-redaction",
+    "saved-reference-only-restart-reconnect",
+    "disconnect-forget",
+    "bad-credential-timeout-radio-unsupported",
+    "retry-cancel",
+    "privacy-assertions"
+  ]
+}

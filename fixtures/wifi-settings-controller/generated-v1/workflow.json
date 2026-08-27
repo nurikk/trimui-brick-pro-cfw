@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "actions": [
+    {"help": "Start or confirm the selected network connection.", "id": "connect", "label": "Connect", "operation": "connect", "order": 50},
+    {"help": "Stop the selected connection.", "id": "disconnect", "label": "Disconnect", "operation": "disconnect", "order": 60},
+    {"help": "Remove the selected saved network.", "id": "forget", "label": "Forget network", "operation": "forget", "order": 70},
+    {"help": "Try the selected network again.", "id": "retry", "label": "Retry", "operation": "retry", "order": 80},
+    {"help": "Stop the current Wi-Fi operation.", "id": "cancel", "label": "Cancel", "operation": "cancel", "order": 90}
+  ],
+  "capability": "wifi",
+  "controls": [
+    {"help": "Allow the Wi-Fi manager to operate.", "id": "wifi-enabled", "label": "Wi-Fi enabled", "operation": "toggle-enabled", "order": 10},
+    {"help": "Permit policy-gated automatic reconnect.", "id": "automatic-reconnect", "label": "Automatic reconnect", "operation": "toggle-automatic-reconnect", "order": 20},
+    {"help": "Scan and show deterministic network results.", "id": "scan", "label": "Scan for networks", "operation": "scan", "order": 30},
+    {"help": "Enter a bounded hidden network name.", "id": "manual-network", "label": "Add hidden network", "operation": "open-manual", "order": 40}
+  ],
+  "format": "trimui-wifi-settings-controller",
+  "manualSsid": {"allowed": "any", "hidden": true, "maxBytes": 32, "maxScalars": 32, "placeholder": "Network name"},
+  "networkKey": {"allowed": "url-safe", "hidden": false, "maxBytes": 63, "maxScalars": 63, "placeholder": "Network key"},
+  "schemaVersion": 1,
+  "securityChoices": ["open", "wpa2-psk", "wpa3-sae"],
+  "snapshot": {"fields": ["canvas", "menu", "networks", "phase", "selection", "saved", "keyboard", "confirmation", "error"]}
+}

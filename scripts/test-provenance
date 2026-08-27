@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""Focused stdlib-only checks for provenance projection and staged-root auditing."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PROVENANCE = ROOT / "scripts/provenance.py"
+
+
+def run(*args: str, expect: bool) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(list(args), cwd=ROOT, text=True, capture_output=True)
+    if (result.returncode == 0) != expect:
+        raise AssertionError(f"unexpected status for {' '.join(args)}: {result.returncode}\n{result.stdout}\n{result.stderr}")
+    return result
+
+
+def make_fixture(
+    base: Path,
+    *,
+    symlink: bool = False,
+    safe_symlink: bool = False,
+    omit_source_artifact: bool = False,
+    full_stream_private_extension: bool = False,
+) -> tuple[Path, Path, Path, Path]:
+    suffix = (
+        "symlink-safe" if safe_symlink else "symlink-escape" if symlink
+        else "missing-obligation" if omit_source_artifact
+        else "full-stream-private-extension" if full_stream_private_extension else "fixture"
+    )
+    work = base / suffix
+    (work / "provenance").mkdir(parents=True)
+    shutil.copy(ROOT / "Cargo.lock", work / "Cargo.lock")
+    inventory = json.loads((ROOT / "provenance/components.json").read_text())
+    content = b"clean synthetic artifact\n"
+    if full_stream_private_extension:
+        chunk_size = 64 * 1024
+        content = b"A" * (17 * chunk_size - 5) + b"game.bin"
+        marker = content.index(b"game.bin")
+        extension = content.index(b".bin")
+        assert marker > 1024 * 1024
+        assert extension % chunk_size == chunk_size - 1
+        assert extension + len(b".bin") > ((extension // chunk_size) + 1) * chunk_size
+    notice = b"synthetic notice\n"
+    source = b"synthetic source offer\n"
+    candidate_id = "project-authored"
+    obligations = [
+        {
+            "kind": "license-notice",
+            "required": True,
+            "detail": "Retain the applicable license and attribution notice before redistribution.",
+            "paths": ["THIRD_PARTY_NOTICES.md"],
+        },
+        {
+            "kind": "source-availability",
+            "required": True,
+            "detail": "Provide the synthetic fixture source record.",
+            "paths": ["SOURCE_CODE.txt"],
+        },
+    ]
+
+    def regular(artifact_id: str, path: str, data: bytes) -> dict:
+        return {
+            "id": artifact_id,
+            "candidateId": candidate_id,
+            "destinationPath": path,
+            "type": "regular",
+            "mode": "0644",
+            "byteSize": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "linkTarget": None,
+            "buildSourceRelationship": "synthetic external fixture only",
+            "obligations": obligations,
+            "status": "approved",
+        }
+
+    artifacts = []
+    if symlink:
+        artifacts.append({
+            "id": "artifact-synthetic-link",
+            "candidateId": candidate_id,
+            "destinationPath": "link",
+            "type": "symlink",
+            "mode": "0777",
+            "byteSize": len(os.fsencode("target.txt" if safe_symlink else "../outside")),
+            "sha256": None,
+            "linkTarget": "target.txt" if safe_symlink else "../outside",
+            "buildSourceRelationship": "synthetic external fixture only",
+            "obligations": obligations,
+            "status": "approved",
+        })
+        if safe_symlink:
+            artifacts.append(regular("artifact-synthetic-target", "target.txt", content))
+    else:
+        artifacts.append(regular("artifact-synthetic", "bin/synthetic.txt", content))
+    artifacts.append(regular("artifact-synthetic-notice", "THIRD_PARTY_NOTICES.md", notice))
+    if not omit_source_artifact:
+        artifacts.append(regular("artifact-synthetic-source", "SOURCE_CODE.txt", source))
+    inventory["distributedArtifacts"] = artifacts
+    inventory_path = work / "provenance/components.json"
+    inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
+    output_dir = base / (
+        "generated-symlink-safe" if safe_symlink else
+        "generated-symlink-escape" if symlink else
+        "generated-missing-obligation" if omit_source_artifact else
+        "generated-full-stream-private-extension" if full_stream_private_extension else "generated"
+    )
+    output_dir.mkdir()
+    allowlist = output_dir / "allowlist.json"
+    spdx = output_dir / "spdx.json"
+    notices = output_dir / "NOTICES.md"
+    run(str(PROVENANCE), "generate", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(spdx), "--notices", str(notices), expect=True)
+    stage = base / (
+        "stage-symlink-safe" if safe_symlink else
+        "stage-symlink-escape" if symlink else
+        "stage-missing-obligation" if omit_source_artifact else
+        "stage-full-stream-private-extension" if full_stream_private_extension else "stage"
+    )
+    stage.mkdir()
+    if symlink:
+        if safe_symlink:
+            (stage / "target.txt").write_bytes(content)
+            os.chmod(stage / "target.txt", 0o644)
+        os.symlink("target.txt" if safe_symlink else "../outside", stage / "link")
+    else:
+        (stage / "bin").mkdir()
+        (stage / "bin/synthetic.txt").write_bytes(content)
+        os.chmod(stage / "bin/synthetic.txt", 0o644)
+    (stage / "THIRD_PARTY_NOTICES.md").write_bytes(notice)
+    os.chmod(stage / "THIRD_PARTY_NOTICES.md", 0o644)
+    if not omit_source_artifact:
+        (stage / "SOURCE_CODE.txt").write_bytes(source)
+        os.chmod(stage / "SOURCE_CODE.txt", 0o644)
+    return inventory_path, allowlist, stage, output_dir
+
+
+def expect_fail(
+    stage: Path, allowlist: Path, inventory: Path | None = None, text: str | None = None
+) -> None:
+    args = [str(ROOT / "scripts/audit-dist"), str(stage), str(allowlist)]
+    if inventory is not None:
+        args.extend(["--inventory", str(inventory)])
+    result = run(*args, expect=False)
+    if text and text not in result.stderr:
+        raise AssertionError(f"expected {text!r} in audit error: {result.stderr}")
+
+
+def main() -> None:
+    with tempfile.TemporaryDirectory(prefix="trimui-provenance-") as temporary:
+        base = Path(temporary)
+        empty = base / "empty"
+        empty.mkdir()
+        run(str(ROOT / "scripts/audit-dist"), str(empty), expect=True)
+
+        inventory_path, allowlist, stage, output_dir = make_fixture(base)
+        before = sorted(path.relative_to(stage).as_posix() for path in stage.rglob("*"))
+        run(
+            str(ROOT / "scripts/audit-dist"), str(stage), str(allowlist),
+            "--inventory", str(inventory_path), expect=True,
+        )
+        assert sorted(path.relative_to(stage).as_posix() for path in stage.rglob("*")) == before
+        spdx = json.loads((output_dir / "spdx.json").read_text())
+        assert spdx["packages"] and all(not package["filesAnalyzed"] for package in spdx["packages"])
+        assert spdx["files"] and len(spdx["relationships"]) == len(spdx["files"])
+        forged = json.loads(allowlist.read_text())
+        forged["artifacts"][0]["candidateId"] = "forged-candidate"
+        forged_allowlist = base / "forged-allowlist.json"
+        forged_allowlist.write_text(json.dumps(forged, indent=2, sort_keys=True) + "\n")
+        expect_fail(stage, forged_allowlist, inventory_path, "authoritative inventory projection")
+        canonical = allowlist.read_bytes()
+        allowlist.write_text(allowlist.read_text().replace('"artifacts": [', '"artifacts": [{'))
+        run(str(PROVENANCE), "check", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(output_dir / "spdx.json"), "--notices", str(output_dir / "NOTICES.md"), expect=False)
+        run(str(PROVENANCE), "generate", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(output_dir / "spdx.json"), "--notices", str(output_dir / "NOTICES.md"), expect=True)
+        assert allowlist.read_bytes() == canonical
+
+        unlisted = stage / "unlisted.txt"
+        unlisted.write_text("unlisted\n")
+        expect_fail(stage, allowlist, inventory_path)
+        unlisted.unlink()
+        target = stage / "bin/synthetic.txt"
+        target.write_text("altered\n")
+        expect_fail(stage, allowlist, inventory_path)
+        target.write_bytes(b"clean synthetic artifact\n")
+        os.chmod(target, 0o600)
+        expect_fail(stage, allowlist, inventory_path)
+        os.chmod(target, 0o644)
+        target.write_bytes(b"BIOS signature")
+        expect_fail(stage, allowlist, inventory_path, "private ROM/BIOS/PortMaster content signature")
+        target.write_bytes(b"clean synthetic artifact\n")
+
+        missing = base / "missing"
+        missing.mkdir()
+        expect_fail(missing, allowlist, inventory_path)
+
+        invalid_obligation = json.loads(inventory_path.read_text())
+        del invalid_obligation["distributedArtifacts"][0]["obligations"][0]["paths"]
+        invalid_obligation_path = base / "invalid-obligation/provenance/components.json"
+        invalid_obligation_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", invalid_obligation_path.parent.parent / "Cargo.lock")
+        invalid_obligation_path.write_text(json.dumps(invalid_obligation, indent=2, sort_keys=True) + "\n")
+        obligation_result = run(str(PROVENANCE), "check", "--inventory", str(invalid_obligation_path), expect=False)
+        assert "must name staged paths" in obligation_result.stderr
+
+        missing_ob_inventory, missing_ob_allowlist, missing_ob_stage, _ = make_fixture(
+            base, omit_source_artifact=True
+        )
+        expect_fail(
+            missing_ob_stage, missing_ob_allowlist, missing_ob_inventory,
+            "unmet obligation",
+        )
+
+        large_inventory, large_allowlist, large_stage, _ = make_fixture(
+            base, full_stream_private_extension=True
+        )
+        expect_fail(
+            large_stage, large_allowlist, large_inventory,
+            "private ROM/BIOS/PortMaster content signature",
+        )
+
+        target_root = base / "target"
+        target_root.mkdir()
+        target_id = target_root / "TG3040.txt"
+        target_id.write_text("x\n")
+        expect_fail(target_root, Path(ROOT / "policy/distribution-allowlist.json"), text="unapproved target identifier")
+        private_root = base / "private"
+        (private_root / "roms").mkdir(parents=True)
+        (private_root / "roms/game.rom").write_bytes(b"x")
+        expect_fail(private_root, Path(ROOT / "policy/distribution-allowlist.json"), text="prohibited private-content path")
+
+        identity = json.loads(inventory_path.read_text())
+        lock_candidates = [candidate for candidate in identity["candidates"] if "lockfilePackage" in candidate]
+        lock_candidates[0]["lockfilePackage"] = dict(lock_candidates[1]["lockfilePackage"])
+        identity_path = base / "identity/provenance/components.json"
+        identity_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", identity_path.parent.parent / "Cargo.lock")
+        identity_path.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+        identity_result = run(str(PROVENANCE), "check", "--inventory", str(identity_path), expect=False)
+        assert "identities" in identity_result.stderr
+
+        nextui_invalid = json.loads(inventory_path.read_text())
+        nextui_candidate = next(
+            candidate for candidate in nextui_invalid["candidates"] if candidate["id"] == "nextui"
+        )
+        nextui_candidate["licenseEvidenceUrl"] = "https://github.com/LoveRetro/NextUI/blob/main/NOTICE"
+        nextui_invalid_path = base / "invalid-nextui/provenance/components.json"
+        nextui_invalid_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", nextui_invalid_path.parent.parent / "Cargo.lock")
+        nextui_invalid_path.write_text(json.dumps(nextui_invalid, indent=2, sort_keys=True) + "\n")
+        nextui_result = run(str(PROVENANCE), "check", "--inventory", str(nextui_invalid_path), expect=False)
+        assert "nextui requires pinned license evidence" in nextui_result.stderr
+
+        nextui_spoofed = json.loads(inventory_path.read_text())
+        next(candidate for candidate in nextui_spoofed["candidates"] if candidate["id"] == "nextui")[
+            "sourceUrl"
+        ] = "https://github.com/OtherProject/NextUI/commit/ae652648548edf6ab24cbb816cf4e4194e609fb3"
+        nextui_spoofed_path = base / "spoofed-nextui/provenance/components.json"
+        nextui_spoofed_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", nextui_spoofed_path.parent.parent / "Cargo.lock")
+        nextui_spoofed_path.write_text(json.dumps(nextui_spoofed, indent=2, sort_keys=True) + "\n")
+        spoofed_result = run(str(PROVENANCE), "check", "--inventory", str(nextui_spoofed_path), expect=False)
+        assert "nextui requires the pinned commit source evidence" in spoofed_result.stderr
+
+        nextui_suffix = json.loads(inventory_path.read_text())
+        next(candidate for candidate in nextui_suffix["candidates"] if candidate["id"] == "nextui")[
+            "sourceUrl"
+        ] = "https://github.com/LoveRetro/NextUI/commit/ae652648548edf6ab24cbb816cf4e4194e609fb3/anything"
+        nextui_suffix_path = base / "suffix-nextui/provenance/components.json"
+        nextui_suffix_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", nextui_suffix_path.parent.parent / "Cargo.lock")
+        nextui_suffix_path.write_text(json.dumps(nextui_suffix, indent=2, sort_keys=True) + "\n")
+        suffix_result = run(str(PROVENANCE), "check", "--inventory", str(nextui_suffix_path), expect=False)
+        assert "nextui requires the pinned commit source evidence" in suffix_result.stderr
+
+        duplicate = json.loads(inventory_path.read_text())
+        duplicate["candidates"][1]["id"] = duplicate["candidates"][0]["id"]
+        duplicate_path = base / "duplicate-candidate/provenance/components.json"
+        duplicate_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", duplicate_path.parent.parent / "Cargo.lock")
+        duplicate_path.write_text(json.dumps(duplicate, indent=2, sort_keys=True) + "\n")
+        duplicate_result = run(str(PROVENANCE), "check", "--inventory", str(duplicate_path), expect=False)
+        assert "duplicate candidate id" in duplicate_result.stderr
+
+        invalid_expression = json.loads(inventory_path.read_text())
+        invalid_expression["candidates"][0]["licenseExpression"] = "MIT OR Imaginary-1.0"
+        invalid_expression_path = base / "invalid-expression/provenance/components.json"
+        invalid_expression_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", invalid_expression_path.parent.parent / "Cargo.lock")
+        invalid_expression_path.write_text(json.dumps(invalid_expression, indent=2, sort_keys=True) + "\n")
+        expression_result = run(str(PROVENANCE), "check", "--inventory", str(invalid_expression_path), expect=False)
+        assert "unsupported SPDX identifier" in expression_result.stderr
+
+        invalid_id = json.loads(inventory_path.read_text())
+        invalid_id["candidates"][0]["id"] = "project_authored"
+        invalid_id_path = base / "invalid-id/provenance/components.json"
+        invalid_id_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", invalid_id_path.parent.parent / "Cargo.lock")
+        invalid_id_path.write_text(json.dumps(invalid_id, indent=2, sort_keys=True) + "\n")
+        id_result = run(str(PROVENANCE), "check", "--inventory", str(invalid_id_path), expect=False)
+        assert "normalized lowercase identifier" in id_result.stderr
+
+        safe_symlink_inventory, safe_symlink_allowlist, safe_symlink_stage, _ = make_fixture(
+            base, symlink=True, safe_symlink=True
+        )
+        run(
+            str(ROOT / "scripts/audit-dist"), str(safe_symlink_stage),
+            str(safe_symlink_allowlist), "--inventory", str(safe_symlink_inventory), expect=True,
+        )
+        wrong_symlink_inventory = json.loads(safe_symlink_inventory.read_text())
+        link_record = next(
+            item for item in wrong_symlink_inventory["distributedArtifacts"]
+            if item["type"] == "symlink"
+        )
+        link_record["byteSize"] += 1
+        wrong_symlink_inventory_path = base / "wrong-symlink-size/provenance/components.json"
+        wrong_symlink_inventory_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", wrong_symlink_inventory_path.parent.parent / "Cargo.lock")
+        wrong_symlink_inventory_path.write_text(
+            json.dumps(wrong_symlink_inventory, indent=2, sort_keys=True) + "\n"
+        )
+        wrong_symlink_output = base / "generated-wrong-symlink-size"
+        wrong_symlink_output.mkdir()
+        wrong_symlink_allowlist = wrong_symlink_output / "allowlist.json"
+        run(
+            str(PROVENANCE), "generate", "--inventory", str(wrong_symlink_inventory_path),
+            "--allowlist", str(wrong_symlink_allowlist),
+            "--spdx", str(wrong_symlink_output / "spdx.json"),
+            "--notices", str(wrong_symlink_output / "NOTICES.md"), expect=True,
+        )
+        expect_fail(
+            safe_symlink_stage, wrong_symlink_allowlist, wrong_symlink_inventory_path,
+            "symlink metadata mismatch",
+        )
+        wrong_symlink_mode_inventory = json.loads(safe_symlink_inventory.read_text())
+        mode_record = next(
+            item for item in wrong_symlink_mode_inventory["distributedArtifacts"]
+            if item["type"] == "symlink"
+        )
+        mode_record["mode"] = "0644"
+        wrong_symlink_mode_inventory_path = base / "wrong-symlink-mode/provenance/components.json"
+        wrong_symlink_mode_inventory_path.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "Cargo.lock", wrong_symlink_mode_inventory_path.parent.parent / "Cargo.lock")
+        wrong_symlink_mode_inventory_path.write_text(
+            json.dumps(wrong_symlink_mode_inventory, indent=2, sort_keys=True) + "\n"
+        )
+        wrong_symlink_mode_output = base / "generated-wrong-symlink-mode"
+        wrong_symlink_mode_output.mkdir()
+        wrong_symlink_mode_allowlist = wrong_symlink_mode_output / "allowlist.json"
+        run(
+            str(PROVENANCE), "generate", "--inventory", str(wrong_symlink_mode_inventory_path),
+            "--allowlist", str(wrong_symlink_mode_allowlist),
+            "--spdx", str(wrong_symlink_mode_output / "spdx.json"),
+            "--notices", str(wrong_symlink_mode_output / "NOTICES.md"), expect=True,
+        )
+        expect_fail(
+            safe_symlink_stage, wrong_symlink_mode_allowlist, wrong_symlink_mode_inventory_path,
+            "symlink metadata mismatch",
+        )
+        symlink_inventory, symlink_allowlist, symlink_stage, _ = make_fixture(base, symlink=True)
+        expect_fail(symlink_stage, symlink_allowlist, symlink_inventory, "escapes staged root")
+
+    print("provenance self-test passed: empty, synthetic, drift, mismatch, mode, escape, missing, target, and private-content cases")
+
+
+if __name__ == "__main__":
+    main()

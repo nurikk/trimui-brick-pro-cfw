@@ -1,0 +1,17 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-08-27T14:20:12Z",
+    "creators": [
+      "Tool: scripts/provenance.py"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentDescribes": [],
+  "documentNamespace": "https://github.com/nurikk/trimui-brick-pro-cfw/spdx/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b",
+  "files": [],
+  "name": "trimui-brick-pro-cfw-distribution",
+  "packages": [],
+  "relationships": [],
+  "spdxVersion": "SPDX-2.3"
+}

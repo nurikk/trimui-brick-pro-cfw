@@ -1,0 +1,1823 @@
+{
+  "candidates": [
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "project-authored",
+      "intendedUse": "Clean-room project-authored source; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "name": "TrimUI Brick Pro CFW project",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored repository source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0dc94c07fafdfec6cd8dfae26384dfccf8669e1b"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-adler2-2.0.1",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "0BSD OR MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/adler2/2.0.1",
+      "licenseExpression": "0BSD OR MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+        "name": "adler2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.1"
+      },
+      "name": "adler2 2.0.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/oyvindln/adler2",
+      "status": "approved",
+      "version": "2.0.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-anyhow-1.0.104",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/anyhow/1.0.104",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470",
+        "name": "anyhow",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.104"
+      },
+      "name": "anyhow 1.0.104",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/anyhow",
+      "status": "approved",
+      "version": "1.0.104"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-bitflags-1.3.2",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT/Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/bitflags/1.3.2",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
+        "name": "bitflags",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.3.2"
+      },
+      "name": "bitflags 1.3.2",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/bitflags/bitflags",
+      "status": "approved",
+      "version": "1.3.2"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-cfg-if-1.0.4",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/cfg-if/1.0.4",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
+        "name": "cfg-if",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.4"
+      },
+      "name": "cfg-if 1.0.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/cfg-if",
+      "status": "approved",
+      "version": "1.0.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-crc32fast-1.5.1",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/crc32fast/1.5.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "8498c871161e1742aaa9d52551b2d6ebdd4c3d45a3be423e3728f33b955be550",
+        "name": "crc32fast",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.1"
+      },
+      "name": "crc32fast 1.5.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/srijs/rust-crc32fast",
+      "status": "approved",
+      "version": "1.5.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-errno-0.3.14",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/errno/0.3.14",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
+        "name": "errno",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.14"
+      },
+      "name": "errno 0.3.14",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/lambda-fairy/rust-errno",
+      "status": "approved",
+      "version": "0.3.14"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-fdeflate-0.3.7",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/fdeflate/0.3.7",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c",
+        "name": "fdeflate",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.7"
+      },
+      "name": "fdeflate 0.3.7",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/image-rs/fdeflate",
+      "status": "approved",
+      "version": "0.3.7"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-flate2-1.1.9",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/flate2/1.1.9",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
+        "name": "flate2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.9"
+      },
+      "name": "flate2 1.1.9",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/flate2-rs",
+      "status": "approved",
+      "version": "1.1.9"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-itoa-1.0.18",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/itoa/1.0.18",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+        "name": "itoa",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.18"
+      },
+      "name": "itoa 1.0.18",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/itoa",
+      "status": "approved",
+      "version": "1.0.18"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-lazy-static-1.5.0",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/lazy_static/1.5.0",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
+        "name": "lazy_static",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.0"
+      },
+      "name": "lazy_static 1.5.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang-nursery/lazy-static.rs",
+      "status": "approved",
+      "version": "1.5.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-libc-0.2.189",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/libc/0.2.189",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
+        "name": "libc",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.189"
+      },
+      "name": "libc 0.2.189",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/libc",
+      "status": "approved",
+      "version": "0.2.189"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-memchr-2.8.3",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/memchr/2.8.3",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+        "name": "memchr",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.8.3"
+      },
+      "name": "memchr 2.8.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/memchr",
+      "status": "approved",
+      "version": "2.8.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-miniz-oxide-0.8.9",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Zlib OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/miniz_oxide/0.8.9",
+      "licenseExpression": "MIT OR Zlib OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
+        "name": "miniz_oxide",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.8.9"
+      },
+      "name": "miniz_oxide 0.8.9",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/Frommi/miniz_oxide",
+      "status": "approved",
+      "version": "0.8.9"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-png-0.17.16",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/png/0.17.16",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526",
+        "name": "png",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.17.16"
+      },
+      "name": "png 0.17.16",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/image-rs/image-png",
+      "status": "approved",
+      "version": "0.17.16"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-proc-macro2-1.0.107",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/proc-macro2/1.0.107",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
+        "name": "proc-macro2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.107"
+      },
+      "name": "proc-macro2 1.0.107",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/proc-macro2",
+      "status": "approved",
+      "version": "1.0.107"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-quote-1.0.47",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/quote/1.0.47",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
+        "name": "quote",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.47"
+      },
+      "name": "quote 1.0.47",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/quote",
+      "status": "approved",
+      "version": "1.0.47"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-sdl2-0.37.0",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sdl2/0.37.0",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "3b498da7d14d1ad6c839729bd4ad6fc11d90a57583605f3b4df2cd709a9cd380",
+        "name": "sdl2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.37.0"
+      },
+      "name": "sdl2 0.37.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/Rust-SDL2/rust-sdl2",
+      "status": "approved",
+      "version": "0.37.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-sdl2-sys-0.37.0",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT AND Zlib"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sdl2-sys/0.37.0",
+      "licenseExpression": "MIT AND Zlib",
+      "lockfilePackage": {
+        "checksum": "951deab27af08ed9c6068b7b0d05a93c91f0a8eb16b6b816a5e73452a43521d3",
+        "name": "sdl2-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.37.0"
+      },
+      "name": "sdl2-sys 0.37.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-sdl2/rust-sdl2",
+      "status": "approved",
+      "version": "0.37.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-serde-1.0.229",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/serde/1.0.229",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+        "name": "serde",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      "name": "serde 1.0.229",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "status": "approved",
+      "version": "1.0.229"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-serde-core-1.0.229",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/serde_core/1.0.229",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
+        "name": "serde_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      "name": "serde_core 1.0.229",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "status": "approved",
+      "version": "1.0.229"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-serde-derive-1.0.229",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/serde_derive/1.0.229",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
+        "name": "serde_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      "name": "serde_derive 1.0.229",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "status": "approved",
+      "version": "1.0.229"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-serde-json-1.0.151",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/serde_json/1.0.151",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
+        "name": "serde_json",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.151"
+      },
+      "name": "serde_json 1.0.151",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/serde-rs/json",
+      "status": "approved",
+      "version": "1.0.151"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-signal-hook-0.3.18",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0/MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/signal-hook/0.3.18",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2",
+        "name": "signal-hook",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.18"
+      },
+      "name": "signal-hook 0.3.18",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/vorner/signal-hook",
+      "status": "approved",
+      "version": "0.3.18"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-signal-hook-registry-1.4.8",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0/MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/signal-hook-registry/1.4.8",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b",
+        "name": "signal-hook-registry",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.4.8"
+      },
+      "name": "signal-hook-registry 1.4.8",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/vorner/signal-hook",
+      "status": "approved",
+      "version": "1.4.8"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-sim-domain",
+      "intendedUse": "Current project workspace source used by the host simulator; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "sim-domain",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "sim-domain",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-sim-host-platform",
+      "intendedUse": "Current project workspace source used by the host simulator; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "sim-host-platform",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "sim-host-platform",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-sim-launcher",
+      "intendedUse": "Current project workspace source used by the host simulator; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "sim-launcher",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "sim-launcher",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-sim-platform-contract",
+      "intendedUse": "Current project workspace source used by the host simulator; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "sim-platform-contract",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "sim-platform-contract",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-simd-adler32-0.3.10",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/simd-adler32/0.3.10",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea",
+        "name": "simd-adler32",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.10"
+      },
+      "name": "simd-adler32 0.3.10",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/mcountryman/simd-adler32",
+      "status": "approved",
+      "version": "0.3.10"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-syn-3.0.4",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/syn/3.0.4",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f",
+        "name": "syn",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.0.4"
+      },
+      "name": "syn 3.0.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/syn",
+      "status": "approved",
+      "version": "3.0.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-unicode-ident-1.0.24",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "(MIT OR Apache-2.0) AND Unicode-3.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/unicode-ident/1.0.24",
+      "licenseExpression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "lockfilePackage": {
+        "checksum": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
+        "name": "unicode-ident",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.24"
+      },
+      "name": "unicode-ident 1.0.24",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/unicode-ident",
+      "status": "approved",
+      "version": "1.0.24"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-version-compare-0.1.1",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/version-compare/0.1.1",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29",
+        "name": "version-compare",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.1"
+      },
+      "name": "version-compare 0.1.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://gitlab.com/timvisee/version-compare",
+      "status": "approved",
+      "version": "0.1.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-windows-link-0.2.1",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/windows-link/0.2.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+        "name": "windows-link",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.1"
+      },
+      "name": "windows-link 0.2.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "status": "approved",
+      "version": "0.2.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-windows-sys-0.61.2",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/windows-sys/0.61.2",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
+        "name": "windows-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.61.2"
+      },
+      "name": "windows-sys 0.61.2",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "status": "approved",
+      "version": "0.61.2"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The crates.io exact-version API has no copyright field; consult the exact crate source for its applicable attribution notice.",
+      "id": "crate-zmij-1.0.23",
+      "intendedUse": "Resolved build dependency of the host-native simulator; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/zmij/1.0.23",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
+        "name": "zmij",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.23"
+      },
+      "name": "zmij 1.0.23",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/zmij",
+      "status": "approved",
+      "version": "1.0.23"
+    },
+    {
+      "componentClass": "simulator-toolchain",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "sim-rust-container",
+      "intendedUse": "Build-only simulator input; never a target artifact.",
+      "licenseEvidenceReason": "The image is a composite build environment and its complete redistribution/license scope was not audited; Dockerfile pin is evidence, not a shipping grant.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Pinned Rust simulator build container",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "The image is a composite build environment and its complete redistribution/license scope was not audited; Dockerfile pin is evidence, not a shipping grant.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "pinned container build input",
+      "sourceUrl": "https://hub.docker.com/_/rust",
+      "status": "blocked",
+      "version": "1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0"
+    },
+    {
+      "componentClass": "simulator-os-input",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "sim-debian-packages",
+      "intendedUse": "Build-only simulator input; never a target artifact.",
+      "licenseEvidenceReason": "The distro package archive and transitive license set are not target inputs and were not cleared for redistribution.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Pinned Debian SDL/Xvfb simulator packages",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "The distro package archive and transitive license set are not target inputs and were not cleared for redistribution.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "pinned container package input",
+      "sourceUrl": null,
+      "sourceUrlReason": "The distro package archive and transitive license set are not target inputs and were not cleared for redistribution.",
+      "status": "blocked",
+      "version": "libsdl2-dev=2.26.5+dfsg-1; xvfb=2:21.1.7-3+deb12u13"
+    },
+    {
+      "componentClass": "vendor-library",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "vendor-stock-gpu-input-daemons",
+      "intendedUse": "Potential hardware integration only after a completed TG4040 hardware contract; no stock bytes may be redistributed now.",
+      "licenseEvidenceReason": "No vendor source, exact revision, license evidence, or completed TG4040 hardware contract is available in this record; guessing would be an impermissible redistribution conclusion.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Stock/vendor GPU, input libraries, and daemons",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "No vendor source, exact revision, license evidence, or completed TG4040 hardware contract is available in this record; guessing would be an impermissible redistribution conclusion.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "unresolved vendor material",
+      "sourceUrl": null,
+      "sourceUrlReason": "No vendor source, exact revision, license evidence, or completed TG4040 hardware contract is available in this record; guessing would be an impermissible redistribution conclusion.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "No vendor source, exact revision, license evidence, or completed TG4040 hardware contract is available in this record; guessing would be an impermissible redistribution conclusion."
+    },
+    {
+      "componentClass": "public-reference-project",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "spruce",
+      "intendedUse": "Public reference only; no SpruceOS source, firmware resource, or binary is selected.",
+      "licenseEvidenceUrl": "https://github.com/spruceUI/spruceOS",
+      "licenseExpression": "NOASSERTION",
+      "name": "SpruceOS",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "The repository is reference evidence, not an import; release/resource license scope for this clean-room project is not cleared for redistribution.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/spruceUI/spruceOS",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "The repository is reference evidence, not an import; release/resource license scope for this clean-room project is not cleared for redistribution."
+    },
+    {
+      "componentClass": "framework",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "pyui",
+      "intendedUse": "Named planning concept only; no identified current repository input and no upstream may be guessed.",
+      "licenseEvidenceReason": "PyUI is not an identified current repository input; upstream identity, revision, license, and source relationship are unresolved.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "PyUI",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "PyUI is not an identified current repository input; upstream identity, revision, license, and source relationship are unresolved.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "unidentified planning reference",
+      "sourceUrl": null,
+      "sourceUrlReason": "PyUI is not an identified current repository input; upstream identity, revision, license, and source relationship are unresolved.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "PyUI is not an identified current repository input; upstream identity, revision, license, and source relationship are unresolved."
+    },
+    {
+      "componentClass": "emulator-framework",
+      "copyrightAttribution": "Public project attribution remains with the referenced project.",
+      "id": "retroarch",
+      "intendedUse": "Future emulator framework reference only; no RetroArch bytes are selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/RetroArch/blob/master/COPYING",
+      "licenseExpression": "GPL-3.0-only",
+      "name": "RetroArch",
+      "obligations": [],
+      "rationale": "Public reference is deliberately excluded from this clean-room baseline and has no artifact record.",
+      "redistributionStatus": "not-selected",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/RetroArch",
+      "status": "excluded",
+      "version": null,
+      "versionReason": "Public reference is deliberately excluded from this clean-room baseline and has no artifact record."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-gambatte",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/gambatte-libretro",
+      "licenseExpression": "NOASSERTION",
+      "name": "gambatte",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/gambatte-libretro",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-mgba",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/mgba",
+      "licenseExpression": "NOASSERTION",
+      "name": "mgba",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/mgba",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-genesis-plus-gx",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/Genesis-Plus-GX",
+      "licenseExpression": "NOASSERTION",
+      "name": "genesis-plus-gx",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/Genesis-Plus-GX",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-fbneo",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/FBNeo",
+      "licenseExpression": "NOASSERTION",
+      "name": "fbneo",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/FBNeo",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-mesen",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/MesenCE",
+      "licenseExpression": "NOASSERTION",
+      "name": "mesen",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/MesenCE",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-pcsx-rearmed",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/pcsx_rearmed",
+      "licenseExpression": "NOASSERTION",
+      "name": "pcsx-rearmed",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/pcsx_rearmed",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-snes9x",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/snes9xgit/snes9x",
+      "licenseExpression": "NOASSERTION",
+      "name": "snes9x",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/snes9xgit/snes9x",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "libretro-core",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "core-beetle-pce-fast",
+      "intendedUse": "Prospective emulator core reference only; no core binary/source is selected.",
+      "licenseEvidenceUrl": "https://github.com/libretro/beetle-pce-fast-libretro",
+      "licenseExpression": "NOASSERTION",
+      "name": "beetle-pce-fast",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/libretro/beetle-pce-fast-libretro",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Core license scope, exact revision, and redistribution obligations are unresolved or mixed; public availability is not permission to ship it."
+    },
+    {
+      "componentClass": "assets",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "fonts-themes-artwork",
+      "intendedUse": "Potential future UI assets only; no asset is selected or shipped.",
+      "licenseEvidenceReason": "No exact asset, author, source, revision, license, or attribution record exists; unknown rights remain blocked.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Fonts, themes, artwork, and other visual assets",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "No exact asset, author, source, revision, license, or attribution record exists; unknown rights remain blocked.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "unresolved asset set",
+      "sourceUrl": null,
+      "sourceUrlReason": "No exact asset, author, source, revision, license, or attribution record exists; unknown rights remain blocked.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "No exact asset, author, source, revision, license, or attribution record exists; unknown rights remain blocked."
+    },
+    {
+      "componentClass": "runtime",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "portmaster",
+      "intendedUse": "Planning reference only; no runtime, GUI, package, port, or content is selected.",
+      "licenseEvidenceReason": "No exact public artifact is approved, and PortMaster packages/content are explicitly outside this clean-room baseline until separately cleared.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "PortMaster runtime, GUI, and packages",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "No exact public artifact is approved, and PortMaster packages/content are explicitly outside this clean-room baseline until separately cleared.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "unresolved runtime and private-content boundary",
+      "sourceUrl": null,
+      "sourceUrlReason": "No exact public artifact is approved, and PortMaster packages/content are explicitly outside this clean-room baseline until separately cleared.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "No exact public artifact is approved, and PortMaster packages/content are explicitly outside this clean-room baseline until separately cleared."
+    },
+    {
+      "componentClass": "inherited-reference-project",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "nextui",
+      "intendedUse": "Public reference only; no NextUI source, binary, asset, or license text is imported.",
+      "licenseEvidenceUrl": "https://github.com/LoveRetro/NextUI/blob/ae652648548edf6ab24cbb816cf4e4194e609fb3/NOTICE",
+      "licenseExpression": "NOASSERTION",
+      "name": "Inherited NextUI reference",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "The pinned public evidence records a change from GPL-3.0 to PolyForm Noncommercial 1.0.0 on 2026-08-15; that noncommercial baseline is blocked for redistributable use and earlier contributions do not cure the mixed scope.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "public reference only",
+      "sourceUrl": "https://github.com/LoveRetro/NextUI/commit/ae652648548edf6ab24cbb816cf4e4194e609fb3",
+      "status": "blocked",
+      "version": "ae652648548edf6ab24cbb816cf4e4194e609fb3"
+    },
+    {
+      "componentClass": "firmware",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "firmware-only-publication",
+      "intendedUse": "No firmware payload is created or selected by this card.",
+      "licenseEvidenceReason": "This legal/provenance card does not authorize firmware-only publication and contains no firmware bytes.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Firmware-only publication",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "This legal/provenance card does not authorize firmware-only publication and contains no firmware bytes.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "prohibited firmware-only boundary",
+      "sourceUrl": null,
+      "sourceUrlReason": "This legal/provenance card does not authorize firmware-only publication and contains no firmware bytes.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "This legal/provenance card does not authorize firmware-only publication and contains no firmware bytes."
+    },
+    {
+      "componentClass": "private-content",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "commercial-private-content",
+      "intendedUse": "No ROM, BIOS, commercial content, or private corpus material may enter the distribution.",
+      "licenseEvidenceReason": "Private or commercial content is outside the repository and cannot be approved from a name, path, or private source.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "Commercial/private ROM, BIOS, and content",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Private or commercial content is outside the repository and cannot be approved from a name, path, or private source.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "prohibited private-content boundary",
+      "sourceUrl": null,
+      "sourceUrlReason": "Private or commercial content is outside the repository and cannot be approved from a name, path, or private source.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "Private or commercial content is outside the repository and cannot be approved from a name, path, or private source."
+    },
+    {
+      "componentClass": "vendor-firmware",
+      "copyrightAttribution": "Attribution and copyright scope are unresolved for this candidate.",
+      "id": "tg4040-stock-archives",
+      "intendedUse": "No conclusion that stock archives or vendor blobs may be redistributed.",
+      "licenseEvidenceReason": "The TG4040 hardware contract card is incomplete; stock archives and blobs remain blocked.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "TG4040 stock archives and blobs",
+      "obligations": [
+        {
+          "detail": "Cannot satisfy notice obligations until the candidate is cleared.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "The TG4040 hardware contract card is incomplete; stock archives and blobs remain blocked.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "unresolved TG4040 hardware contract",
+      "sourceUrl": null,
+      "sourceUrlReason": "The TG4040 hardware contract card is incomplete; stock archives and blobs remain blocked.",
+      "status": "blocked",
+      "version": null,
+      "versionReason": "The TG4040 hardware contract card is incomplete; stock archives and blobs remain blocked."
+    }
+  ],
+  "distributedArtifacts": [],
+  "lockfile": {
+    "packages": [
+      {
+        "checksum": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+        "name": "adler2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.1"
+      },
+      {
+        "checksum": "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470",
+        "name": "anyhow",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.104"
+      },
+      {
+        "checksum": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
+        "name": "bitflags",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.3.2"
+      },
+      {
+        "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
+        "name": "cfg-if",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.4"
+      },
+      {
+        "checksum": "8498c871161e1742aaa9d52551b2d6ebdd4c3d45a3be423e3728f33b955be550",
+        "name": "crc32fast",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.1"
+      },
+      {
+        "checksum": "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
+        "name": "errno",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.14"
+      },
+      {
+        "checksum": "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c",
+        "name": "fdeflate",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.7"
+      },
+      {
+        "checksum": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
+        "name": "flate2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.9"
+      },
+      {
+        "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+        "name": "itoa",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.18"
+      },
+      {
+        "checksum": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
+        "name": "lazy_static",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.0"
+      },
+      {
+        "checksum": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
+        "name": "libc",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.189"
+      },
+      {
+        "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+        "name": "memchr",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.8.3"
+      },
+      {
+        "checksum": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
+        "name": "miniz_oxide",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.8.9"
+      },
+      {
+        "checksum": "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526",
+        "name": "png",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.17.16"
+      },
+      {
+        "checksum": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
+        "name": "proc-macro2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.107"
+      },
+      {
+        "checksum": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
+        "name": "quote",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.47"
+      },
+      {
+        "checksum": "3b498da7d14d1ad6c839729bd4ad6fc11d90a57583605f3b4df2cd709a9cd380",
+        "name": "sdl2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.37.0"
+      },
+      {
+        "checksum": "951deab27af08ed9c6068b7b0d05a93c91f0a8eb16b6b816a5e73452a43521d3",
+        "name": "sdl2-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.37.0"
+      },
+      {
+        "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+        "name": "serde",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      {
+        "checksum": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
+        "name": "serde_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      {
+        "checksum": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
+        "name": "serde_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.229"
+      },
+      {
+        "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
+        "name": "serde_json",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.151"
+      },
+      {
+        "checksum": "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2",
+        "name": "signal-hook",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.18"
+      },
+      {
+        "checksum": "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b",
+        "name": "signal-hook-registry",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.4.8"
+      },
+      {
+        "checksum": null,
+        "name": "sim-domain",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "sim-host-platform",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "sim-launcher",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "sim-platform-contract",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea",
+        "name": "simd-adler32",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.10"
+      },
+      {
+        "checksum": "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f",
+        "name": "syn",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.0.4"
+      },
+      {
+        "checksum": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
+        "name": "unicode-ident",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.24"
+      },
+      {
+        "checksum": "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29",
+        "name": "version-compare",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.1"
+      },
+      {
+        "checksum": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+        "name": "windows-link",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.1"
+      },
+      {
+        "checksum": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
+        "name": "windows-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.61.2"
+      },
+      {
+        "checksum": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
+        "name": "zmij",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.23"
+      }
+    ],
+    "path": "../Cargo.lock",
+    "sha256": "040ad8eb869bc460353555b8349a0b1b512ca5742d07f8d109dfc953cca885c3"
+  },
+  "repository": {
+    "commit": "0dc94c07fafdfec6cd8dfae26384dfccf8669e1b",
+    "generatedAt": "2026-08-27T14:20:12Z",
+    "name": "trimui-brick-pro-cfw",
+    "targetSku": "TG4040"
+  },
+  "schema": "trimui-brick-provenance",
+  "schemaVersion": "1.0.0"
+}

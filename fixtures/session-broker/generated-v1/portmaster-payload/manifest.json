@@ -1,0 +1,83 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
+  "format": "brickpro-package",
+  "schemaVersion": 1,
+  "id": "generated-portmaster",
+  "version": "1.0.0",
+  "targetSku": "TG4040",
+  "tier": "verified",
+  "type": "portmaster",
+  "files": [
+    {
+      "path": "immutable/port/launch.sh",
+      "sha256": "768d132c41d423ebff0bf035d8d4bad1a2f06ae0f312f5dd517a91dc390f8012",
+      "length": 195,
+      "class": "immutable"
+    },
+    {
+      "path": "immutable/port/metadata.json",
+      "sha256": "e05939fb65ee1d4f04d4acc11947329eb652084b9213c550f5033f436e34e392",
+      "length": 67,
+      "class": "immutable"
+    },
+    {
+      "path": "runtime/lib/README.txt",
+      "sha256": "63c70b5b9af2db11e20bcb198e7f00c3c718c35affd017e762237c3dd65ee43f",
+      "length": 34,
+      "class": "runtime"
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "launch",
+      "path": "immutable/port/launch.sh",
+      "mode": "0755"
+    }
+  ],
+  "runtime": {
+    "path": "runtime",
+    "dependencies": []
+  },
+  "capabilities": {
+    "network": [],
+    "input": [
+      "buttons"
+    ],
+    "audio": [
+      "playback"
+    ],
+    "display": [
+      "read"
+    ],
+    "save": [
+      "read",
+      "write"
+    ]
+  },
+  "uninstall": {
+    "preserve": [
+      "/roms",
+      "/data/saves",
+      "/data/states"
+    ],
+    "remove": [
+      "immutable",
+      "runtime",
+      "cache",
+      "staging"
+    ]
+  },
+  "license": {
+    "spdx": "MIT",
+    "source": "https://example.invalid/generated-portmaster"
+  },
+  "provenance": {
+    "sbom": "provenance/brickpro-cfw.spdx.json",
+    "source": "generated synthetic fixture"
+  },
+  "developer": {
+    "enabled": false,
+    "localKeyTrusted": false,
+    "nonRoot": true
+  }
+}

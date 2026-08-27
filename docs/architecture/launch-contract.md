@@ -8,9 +8,9 @@ This document defines the clean-room, versioned handoff from a future catalog/UI
 
 A request contains:
 
-- `schemaVersion: 1`, a request ID, one of `libretro`, `standalone`, or `port`, and an opaque content ID with a lower-case SHA-256;
+- `schemaVersion: 1`, a request ID, one of `libretro`, `standalone`, or `portmaster`, and an opaque content ID with a lower-case SHA-256;
 - logical paths as `{root, relative}`. Content is read only below `roms`; saves and states are written only below `data/saves` and `data/states`;
-- exact versioned runner identity, an optional exact versioned core identity, and a profile ID;
+- exact versioned runner identity, an optional PortMaster package identity, an optional exact versioned core identity, and a profile ID;
 - typed resume, display, input, and power settings.
 
 There is no executable path, command, shell fragment, argv, environment, working directory, redirection, or process option in the type or schema. The request JSON Schema rejects closed request shape, unknown kinds, fixed roots, and structural malformed fields; catalog membership (including an unknown runner) is necessarily rejected by the typed validator only after the separately validated installed/signed-catalog projection is supplied. The request schema alone cannot prove a dynamic allowlist, and this intentional split is fail-closed. The catalog schema and strict typed deserializer validate the projection's runner/core/profile shapes, IDs, versions, kinds, and capabilities; this layer does not verify package signatures or claim that catalog data came from a trusted signer.

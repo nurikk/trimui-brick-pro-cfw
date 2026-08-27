@@ -8,7 +8,7 @@ The broker accepts only a catalog member and rooted fixture content. It revalida
 
 - RetroArch: fixed synthetic runtime, `--config`, `-L`, and content arguments.
 - Standalone: fixed synthetic runtime with typed content/save/state substitutions.
-- Port: fixed allowlisted runtime and package entry; no script text.
+- PortMaster: fixed package-manager-resolved private runtime and verified package entrypoint; no script text.
 
 The child receives a cleared environment, one 256-bit CSPRNG ownership marker, a launch-barrier descriptor, null standard streams, and a fixed fixture working directory. `pre_exec` creates a new session/process group and sets a parent-death signal; the workspace-built helper waits on the parent-owned barrier before doing session work. The helper used by journeys is never a host utility.
 
@@ -25,7 +25,7 @@ Startup recovery accepts only valid checksummed broker-owned journals. Invalid r
 Run the complete deterministic journey set with:
 
 ```text
-cargo run --locked -p session-broker --release -- simulate --journeys success,standalone,port,nonzero,signal,timeout,cancel,grandchild,restart,marker-mismatch,start-time-mismatch,publication-failure,crash-before-publish,crash-after-publish,crash-after-release,result-fsync-failure
+cargo run --locked -p session-broker --release -- simulate --journeys success,standalone,portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero,nonzero,signal,timeout,cancel,grandchild,restart,marker-mismatch,start-time-mismatch,publication-failure,crash-before-publish,crash-after-publish,crash-after-release,result-fsync-failure
 ```
 
 Each JSON line is one typed result and exposes `restored: true`. The generated fixture is synthetic and is copied to a temporary root before execution. No hardware, private corpus, live service, or real `/data` path is used.

@@ -919,6 +919,7 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> LaunchRequest {
             id: "generated-libretro".to_string(),
             version: "1.0.0".to_string(),
         },
+        package: None,
         core: Some(VersionedId {
             id: "generated-core".to_string(),
             version: "1.0.0".to_string(),

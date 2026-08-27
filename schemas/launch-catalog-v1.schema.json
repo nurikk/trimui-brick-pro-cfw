@@ -31,7 +31,7 @@
   "$defs": {
     "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
     "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 32},
-    "kind": {"enum": ["libretro", "standalone", "port"]},
+    "kind": {"enum": ["libretro", "standalone", "portmaster"]},
     "capability": {"enum": ["display-basic", "input-standard", "input-arcade", "rumble", "suspend", "battery-saver"]},
     "runner": {
       "type": "object",

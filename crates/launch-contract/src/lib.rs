@@ -54,6 +54,8 @@ pub struct LaunchRequest {
     #[serde(rename = "statePath")]
     pub state_path: LogicalPath,
     pub runner: VersionedId,
+    #[serde(default)]
+    pub package: Option<VersionedId>,
     pub core: Option<VersionedId>,
     #[serde(rename = "profileId")]
     pub profile_id: String,
@@ -86,7 +88,7 @@ pub enum PathRoot {
 pub enum LaunchKind {
     Libretro,
     Standalone,
-    Port,
+    Portmaster,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -265,7 +267,7 @@ pub fn validate(request: &LaunchRequest, catalog: &Catalog) -> Result<()> {
         (LaunchKind::Libretro, None) => return Err(ContractError::new("libretro requires a core")),
         (_, Some(_)) => {
             return Err(ContractError::new(
-                "standalone and port requests cannot name a core",
+                "standalone and portmaster requests cannot name a core",
             ))
         }
         (_, None) => {}
@@ -396,6 +398,18 @@ fn validate_request_fields(request: &LaunchRequest) -> Result<()> {
     if let Some(core) = &request.core {
         validate_identifier(&core.id, "core identifier")?;
         validate_version(&core.version, "core version")?;
+    }
+    if let Some(package) = &request.package {
+        validate_identifier(&package.id, "package identifier")?;
+        validate_version(&package.version, "package version")?;
+    }
+    if request.kind == LaunchKind::Portmaster && request.package.is_none() {
+        return Err(ContractError::new("portmaster requires a package identity"));
+    }
+    if request.kind != LaunchKind::Portmaster && request.package.is_some() {
+        return Err(ContractError::new(
+            "package identity is only valid for portmaster",
+        ));
     }
     if !(320..=4096).contains(&request.display.width)
         || !(240..=2160).contains(&request.display.height)

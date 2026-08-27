@@ -10,9 +10,9 @@
       "capabilities": ["display-basic", "input-standard", "rumble", "suspend", "battery-saver"]
     },
     {
-      "id": "generated-port",
+      "id": "generated-portmaster",
       "version": "1.0.0",
-      "kinds": ["port"],
+      "kinds": ["portmaster"],
       "capabilities": ["display-basic", "input-standard", "suspend", "battery-saver"]
     },
     {

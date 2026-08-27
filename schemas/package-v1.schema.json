@@ -86,7 +86,7 @@
     },
     "entrypoints": {
       "type": "array",
-      "maxItems": 0,
+      "maxItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -98,7 +98,7 @@
             "type": "string"
           },
           "mode": {
-            "const": "data-only"
+            "enum": ["data-only", "0755"]
           }
         },
         "required": [

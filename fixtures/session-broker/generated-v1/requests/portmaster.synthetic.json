@@ -1,0 +1,20 @@
+{
+  "$schema": "https://example.invalid/trimui-launch-request-v1.schema.json",
+  "format": "brickpro-launch-request",
+  "schemaVersion": 1,
+  "requestId": "generated-port-1",
+  "kind": "portmaster",
+  "contentId": "generated-content-1",
+  "contentSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "contentPath": {"root": "roms", "relative": "generated/content.bin"},
+  "savePath": {"root": "data/saves", "relative": "generated/content.sav"},
+  "statePath": {"root": "data/states", "relative": "generated/content.state"},
+  "runner": {"id": "generated-portmaster", "version": "1.0.0"},
+  "package": {"id": "generated-portmaster", "version": "1.0.0"},
+  "core": null,
+  "profileId": "generated-default",
+  "resumeMode": "auto",
+  "display": {"width": 640, "height": 480, "refreshHz": 60, "scaling": "fit"},
+  "input": {"layout": "standard", "rumble": false},
+  "power": {"suspend": "allowed", "batterySaver": false}
+}

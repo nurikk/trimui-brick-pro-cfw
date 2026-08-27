@@ -918,6 +918,8 @@ version = "0.1.0"
 dependencies = [
  "launch-contract",
  "libc",
+ "package-manager",
+ "package-trust",
  "serde",
  "serde_json",
  "sha2",

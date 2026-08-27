@@ -41,7 +41,7 @@ pub struct PackageManifest {
     pub developer: DeveloperPolicy,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TrustTier {
     Builtin,
@@ -127,7 +127,7 @@ pub enum SaveCapability {
     Write,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum FileClass {
     Immutable,
@@ -200,11 +200,31 @@ pub struct ActivationRecord {
     pub schema_version: u8,
     pub id: String,
     pub version: String,
+    pub target_sku: String,
+    pub package_type: PackageType,
     pub tier: TrustTier,
+    pub target_path: String,
+    pub target_length: u64,
+    pub target_sha256: String,
+    pub manifest_sha256: String,
     pub immutable_root: String,
     pub runtime_root: String,
     pub cache_root: String,
+    pub runtime_path: String,
+    pub entrypoint_name: String,
+    pub entrypoint_path: String,
+    pub entrypoint_mode: String,
     pub preserve: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PortMasterActivation {
+    pub id: String,
+    pub version: String,
+    pub package_root: PathBuf,
+    pub runtime_root: PathBuf,
+    pub library_root: PathBuf,
+    pub entrypoint: PathBuf,
 }
 
 pub fn load_manifest(path: &Path) -> Result<(PackageManifest, Vec<u8>)> {
@@ -229,8 +249,10 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     if manifest.files.is_empty() || manifest.files.len() > MAX_FILES {
         bail!("package file count is outside bounds")
     }
-    if !manifest.entrypoints.is_empty() {
-        bail!("executable entrypoints are not supported")
+    if manifest.package_type == PackageType::Portmaster {
+        validate_portmaster_layout(manifest)?;
+    } else if !manifest.entrypoints.is_empty() {
+        bail!("executable entrypoints are only supported for PortMaster")
     }
     if manifest.runtime.path != "runtime"
         || manifest.runtime.dependencies.len() > 32
@@ -391,12 +413,29 @@ where
                 &file.path,
                 &bytes,
                 manifest.package_type == PackageType::Theme,
+                manifest
+                    .entrypoints
+                    .iter()
+                    .any(|entrypoint| entrypoint.path == file.path),
             )?;
             let destination = staging.join(&file.path);
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(destination, bytes)?;
+            fs::write(&destination, bytes)?;
+            if let Some(entrypoint) = manifest
+                .entrypoints
+                .iter()
+                .find(|entrypoint| entrypoint.path == file.path)
+            {
+                #[cfg(unix)]
+                fs::set_permissions(
+                    &destination,
+                    std::os::unix::fs::PermissionsExt::from_mode(
+                        u32::from_str_radix(&entrypoint.mode, 8).unwrap_or(0),
+                    ),
+                )?;
+            }
             copied += 1;
             if options.interrupt_after_files == Some(copied) {
                 bail!("simulated interrupted install")
@@ -409,12 +448,21 @@ where
                 .context("package version has no parent")?,
         )?;
         fs::rename(&staging, &version_root).context("promote complete package")?;
+        let installed_manifest = version_root.join("manifest.json");
+        fs::write(&installed_manifest, &manifest_bytes)?;
+        let entrypoint = manifest.entrypoints.first();
         let record = ActivationRecord {
             format: "brickpro-package-activation".to_string(),
             schema_version: 1,
             id: manifest.id.clone(),
             version: manifest.version.clone(),
+            target_sku: manifest.target_sku.clone(),
+            package_type: manifest.package_type.clone(),
             tier: manifest.tier.clone(),
+            target_path: target.path.clone(),
+            target_length: target.length,
+            target_sha256: target.sha256.clone(),
+            manifest_sha256: hex::encode(Sha256::digest(&manifest_bytes)),
             immutable_root: format!(
                 "{PACKAGE_ROOT}/{}/{}/immutable",
                 manifest.id, manifest.version
@@ -424,6 +472,10 @@ where
                 manifest.id, manifest.version
             ),
             cache_root: format!("{PACKAGE_ROOT}/{}/{}/cache", manifest.id, manifest.version),
+            runtime_path: manifest.runtime.path.clone(),
+            entrypoint_name: entrypoint.map_or_else(String::new, |value| value.name.clone()),
+            entrypoint_path: entrypoint.map_or_else(String::new, |value| value.path.clone()),
+            entrypoint_mode: entrypoint.map_or_else(String::new, |value| value.mode.clone()),
             preserve: PRESERVED.iter().map(|path| (*path).to_string()).collect(),
         };
         let state_root = root.join(PACKAGE_STATE);
@@ -455,6 +507,7 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
         || record.schema_version != 1
         || record.id != id
         || !version(&record.version)
+        || record.target_sku != "TG4040"
         || record.preserve != PRESERVED
         || record.immutable_root != format!("{PACKAGE_ROOT}/{}/{}/immutable", id, record.version)
         || record.runtime_root != format!("{PACKAGE_ROOT}/{}/{}/runtime", id, record.version)
@@ -462,12 +515,13 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     {
         bail!("invalid activation record; no package data removed")
     }
+    let canonical_root = root.canonicalize()?;
     let package_root = root.join(PACKAGE_ROOT).join(id);
+    reject_symlink_path(&package_root, "package root")?;
     let version_root = package_root.join(&record.version);
-    if let Ok(metadata) = fs::symlink_metadata(&version_root) {
-        if metadata.file_type().is_symlink() {
-            bail!("package version root is a symlink")
-        }
+    reject_symlink_path(&version_root, "package version root")?;
+    if !version_root.canonicalize()?.starts_with(&canonical_root) {
+        bail!("package version root escapes private root")
     }
     let staging_root = root.join(PACKAGE_ROOT).join(".staging");
     if let Ok(entries) = fs::read_dir(&staging_root) {
@@ -548,8 +602,14 @@ fn verify_file(file: &ManifestFile, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn reject_executable(path: &str, bytes: &[u8], theme: bool) -> Result<()> {
+fn reject_executable(path: &str, bytes: &[u8], theme: bool, entrypoint: bool) -> Result<()> {
     let lower = path.to_ascii_lowercase();
+    if entrypoint {
+        if !lower.ends_with(".sh") || !bytes.starts_with(b"#!/bin/sh\n") {
+            bail!("PortMaster entrypoint must use the fixed shell interpreter")
+        }
+        return Ok(());
+    }
     if !theme
         && (lower.ends_with(".sh")
             || lower.ends_with(".py")
@@ -607,6 +667,167 @@ fn safe_source(root: &Path, relative: &str) -> Result<PathBuf> {
         bail!("payload path escapes payload root")
     }
     Ok(source)
+}
+
+fn validate_portmaster_layout(manifest: &PackageManifest) -> Result<()> {
+    if !matches!(manifest.tier, TrustTier::Builtin | TrustTier::Verified)
+        || manifest.entrypoints.len() != 1
+    {
+        bail!("PortMaster requires a verified single entrypoint")
+    }
+    let entrypoint = &manifest.entrypoints[0];
+    if entrypoint.name != "launch"
+        || entrypoint.path != "immutable/port/launch.sh"
+        || entrypoint.mode != "0755"
+    {
+        bail!("PortMaster entrypoint layout is invalid")
+    }
+    let file = manifest
+        .files
+        .iter()
+        .find(|file| file.path == entrypoint.path)
+        .ok_or_else(|| anyhow::anyhow!("PortMaster entrypoint is not declared"))?;
+    if file.file_class != FileClass::Immutable {
+        bail!("PortMaster entrypoint is not immutable")
+    }
+    if !manifest.files.iter().any(|file| {
+        matches!(file.file_class, FileClass::Runtime) && file.path.starts_with("runtime/")
+    }) || !manifest.runtime.dependencies.is_empty()
+        || !manifest.capabilities.network.is_empty()
+        || !manifest
+            .capabilities
+            .input
+            .contains(&InputCapability::Buttons)
+        || !manifest
+            .capabilities
+            .display
+            .contains(&DisplayCapability::Read)
+        || !manifest.capabilities.save.contains(&SaveCapability::Read)
+        || !manifest.capabilities.save.contains(&SaveCapability::Write)
+    {
+        bail!("PortMaster runtime or capability projection is invalid")
+    }
+    Ok(())
+}
+
+pub fn resolve_portmaster(
+    root: &Path,
+    id: &str,
+    package_version: &str,
+) -> Result<PortMasterActivation> {
+    if !identifier(id) || !version(package_version) {
+        bail!("invalid PortMaster package identity")
+    }
+    let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
+    if fs::symlink_metadata(&state_path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        bail!("PortMaster activation is a symlink")
+    }
+    let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
+    if record.format != "brickpro-package-activation"
+        || record.schema_version != 1
+        || record.id != id
+        || record.version != package_version
+        || record.target_sku != "TG4040"
+        || record.package_type != PackageType::Portmaster
+        || !matches!(record.tier, TrustTier::Builtin | TrustTier::Verified)
+        || record.target_path != format!("packages/{id}/manifest.json")
+        || record.target_length == 0
+        || record.target_sha256.len() != 64
+        || record
+            .target_sha256
+            .bytes()
+            .any(|byte| !byte.is_ascii_hexdigit() || byte.is_ascii_uppercase())
+        || record.immutable_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable")
+        || record.runtime_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime")
+        || record.cache_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/cache")
+        || record.runtime_path != "runtime"
+        || record.entrypoint_name != "launch"
+        || record.entrypoint_path != "immutable/port/launch.sh"
+        || record.entrypoint_mode != "0755"
+        || record.preserve != PRESERVED
+    {
+        bail!("PortMaster activation identity or provenance is invalid")
+    }
+    let canonical_root = root.canonicalize()?;
+    let state_parent = root.join(PACKAGE_STATE).canonicalize()?;
+    if !state_parent.starts_with(&canonical_root) {
+        bail!("PortMaster activation state escapes private root")
+    }
+    let packages = root.join(PACKAGE_ROOT);
+    let version_root = packages.join(id).join(package_version);
+    reject_symlink_path(&version_root, "PortMaster package root")?;
+    let canonical_version_root = version_root.canonicalize()?;
+    if !canonical_version_root.starts_with(&canonical_root) {
+        bail!("PortMaster package root escapes private root")
+    }
+    let manifest_path = version_root.join("manifest.json");
+    reject_symlink_path(&manifest_path, "PortMaster manifest")?;
+    let (manifest, manifest_bytes) = load_manifest(&manifest_path)?;
+    if manifest.id != id
+        || manifest.version != package_version
+        || manifest.package_type != PackageType::Portmaster
+        || manifest.target_sku != "TG4040"
+        || hex::encode(Sha256::digest(&manifest_bytes)) != record.manifest_sha256
+        || hex::encode(Sha256::digest(&manifest_bytes)) != record.target_sha256
+        || manifest_bytes.len() as u64 != record.target_length
+        || manifest.runtime.path != record.runtime_path
+        || manifest.entrypoints[0].name != record.entrypoint_name
+        || manifest.entrypoints[0].path != record.entrypoint_path
+        || manifest.entrypoints[0].mode != record.entrypoint_mode
+    {
+        bail!("PortMaster manifest provenance does not match activation")
+    }
+    for file in &manifest.files {
+        let path = private_path(&version_root, &file.path)?;
+        reject_symlink_path(&path, "PortMaster package file")?;
+        let bytes = fs::read(&path)?;
+        verify_file(file, &bytes)?;
+    }
+    let runtime_root = private_path(&version_root, "runtime")?;
+    let library_root = private_path(&version_root, "runtime/lib")?;
+    let entrypoint = private_path(&version_root, &record.entrypoint_path)?;
+    if !runtime_root.is_dir() || !library_root.is_dir() || !entrypoint.is_file() {
+        bail!("PortMaster private runtime or entrypoint is unavailable")
+    }
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::mode(&fs::metadata(&entrypoint)?) & 0o777 != 0o755 {
+        bail!("PortMaster entrypoint mode differs from activation")
+    }
+    Ok(PortMasterActivation {
+        id: id.to_string(),
+        version: package_version.to_string(),
+        package_root: version_root,
+        runtime_root,
+        library_root,
+        entrypoint,
+    })
+}
+
+fn private_path(root: &Path, relative: &str) -> Result<PathBuf> {
+    validate_relative_path(relative)?;
+    reject_symlink_path(root, "private package root")?;
+    let mut current = root.to_path_buf();
+    for component in relative.split('/') {
+        current.push(component);
+        reject_symlink_path(&current, "private package path component")?;
+    }
+    let candidate = root.join(relative);
+    let canonical_root = root.canonicalize()?;
+    let canonical = candidate.canonicalize()?;
+    if !canonical.starts_with(&canonical_root) {
+        bail!("private package path escapes package root")
+    }
+    Ok(canonical)
+}
+
+fn reject_symlink_path(path: &Path, label: &str) -> Result<()> {
+    if fs::symlink_metadata(path)?.file_type().is_symlink() {
+        bail!("{label} is a symlink")
+    }
+    Ok(())
 }
 
 fn validate_relative_path(path: &str) -> Result<()> {

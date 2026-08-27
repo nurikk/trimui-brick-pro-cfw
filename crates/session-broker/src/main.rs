@@ -17,13 +17,21 @@ use launch_contract::{
     parse_catalog_json, parse_request_json, validate_host_fixture, Catalog, LaunchKind,
     LaunchRequest, LogicalPath, PathRoot,
 };
+use package_manager::TrustContext;
+use package_trust::VerifiedTarget;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 const JOURNEYS: &[&str] = &[
     "success",
     "standalone",
-    "port",
+    "portmaster",
+    "portmaster-success",
+    "portmaster-rejection",
+    "portmaster-mismatch",
+    "portmaster-symlink",
+    "portmaster-injection",
+    "portmaster-nonzero",
     "nonzero",
     "signal",
     "timeout",
@@ -127,6 +135,53 @@ enum Output {
     Rejection(journal::Rejection),
 }
 
+fn install_portmaster_fixture(root: &Path) -> Result<(), String> {
+    let manifest_path = root.join("portmaster-payload/manifest.json");
+    let manifest_bytes = fs::read(&manifest_path)
+        .map_err(|_| "PortMaster fixture manifest unavailable".to_string())?;
+    let target = VerifiedTarget {
+        path: "packages/generated-portmaster/manifest.json".to_string(),
+        length: manifest_bytes.len() as u64,
+        sha256: format!("{:x}", Sha256::digest(&manifest_bytes)),
+        delegated_role: "packages".to_string(),
+    };
+    let install_root = root.join("host-root");
+    package_manager::install(
+        &install_root,
+        &manifest_path,
+        &root.join("portmaster-payload"),
+        &target,
+        TrustContext {
+            signed: true,
+            developer_enabled: false,
+            local_key_trusted: false,
+            running_as_root: false,
+        },
+        package_manager::TransactionOptions::default(),
+    )
+    .map(|_| ())
+    .map_err(|error| format!("PortMaster fixture installation failed: {error}"))
+}
+
+fn seed_portmaster_symlink(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let port =
+            root.join("host-root/.brickpro/packages/generated-portmaster/1.0.0/immutable/port");
+        let replacement = root
+            .join("host-root/.brickpro/packages/generated-portmaster/1.0.0/immutable/port-real");
+        fs::rename(&port, &replacement)
+            .map_err(|_| "PortMaster symlink fixture unavailable".to_string())?;
+        std::os::unix::fs::symlink("port-real", &port)
+            .map_err(|_| "PortMaster symlink fixture unavailable".to_string())?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        Err("PortMaster symlink journey requires Unix".to_string())
+    }
+}
+
 fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
     let root = temp_root(journey);
     let _ = fs::remove_dir_all(&root);
@@ -137,15 +192,26 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         parse_catalog_json(&catalog_bytes).map_err(|_| "catalog fixture is invalid".to_string())?;
     let request_name = match journey {
         "standalone" => "standalone.synthetic.json",
-        "port" => "port.synthetic.json",
-        "command-shaped" => "command-shaped.synthetic.json",
+        "portmaster"
+        | "portmaster-success"
+        | "portmaster-rejection"
+        | "portmaster-mismatch"
+        | "portmaster-symlink"
+        | "portmaster-nonzero" => "portmaster.synthetic.json",
+        "command-shaped" | "portmaster-injection" => "command-shaped.synthetic.json",
         _ => "libretro.synthetic.json",
     };
     let request_bytes = fs::read(root.join("requests").join(request_name))
         .map_err(|_| "request fixture unavailable".to_string())?;
-    if journey == "command-shaped" {
-        if parse_request_json(&request_bytes).is_ok() {
-            return Err("command-shaped fixture was accepted".to_string());
+    if journey == "command-shaped" || journey == "portmaster-injection" {
+        let bytes = if journey == "portmaster-injection" {
+            fs::read(root.join("requests/portmaster-injection.synthetic.json"))
+                .map_err(|_| "request fixture unavailable".to_string())?
+        } else {
+            request_bytes
+        };
+        if parse_request_json(&bytes).is_ok() {
+            return Err("command/script-shaped fixture was accepted".to_string());
         }
         let output = Output::Rejection(journal::Rejection {
             result_type: "LaunchRejected",
@@ -163,6 +229,22 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         "invalid-catalog" => catalog.schema_version = 2,
         "escape" => request.content_path.relative = "../outside.bin".to_string(),
         "hash-mismatch" => request.content_sha256 = "0".repeat(64),
+        "portmaster-rejection" => catalog.schema_version = 2,
+        "portmaster-mismatch" => {
+            install_portmaster_fixture(&root)?;
+            let package = request
+                .package
+                .as_mut()
+                .ok_or_else(|| "PortMaster package fixture is invalid".to_string())?;
+            package.version = "9.9.9".to_string();
+        }
+        "portmaster" | "portmaster-success" | "portmaster-nonzero" => {
+            install_portmaster_fixture(&root)?;
+        }
+        "portmaster-symlink" => {
+            install_portmaster_fixture(&root)?;
+            seed_portmaster_symlink(&root)?;
+        }
         _ => {}
     }
     let mut broker = Broker::new(root.join("host-root"));
@@ -179,11 +261,27 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
             broker.seed_symlink_collision(&request)?;
             Output::Session(broker.launch(request, catalog, journey, RunMode::Success, Fault::None))
         }
-        "invalid-catalog" | "escape" | "hash-mismatch" => {
+        "invalid-catalog" | "escape" | "hash-mismatch" | "portmaster-rejection" => {
             Output::Session(broker.launch(request, catalog, journey, RunMode::Success, Fault::None))
         }
-        "standalone" | "port" | "success" => {
+        "portmaster-mismatch" | "portmaster-symlink" => {
+            let result = broker.launch(request, catalog, journey, RunMode::Success, Fault::None);
+            if result.accepted
+                || result.reason != "authorization-failure"
+                || !result.restored
+                || result.persistence_status != "not-applicable"
+            {
+                return Err(
+                    "PortMaster authorization failure entered the launch lifecycle".to_string(),
+                );
+            }
+            Output::Session(result)
+        }
+        "standalone" | "portmaster" | "portmaster-success" | "success" => {
             Output::Session(broker.launch(request, catalog, journey, RunMode::Success, Fault::None))
+        }
+        "portmaster-nonzero" => {
+            Output::Session(broker.launch(request, catalog, journey, RunMode::Nonzero, Fault::None))
         }
         "nonzero" => {
             Output::Session(broker.launch(request, catalog, journey, RunMode::Nonzero, Fault::None))
@@ -335,11 +433,18 @@ impl Broker {
         self.phase = Phase::Preparing;
         let runner = Some(request.runner.id.clone());
         let core = request.core.as_ref().map(|value| value.id.clone());
-        let _paths = match self.validate_and_resolve(&request, &catalog) {
+        let paths = match self.validate_and_resolve(&request, &catalog) {
             Ok(paths) => paths,
             Err(_) => {
                 self.phase = Phase::Idle;
                 return rejection_as_session(journey, "validation-failure");
+            }
+        };
+        let plan = match self.validate_and_plan(&request, &catalog, &paths, mode) {
+            Ok(plan) => plan,
+            Err(_) => {
+                self.phase = Phase::Idle;
+                return rejection_as_session(journey, "authorization-failure");
             }
         };
         let snapshot = self.platform.snapshot();
@@ -367,24 +472,6 @@ impl Broker {
             self.phase = Phase::Idle;
             return rejection_as_session(journey, "journal-failure");
         }
-        let plan = match self.validate_and_plan(&request, &catalog, mode) {
-            Ok(plan) => plan,
-            Err(_) => {
-                return self.finish(
-                    &request,
-                    journey,
-                    runner,
-                    core,
-                    adapter,
-                    snapshot,
-                    journal_path,
-                    record,
-                    false,
-                    true,
-                    Outcome::AdapterFailure,
-                )
-            }
-        };
         let (mut child, barrier) = match spawn_with_barrier(&plan, &marker) {
             Ok(value) => value,
             Err(_) => {
@@ -582,14 +669,14 @@ impl Broker {
         &self,
         request: &LaunchRequest,
         catalog: &Catalog,
+        paths: &ResolvedPaths,
         mode: RunMode,
     ) -> Result<LaunchPlan, String> {
-        let paths = self.validate_and_resolve(request, catalog)?;
         let current =
             std::env::current_exe().map_err(|_| "helper executable unavailable".to_string())?;
         let sibling = current.with_file_name("session-broker-helper");
         let helper = if sibling.is_file() { sibling } else { current };
-        adapters::build_plan(request, catalog, &self.fixture_root, &helper, &paths, mode)
+        adapters::build_plan(request, catalog, &self.fixture_root, &helper, paths, mode)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -914,7 +1001,7 @@ struct LaunchBarrier {
 #[cfg(unix)]
 impl LaunchBarrier {
     fn release(mut self) -> io::Result<()> {
-        let byte = [1u8];
+        let byte = [b'\n'];
         let result = unsafe { libc::write(self.write_fd, byte.as_ptr().cast(), 1) };
         let error = if result == 1 {
             None
@@ -959,7 +1046,11 @@ fn spawn_with_barrier(plan: &LaunchPlan, marker: &str) -> io::Result<(Child, Lau
         .env_clear()
         .env("BROKER_SESSION_MARKER", marker)
         .env("BROKER_BARRIER_FD", read_fd.to_string())
-        .current_dir(&plan.cwd)
+        .current_dir(&plan.cwd);
+    for (key, value) in &plan.env {
+        command.env(key, value);
+    }
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -1277,7 +1368,7 @@ fn adapter_name(kind: LaunchKind) -> &'static str {
     match kind {
         LaunchKind::Libretro => "retroarch",
         LaunchKind::Standalone => "standalone",
-        LaunchKind::Port => "port",
+        LaunchKind::Portmaster => "portmaster",
     }
 }
 

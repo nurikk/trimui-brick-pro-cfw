@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use launch_contract::{Catalog, LaunchKind, LaunchRequest};
 
-pub mod port;
+pub mod portmaster;
 pub mod retroarch;
 pub mod standalone;
 
@@ -41,6 +41,7 @@ pub struct LaunchPlan {
     pub executable: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    pub env: Vec<(String, String)>,
     pub adapter: &'static str,
     pub confirms_usable_save: bool,
 }
@@ -63,6 +64,8 @@ pub fn build_plan(
         LaunchKind::Standalone => {
             standalone::plan(request, catalog, fixture_root, helper, paths, mode)
         }
-        LaunchKind::Port => port::plan(request, catalog, fixture_root, helper, paths, mode),
+        LaunchKind::Portmaster => {
+            portmaster::plan(request, catalog, fixture_root, helper, paths, mode)
+        }
     }
 }

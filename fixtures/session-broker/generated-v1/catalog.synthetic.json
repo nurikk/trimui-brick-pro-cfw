@@ -5,7 +5,7 @@
   "runners": [
     {"id": "generated-libretro", "version": "1.0.0", "kinds": ["libretro"], "capabilities": ["display-basic", "input-standard", "suspend"]},
     {"id": "generated-standalone", "version": "1.0.0", "kinds": ["standalone"], "capabilities": ["display-basic", "input-standard", "suspend"]},
-    {"id": "generated-port", "version": "1.0.0", "kinds": ["port"], "capabilities": ["display-basic", "input-standard", "suspend"]}
+    {"id": "generated-portmaster", "version": "1.0.0", "kinds": ["portmaster"], "capabilities": ["display-basic", "input-standard", "suspend"]}
   ],
   "cores": [
     {"id": "generated-core", "version": "1.0.0", "runnerId": "generated-libretro", "runnerVersion": "1.0.0", "kind": "libretro"}

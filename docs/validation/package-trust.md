@@ -7,7 +7,7 @@ docker build --network=default -f containers/package-trust/Dockerfile -t brickpr
 docker run --rm --network=none brickpro-package-trust
 ```
 
-The fixture harness prints `PASS` for signed delegated progression, target length/hash failure and retry, typed capability/traversal/case-collision/symlink failure, unsigned/expired/rollback/freeze/clock-uncertainty/corrupt trusted-state failure, install/uninstall, interrupted install/uninstall/publication, and protected ROM/save/state byte preservation. The build also checks `file`, rejects an ELF interpreter, and rejects `DT_NEEDED` entries for the AArch64 artifact.
+The fixture harness prints `PASS` for signed delegated progression, target length/hash failure and retry, typed capability/traversal/case-collision/symlink failure, unsigned/expired/rollback/freeze/clock-uncertainty/corrupt trusted-state failure, install/uninstall, interrupted install/uninstall/publication, PortMaster private entrypoint projection, and protected ROM/save/state byte preservation. The build also checks `file`, rejects an ELF interpreter, and rejects `DT_NEEDED` entries for the AArch64 artifact.
 
 Repository checks:
 

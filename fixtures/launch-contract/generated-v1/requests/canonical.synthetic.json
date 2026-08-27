@@ -22,6 +22,7 @@
     "id": "generated-libretro",
     "version": "1.0.0"
   },
+  "package": null,
   "core": {
     "id": "generated-core",
     "version": "1.0.0"

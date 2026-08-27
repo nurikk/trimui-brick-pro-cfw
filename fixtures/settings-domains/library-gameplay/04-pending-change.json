@@ -1,0 +1,84 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.pending-change.effective-state-held",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "pending-change"
+  ],
+  "semantic_ids": [
+    "gameplay.auto_resume_policy",
+    "gameplay.default_save_state_behavior"
+  ],
+  "context": {
+    "system_id": "system.synthetic-console",
+    "game_id": "game.synthetic-console-01"
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "gameplay.auto_resume_policy": "prompt",
+      "gameplay.default_save_state_behavior": "manual_only"
+    },
+    "overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "effective": {
+      "gameplay.auto_resume_policy": "prompt",
+      "gameplay.default_save_state_behavior": "manual_only"
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "semantic_id": "gameplay.auto_resume_policy",
+        "scope": "per_system",
+        "target": "system.synthetic-console",
+        "value": "resume_last",
+        "confirmation": "required"
+      },
+      {
+        "semantic_id": "gameplay.default_save_state_behavior",
+        "scope": "per_game",
+        "target": "game.synthetic-console-01",
+        "value": "load_last_on_launch",
+        "confirmation": "required"
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "pending_confirmation",
+    "statuses": [
+      "pending_confirmation",
+      "pending_confirmation"
+    ],
+    "effective": {
+      "gameplay.auto_resume_policy": "prompt",
+      "gameplay.default_save_state_behavior": "manual_only"
+    },
+    "persisted_overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "pending": [
+      {
+        "semantic_id": "gameplay.auto_resume_policy",
+        "scope": "per_system",
+        "target": "system.synthetic-console",
+        "value": "resume_last"
+      },
+      {
+        "semantic_id": "gameplay.default_save_state_behavior",
+        "scope": "per_game",
+        "target": "game.synthetic-console-01",
+        "value": "load_last_on_launch"
+      }
+    ],
+    "user_message_codes": [
+      "confirmation.required",
+      "confirmation.required"
+    ]
+  }
+}

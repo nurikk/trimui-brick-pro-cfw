@@ -1,0 +1,93 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.invalid.fail-closed",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "invalid"
+  ],
+  "semantic_ids": [
+    "library.show_hidden_entries",
+    "library.show_collections",
+    "gameplay.aspect_ratio_default",
+    "gameplay.reset_overrides"
+  ],
+  "context": {
+    "system_id": "system.synthetic-console",
+    "game_id": "game.synthetic-console-01"
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "library.show_hidden_entries": false,
+      "library.show_collections": true,
+      "gameplay.aspect_ratio_default": "system"
+    },
+    "overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "effective": {
+      "library.show_hidden_entries": false,
+      "library.show_collections": true,
+      "gameplay.aspect_ratio_default": "system"
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "semantic_id": "library.show_hidden_entries",
+        "scope": "domain_default",
+        "value": "yes"
+      },
+      {
+        "semantic_id": "library.show_collections",
+        "scope": "per_game",
+        "target": "game.synthetic-console-01",
+        "value": false
+      },
+      {
+        "semantic_id": "gameplay.aspect_ratio_default",
+        "scope": "domain_default",
+        "value": "21:9"
+      },
+      {
+        "semantic_id": "gameplay.reset_overrides",
+        "action": "invoke",
+        "targets": [
+          {
+            "scope": "per_game",
+            "target": "game.synthetic-missing"
+          }
+        ]
+      },
+      {
+        "semantic_id": "gameplay.not_declared",
+        "scope": "domain_default",
+        "value": true
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "rejected_fail_closed",
+    "statuses": [
+      "invalid",
+      "invalid",
+      "invalid",
+      "invalid",
+      "invalid"
+    ],
+    "rejection_reason_codes": [
+      "invalid.type.boolean_required",
+      "invalid.scope.per_game_not_supported",
+      "invalid.option.aspect_ratio_default",
+      "invalid.target.unknown_synthetic_context",
+      "invalid.semantic_id.undeclared"
+    ],
+    "effective_unchanged": true,
+    "persisted_overrides_unchanged": true,
+    "pending": [],
+    "user_message_required": true
+  }
+}

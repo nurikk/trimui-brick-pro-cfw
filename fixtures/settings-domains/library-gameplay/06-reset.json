@@ -1,0 +1,114 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.reset-overrides.precedence-restored",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "reset"
+  ],
+  "semantic_ids": [
+    "gameplay.aspect_ratio_default",
+    "gameplay.launch_confirmation",
+    "gameplay.reset_overrides"
+  ],
+  "context": {
+    "system_id": "system.synthetic-console",
+    "game_id": "game.synthetic-console-01"
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "gameplay.aspect_ratio_default": "system",
+      "gameplay.launch_confirmation": true
+    },
+    "overrides": {
+      "per_system": {
+        "system.synthetic-console": {
+          "gameplay.aspect_ratio_default": "4:3"
+        }
+      },
+      "per_game": {
+        "game.synthetic-console-01": {
+          "gameplay.aspect_ratio_default": "16:9",
+          "gameplay.launch_confirmation": false
+        }
+      }
+    },
+    "effective_for_game": {
+      "gameplay.aspect_ratio_default": "16:9",
+      "gameplay.launch_confirmation": false
+    },
+    "effective_source_for_game": {
+      "gameplay.aspect_ratio_default": "per_game",
+      "gameplay.launch_confirmation": "per_game"
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "step": "reset_game_override",
+        "semantic_id": "gameplay.reset_overrides",
+        "action": "invoke",
+        "targets": [
+          {
+            "scope": "per_game",
+            "target": "game.synthetic-console-01"
+          }
+        ]
+      },
+      {
+        "step": "reset_system_override",
+        "semantic_id": "gameplay.reset_overrides",
+        "action": "invoke",
+        "targets": [
+          {
+            "scope": "per_system",
+            "target": "system.synthetic-console"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "overrides_removed",
+    "steps": [
+      {
+        "step": "reset_game_override",
+        "status": "applied",
+        "effective_for_game": {
+          "gameplay.aspect_ratio_default": "4:3",
+          "gameplay.launch_confirmation": true
+        },
+        "effective_source_for_game": {
+          "gameplay.aspect_ratio_default": "per_system",
+          "gameplay.launch_confirmation": "domain_default"
+        },
+        "domain_defaults_unchanged": true,
+        "reset_is_persisted_toggle": false
+      },
+      {
+        "step": "reset_system_override",
+        "status": "applied",
+        "effective_for_game": {
+          "gameplay.aspect_ratio_default": "system",
+          "gameplay.launch_confirmation": true
+        },
+        "effective_source_for_game": {
+          "gameplay.aspect_ratio_default": "domain_default",
+          "gameplay.launch_confirmation": "domain_default"
+        },
+        "domain_defaults_unchanged": true,
+        "reset_is_persisted_toggle": false
+      }
+    ],
+    "persisted_overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "user_message_codes": [
+      "overrides.reset",
+      "overrides.reset"
+    ]
+  }
+}

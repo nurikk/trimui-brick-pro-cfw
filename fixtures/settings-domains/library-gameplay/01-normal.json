@@ -1,0 +1,90 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.normal.defaults-and-valid-actions",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "normal"
+  ],
+  "semantic_ids": [
+    "library.show_hidden_entries",
+    "library.show_favorites",
+    "library.show_collections",
+    "library.refresh"
+  ],
+  "context": {
+    "system_id": "system.synthetic-arcade",
+    "game_id": "game.synthetic-arcade-01"
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "library.show_hidden_entries": false,
+      "library.show_favorites": true,
+      "library.show_collections": true
+    },
+    "overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "effective": {
+      "library.show_hidden_entries": false,
+      "library.show_favorites": true,
+      "library.show_collections": true
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "semantic_id": "library.show_hidden_entries",
+        "scope": "domain_default",
+        "value": true
+      },
+      {
+        "semantic_id": "library.show_favorites",
+        "scope": "per_system",
+        "target": "system.synthetic-arcade",
+        "value": false
+      },
+      {
+        "semantic_id": "library.show_collections",
+        "scope": "per_system",
+        "target": "system.synthetic-arcade",
+        "value": true
+      },
+      {
+        "semantic_id": "library.refresh",
+        "action": "invoke",
+        "target": "library.synthetic-catalog"
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "applied",
+    "statuses": [
+      "applied",
+      "applied",
+      "applied",
+      "applied"
+    ],
+    "effective": {
+      "library.show_hidden_entries": true,
+      "library.show_favorites": false,
+      "library.show_collections": true
+    },
+    "persisted_overrides": {
+      "per_system": {
+        "system.synthetic-arcade": {
+          "library.show_favorites": false,
+          "library.show_collections": true
+        }
+      },
+      "per_game": {}
+    },
+    "pending": [],
+    "user_message_codes": [
+      "library.refresh.completed"
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.unsupported.capability-gated",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "unsupported"
+  ],
+  "semantic_ids": [
+    "gameplay.integer_scaling_preference",
+    "gameplay.auto_resume_policy"
+  ],
+  "context": {
+    "system_id": "system.synthetic-handheld",
+    "game_id": "game.synthetic-handheld-01"
+  },
+  "capabilities": {
+    "display.integer_scaling": false,
+    "gameplay.auto_resume": false
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "gameplay.integer_scaling_preference": "prefer",
+      "gameplay.auto_resume_policy": "prompt"
+    },
+    "overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "effective": {
+      "gameplay.integer_scaling_preference": "prefer",
+      "gameplay.auto_resume_policy": "prompt"
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "semantic_id": "gameplay.integer_scaling_preference",
+        "scope": "per_game",
+        "target": "game.synthetic-handheld-01",
+        "value": "require"
+      },
+      {
+        "semantic_id": "gameplay.auto_resume_policy",
+        "scope": "per_system",
+        "target": "system.synthetic-handheld",
+        "value": "resume_last"
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "rejected_fail_closed",
+    "statuses": [
+      "unsupported",
+      "unsupported"
+    ],
+    "effective_unchanged": true,
+    "persisted_overrides_unchanged": true,
+    "pending": [],
+    "user_message_codes": [
+      "unsupported.display.integer_scaling",
+      "unsupported.gameplay.auto_resume"
+    ]
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "fixture_kind": "settings_domain_scenario",
+  "fixture_id": "library-gameplay.confirm-cancel.pending-boundary",
+  "generated": {
+    "generator_revision": 1,
+    "deterministic": true
+  },
+  "categories": [
+    "confirm/cancel"
+  ],
+  "semantic_ids": [
+    "gameplay.aspect_ratio_default",
+    "gameplay.launch_confirmation",
+    "gameplay.integer_scaling_preference"
+  ],
+  "context": {
+    "system_id": "system.synthetic-arcade",
+    "game_id": "game.synthetic-arcade-01"
+  },
+  "initial_state": {
+    "domain_defaults": {
+      "gameplay.aspect_ratio_default": "system",
+      "gameplay.launch_confirmation": true,
+      "gameplay.integer_scaling_preference": "prefer"
+    },
+    "overrides": {
+      "per_system": {},
+      "per_game": {}
+    },
+    "effective": {
+      "gameplay.aspect_ratio_default": "system",
+      "gameplay.launch_confirmation": true,
+      "gameplay.integer_scaling_preference": "prefer"
+    }
+  },
+  "request": {
+    "operations": [
+      {
+        "step": "propose",
+        "semantic_id": "gameplay.aspect_ratio_default",
+        "scope": "per_system",
+        "target": "system.synthetic-arcade",
+        "value": "4:3"
+      },
+      {
+        "step": "confirm",
+        "semantic_id": "gameplay.aspect_ratio_default",
+        "scope": "per_system",
+        "target": "system.synthetic-arcade"
+      },
+      {
+        "step": "propose",
+        "semantic_id": "gameplay.launch_confirmation",
+        "scope": "per_game",
+        "target": "game.synthetic-arcade-01",
+        "value": false
+      },
+      {
+        "step": "cancel",
+        "semantic_id": "gameplay.launch_confirmation",
+        "scope": "per_game",
+        "target": "game.synthetic-arcade-01"
+      },
+      {
+        "step": "propose",
+        "semantic_id": "gameplay.integer_scaling_preference",
+        "scope": "per_game",
+        "target": "game.synthetic-arcade-01",
+        "value": "prefer"
+      },
+      {
+        "step": "cancel",
+        "semantic_id": "gameplay.integer_scaling_preference",
+        "scope": "per_game",
+        "target": "game.synthetic-arcade-01"
+      }
+    ]
+  },
+  "expected": {
+    "outcome": "confirmed_and_cancelled",
+    "steps": [
+      {
+        "step": "propose",
+        "status": "pending_confirmation",
+        "effective_unchanged": true
+      },
+      {
+        "step": "confirm",
+        "status": "applied",
+        "effective": {
+          "gameplay.aspect_ratio_default": "4:3"
+        },
+        "persisted_override": {
+          "scope": "per_system",
+          "target": "system.synthetic-arcade",
+          "semantic_id": "gameplay.aspect_ratio_default",
+          "value": "4:3"
+        }
+      },
+      {
+        "step": "propose",
+        "status": "pending_confirmation",
+        "effective": {
+          "gameplay.launch_confirmation": true
+        }
+      },
+      {
+        "step": "cancel",
+        "status": "cancelled",
+        "effective": {
+          "gameplay.launch_confirmation": true
+        },
+        "persisted_override_absent": true,
+        "pending_absent": true
+      },
+      {
+        "step": "propose",
+        "status": "pending_confirmation",
+        "effective": {
+          "gameplay.integer_scaling_preference": "prefer"
+        }
+      },
+      {
+        "step": "cancel",
+        "status": "cancelled",
+        "effective": {
+          "gameplay.integer_scaling_preference": "prefer"
+        },
+        "persisted_override_absent": true,
+        "pending_absent": true
+      }
+    ],
+    "user_message_codes": [
+      "confirmation.requested",
+      "change.applied",
+      "confirmation.requested",
+      "confirmation.cancelled",
+      "confirmation.requested",
+      "confirmation.cancelled"
+    ]
+  }
+}

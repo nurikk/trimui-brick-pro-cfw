@@ -1,0 +1,296 @@
+{
+  "fixtureId": "display-ui-contract-scenarios",
+  "fixtureKind": "generated-synthetic-contract-test-data",
+  "contract": "docs/settings/display-ui.md",
+  "deviceAccess": false,
+  "claimsPhysicalBehavior": false,
+  "schemaNote": "This is a fixture-local shape, not a global settings schema or descriptor format.",
+  "scenarios": [
+    {
+      "id": "normal-preferences",
+      "category": "normal",
+      "input": {
+        "initialPersisted": {
+          "display.brightness": 40,
+          "display.show_battery": true,
+          "display.battery_presentation": "icon",
+          "display.show_clock": true,
+          "display.controller_help_strip": true,
+          "display.screensaver_timeout": 600,
+          "display.dim_timeout": 120,
+          "artbook.default_color_scheme": "unset",
+          "artbook.default_artwork_mode": "unset",
+          "artbook.default_metadata_visibility": "unset",
+          "display.reduced_motion": false
+        },
+        "capabilities": {
+          "displayBrightnessWrite": true,
+          "syntheticBrightnessDomain": { "min": 1, "max": 100 },
+          "artbook": {
+            "colorSchemes": ["system", "high-contrast"],
+            "artworkModes": ["grid", "list"],
+            "metadataVisibility": ["show", "hide"]
+          }
+        },
+        "actions": [
+          { "type": "set", "semanticId": "display.brightness", "value": 55 },
+          { "type": "set", "semanticId": "display.show_battery", "value": true },
+          { "type": "set", "semanticId": "display.battery_presentation", "value": "percentage" },
+          { "type": "set", "semanticId": "display.show_clock", "value": false },
+          { "type": "set", "semanticId": "display.controller_help_strip", "value": false },
+          { "type": "set", "semanticId": "display.screensaver_timeout", "value": 300 },
+          { "type": "set", "semanticId": "display.dim_timeout", "value": 60 },
+          { "type": "set", "semanticId": "artbook.default_color_scheme", "value": "high-contrast" },
+          { "type": "set", "semanticId": "artbook.default_artwork_mode", "value": "grid" },
+          { "type": "set", "semanticId": "artbook.default_metadata_visibility", "value": "hide" },
+          { "type": "set", "semanticId": "display.reduced_motion", "value": true }
+        ]
+      },
+      "expectedResult": {
+        "status": "applied",
+        "persistedChanges": {
+          "display.brightness": 55,
+          "display.show_battery": true,
+          "display.battery_presentation": "percentage",
+          "display.show_clock": false,
+          "display.controller_help_strip": false,
+          "display.screensaver_timeout": 300,
+          "display.dim_timeout": 60,
+          "artbook.default_color_scheme": "high-contrast",
+          "artbook.default_artwork_mode": "grid",
+          "artbook.default_metadata_visibility": "hide",
+          "display.reduced_motion": true
+        },
+        "immediateApplied": [
+          "display.brightness",
+          "display.show_battery",
+          "display.battery_presentation",
+          "display.show_clock",
+          "display.controller_help_strip",
+          "display.screensaver_timeout",
+          "display.dim_timeout"
+        ],
+        "deferredSafeTransition": [
+          "artbook.default_color_scheme",
+          "artbook.default_artwork_mode",
+          "artbook.default_metadata_visibility",
+          "display.reduced_motion"
+        ],
+        "pendingConfirmation": [],
+        "assertions": [
+          { "type": "accepted-capability-value", "semanticId": "display.brightness", "expected": true },
+          { "type": "dependent-control-visible", "semanticId": "display.battery_presentation", "when": { "display.show_battery": true }, "expected": true },
+          { "type": "strict-timeout-order", "values": { "display.dim_timeout": 60, "display.screensaver_timeout": 300 }, "expected": true },
+          { "type": "atomic-persistence", "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "brightness-without-hal-evidence",
+      "category": "unsupported-capability",
+      "input": {
+        "initialPersisted": {
+          "display.brightness": 40,
+          "display.show_clock": true
+        },
+        "capabilities": {
+          "displayBrightnessWrite": false
+        },
+        "actions": [
+          { "type": "set", "semanticId": "display.brightness", "value": 70 },
+          { "type": "set", "semanticId": "display.show_clock", "value": false }
+        ]
+      },
+      "expectedResult": {
+        "status": "rejected",
+        "error": "unsupported-capability",
+        "persistedChanges": {},
+        "immediateApplied": [],
+        "assertions": [
+          { "type": "hidden-or-unavailable", "semanticId": "display.brightness", "withoutCapability": "displayBrightnessWrite", "expected": true },
+          { "type": "preserves-value", "semanticId": "display.brightness", "expected": 40 },
+          { "type": "no-partial-apply", "transactionActions": 2, "expected": true },
+          { "type": "preserves-unrelated-value", "semanticId": "display.show_clock", "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "invalid-values-and-options",
+      "category": "invalid-input",
+      "input": {
+        "initialPersisted": {
+          "display.ui_scale": 100,
+          "artbook.default_color_scheme": "unset"
+        },
+        "capabilities": {
+          "artbook": { "colorSchemes": ["system"] }
+        },
+        "actions": [
+          { "type": "set", "semanticId": "display.ui_scale", "value": 125 },
+          { "type": "set", "semanticId": "artbook.default_color_scheme", "value": "unknown-scheme" }
+        ]
+      },
+      "expectedResult": {
+        "status": "rejected",
+        "error": "invalid-or-unavailable-value",
+        "persistedChanges": {},
+        "immediateApplied": [],
+        "assertions": [
+          { "type": "rejects-out-of-options", "semanticId": "display.ui_scale", "value": 125, "expected": true },
+          { "type": "rejects-unadvertised-option", "semanticId": "artbook.default_color_scheme", "value": "unknown-scheme", "expected": true },
+          { "type": "no-partial-apply", "transactionActions": 2, "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "invalid-timeout-relationship",
+      "category": "invalid-cross-field-relationship",
+      "input": {
+        "initialPersisted": {
+          "display.screensaver_timeout": 300,
+          "display.dim_timeout": 60
+        },
+        "capabilities": {},
+        "actions": [
+          { "type": "set", "semanticId": "display.screensaver_timeout", "value": 60 },
+          { "type": "set", "semanticId": "display.dim_timeout", "value": 60 }
+        ]
+      },
+      "expectedResult": {
+        "status": "rejected",
+        "error": "invalid-cross-field-relationship",
+        "persistedChanges": {},
+        "immediateApplied": [],
+        "assertions": [
+          { "type": "requires-strictly-less", "left": "display.dim_timeout", "right": "display.screensaver_timeout", "expected": true },
+          { "type": "no-partial-apply", "transactionActions": 2, "expected": true },
+          { "type": "preserves-values", "values": { "display.screensaver_timeout": 300, "display.dim_timeout": 60 }, "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "pending-scale-change",
+      "category": "pending-change",
+      "input": {
+        "initialPersisted": { "display.ui_scale": 100 },
+        "capabilities": {},
+        "actions": [
+          { "type": "set", "semanticId": "display.ui_scale", "value": 140 }
+        ]
+      },
+      "expectedResult": {
+        "status": "pending-confirmation",
+        "persistedChanges": {},
+        "pending": { "display.ui_scale": 140 },
+        "immediateApplied": [],
+        "assertions": [
+          { "type": "deferred-until-safe-transition", "semanticId": "display.ui_scale", "expected": true },
+          { "type": "not-persisted-before-confirm", "semanticId": "display.ui_scale", "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "confirm-scale-change",
+      "category": "confirm",
+      "input": {
+        "initialPersisted": { "display.ui_scale": 100 },
+        "capabilities": {},
+        "actions": [
+          { "type": "set", "semanticId": "display.ui_scale", "value": 120 },
+          { "type": "confirm" }
+        ]
+      },
+      "expectedResult": {
+        "status": "confirmed",
+        "persistedChanges": { "display.ui_scale": 120 },
+        "pending": {},
+        "deferredSafeTransition": ["display.ui_scale"],
+        "assertions": [
+          { "type": "commits-pending-value", "semanticId": "display.ui_scale", "expected": 120 },
+          { "type": "applies-at-safe-transition", "semanticId": "display.ui_scale", "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "cancel-scale-change",
+      "category": "cancel",
+      "input": {
+        "initialPersisted": { "display.ui_scale": 100 },
+        "capabilities": {},
+        "actions": [
+          { "type": "set", "semanticId": "display.ui_scale", "value": 140 },
+          { "type": "cancel" }
+        ]
+      },
+      "expectedResult": {
+        "status": "cancelled",
+        "persistedChanges": {},
+        "pending": {},
+        "assertions": [
+          { "type": "restores-confirmed-value", "semanticId": "display.ui_scale", "expected": 100 },
+          { "type": "does-not-persist-candidate", "semanticId": "display.ui_scale", "expected": true }
+        ]
+      }
+    },
+    {
+      "id": "reset-to-contract-defaults",
+      "category": "reset",
+      "input": {
+        "initialPersisted": {
+          "display.brightness": 75,
+          "display.ui_scale": 140,
+          "display.show_battery": true,
+          "display.battery_presentation": "percentage",
+          "display.show_clock": false,
+          "display.controller_help_strip": false,
+          "display.screensaver_timeout": 900,
+          "display.dim_timeout": 120,
+          "artbook.default_color_scheme": "high-contrast",
+          "artbook.default_artwork_mode": "grid",
+          "artbook.default_metadata_visibility": "hide",
+          "display.reduced_motion": true
+        },
+        "capabilities": {
+          "displayBrightnessWrite": true,
+          "syntheticBrightnessDomain": { "min": 1, "max": 100 }
+        },
+        "actions": [
+          { "type": "reset", "semanticId": "display.brightness" },
+          { "type": "reset", "semanticId": "display.ui_scale" },
+          { "type": "reset", "semanticId": "display.show_battery" },
+          { "type": "reset", "semanticId": "display.battery_presentation" },
+          { "type": "reset", "semanticId": "display.show_clock" },
+          { "type": "reset", "semanticId": "display.controller_help_strip" },
+          { "type": "reset", "semanticId": "display.screensaver_timeout" },
+          { "type": "reset", "semanticId": "display.dim_timeout" },
+          { "type": "reset", "semanticId": "artbook.default_color_scheme" },
+          { "type": "reset", "semanticId": "artbook.default_artwork_mode" },
+          { "type": "reset", "semanticId": "artbook.default_metadata_visibility" },
+          { "type": "reset", "semanticId": "display.reduced_motion" }
+        ]
+      },
+      "expectedResult": {
+        "status": "reset",
+        "persistedValues": {
+          "display.brightness": "unavailable-until-capability-gated",
+          "display.ui_scale": 100,
+          "display.show_battery": true,
+          "display.battery_presentation": "icon",
+          "display.show_clock": true,
+          "display.controller_help_strip": true,
+          "display.screensaver_timeout": 300,
+          "display.dim_timeout": 60,
+          "artbook.default_color_scheme": "unset",
+          "artbook.default_artwork_mode": "unset",
+          "artbook.default_metadata_visibility": "unset",
+          "display.reduced_motion": false
+        },
+        "assertions": [
+          { "type": "restores-contract-defaults", "expected": true },
+          { "type": "brightness-reset-requires-current-gate", "semanticId": "display.brightness", "expected": true },
+          { "type": "dependent-setting-visible-after-reset", "semanticId": "display.battery_presentation", "when": { "display.show_battery": true }, "expected": true }
+        ]
+      }
+    }
+  ]
+}

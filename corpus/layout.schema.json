@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-private-corpus-layout.schema.json",
+  "title": "Public private-corpus layout configuration",
+  "description": "Public rules only. It contains no corpus instance, path, filename, hash, title, content ID, BIOS value, or private selection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "classificationRules", "default", "profiles"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema": {"const": "trimui-private-corpus-layout/v1"},
+    "classificationRules": {"type": "array", "items": {"$ref": "#/$defs/rule"}},
+    "default": {"$ref": "#/$defs/classification"},
+    "biosRoles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}},
+    "profiles": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/profile"}}
+  },
+  "$defs": {
+    "classification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["system", "core", "runner"],
+      "properties": {
+        "system": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "core": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "runner": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}
+      }
+    },
+    "rule": {
+      "allOf": [
+        {"type": "object", "additionalProperties": false, "required": ["match", "system", "core", "runner"], "properties": {
+          "match": {"$ref": "#/$defs/match"},
+          "system": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+          "core": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+          "runner": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+          "biosRole": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}
+        }}
+      ]
+    },
+    "match": {
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "pathComponent": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 _-]{0,31}$"},
+        "pathComponents": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 _-]{0,31}$"}},
+        "extensions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^\\.[a-z0-9]{1,8}$"}}
+      }
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false, "required": ["strategy", "limit"],
+      "properties": {
+        "strategy": {"enum": ["first-per-system", "all"]},
+        "limit": {"type": "integer", "minimum": 0},
+        "systems": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "trimui-private-corpus-layout/v1",
+  "classificationRules": [
+    {
+      "match": {"pathComponents": ["PortMaster", "ports"]},
+      "system": "portmaster",
+      "core": "portmaster",
+      "runner": "portmaster"
+    },
+    {
+      "match": {"pathComponents": ["BIOS", "bios"]},
+      "system": "bios",
+      "core": "firmware",
+      "runner": "firmware",
+      "biosRole": "firmware"
+    },
+    {
+      "match": {"pathComponents": ["GB", "GameBoy", "Game Boy"]},
+      "system": "gb",
+      "core": "gambatte",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["GBC", "GameBoyColor", "Game Boy Color"]},
+      "system": "gbc",
+      "core": "gambatte",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["GBA", "GameBoyAdvance", "Game Boy Advance"]},
+      "system": "gba",
+      "core": "mgba",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["GameGear", "Game Gear", "GG"]},
+      "system": "game-gear",
+      "core": "genesis-plus-gx",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["MegaDrive", "Mega Drive", "Genesis", "MD"]},
+      "system": "mega-drive",
+      "core": "genesis-plus-gx",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["NeoGeo", "Neo Geo"]},
+      "system": "neo-geo",
+      "core": "fbneo",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["NES", "Nintendo"]},
+      "system": "nes",
+      "core": "mesen",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["PS1", "PSX", "PS", "PlayStation"]},
+      "system": "ps1",
+      "core": "pcsx-rearmed",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["MasterSystem", "Master System", "SMS"]},
+      "system": "master-system",
+      "core": "genesis-plus-gx",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["SNES", "SuperNintendo", "Super Nintendo"]},
+      "system": "snes",
+      "core": "snes9x",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["PCE", "PCENGINE", "TG16", "PC-Engine", "PC Engine", "TurboGrafx-16"]},
+      "system": "pc-engine",
+      "core": "beetle-pce-fast",
+      "runner": "libretro"
+    },
+    {
+      "match": {"pathComponents": ["Arcade", "MAME", "FBNeo"]},
+      "system": "arcade",
+      "core": "fbneo",
+      "runner": "libretro"
+    },
+    {
+      "match": {"extensions": [".chd", ".cue", ".m3u"]},
+      "system": "ps1",
+      "core": "pcsx-rearmed",
+      "runner": "libretro"
+    },
+    {
+      "match": {"extensions": [".zip"]},
+      "system": "archive",
+      "core": "archive",
+      "runner": "libretro"
+    }
+  ],
+  "default": {"system": "other", "core": "file", "runner": "file"},
+  "biosRoles": ["firmware"],
+  "profiles": {
+    "smoke": {"strategy": "first-per-system", "limit": 0},
+    "compatibility": {"strategy": "all", "limit": 0}
+  }
+}

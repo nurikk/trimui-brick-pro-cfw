@@ -1,0 +1,821 @@
+#!/usr/bin/env python3
+"""Private, read-only acceptance corpus registry.
+
+The public CLI deliberately reports aggregate facts only. Private entries live
+in the state directory and are never printed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import stat
+import tempfile
+import uuid
+import zipfile
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_LAYOUT = ROOT / "corpus" / "layout.json"
+CURRENT = "current.json"
+BASELINE = "baseline.json"
+EXPECTATIONS = "expectations.json"
+RESOLUTION = "resolution.json"
+SCHEMA = "private-corpus-result/v1"
+
+
+class CorpusError(Exception):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def result(status: str, generation: str | None = None, counts: dict | None = None, code: str | None = None) -> None:
+    record = {"schema": SCHEMA, "status": status, "generationId": generation, "counts": counts or {}}
+    if code:
+        record["code"] = code
+    print(json.dumps(record, separators=(",", ":")))
+
+
+def fail(error: CorpusError, generation: str | None = None, counts: dict | None = None) -> int:
+    result("failed", generation, counts, error.code)
+    return 1
+
+
+def skip(code: str) -> int:
+    result("skipped_private_corpus", counts={"files": 0, "bytes": 0}, code=code)
+    return 0
+
+
+def read_json(path: Path) -> dict:
+    try:
+        with path.open(encoding="utf-8") as stream:
+            value = json.load(stream)
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise CorpusError("invalid_state") from error
+    if not isinstance(value, dict):
+        raise CorpusError("invalid_state")
+    return value
+
+
+def write_atomic(path: Path, value: dict) -> None:
+    data = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n"
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = -1
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError as error:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise CorpusError("state_write_failed") from error
+
+
+def safe_external(path: Path) -> Path:
+    if not path.is_absolute():
+        raise CorpusError("state_must_be_external")
+    try:
+        raw = path.absolute()
+        resolved = path.resolve(strict=False)
+        if (os.path.commonpath((str(ROOT), str(raw))) == str(ROOT)
+                or os.path.commonpath((str(ROOT), str(resolved))) == str(ROOT)):
+            raise CorpusError("state_must_be_external")
+    except ValueError as error:
+        raise CorpusError("state_must_be_external") from error
+    return resolved
+
+
+
+def private_file(path: Path) -> Path:
+    if not path.is_absolute() or path.is_symlink():
+        raise CorpusError("invalid_private_file")
+    selected = safe_external(path)
+    try:
+        if not selected.is_file() or stat.S_IMODE(selected.stat().st_mode) != 0o600:
+            raise CorpusError("invalid_private_file")
+    except OSError as error:
+        raise CorpusError("invalid_private_file") from error
+    return selected
+
+
+def state_dir(create: bool) -> Path:
+    value = os.environ.get("TRIMUI_PRIVATE_CORPUS_STATE")
+    if not value:
+        raise CorpusError("missing_state_configuration")
+    path = safe_external(Path(value))
+    try:
+        if path.exists():
+            if path.is_symlink() or not path.is_dir():
+                raise CorpusError("invalid_state")
+            os.chmod(path, 0o700)
+        elif create:
+            path.mkdir(mode=0o700, parents=False)
+        else:
+            raise CorpusError("missing_state")
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode != 0o700:
+            raise CorpusError("invalid_state")
+    except OSError as error:
+        raise CorpusError("invalid_state") from error
+    return path
+
+
+def corpus_root(read_only: bool = False) -> Path:
+    value = os.environ.get("TRIMUI_PRIVATE_CORPUS")
+    if not value:
+        raise CorpusError("missing_corpus_configuration")
+    path = Path(value)
+    if not path.is_absolute():
+        raise CorpusError("invalid_corpus")
+    try:
+        if os.path.commonpath((str(ROOT), str(path.absolute()))) == str(ROOT):
+            raise CorpusError("invalid_corpus")
+        root = path.resolve(strict=True)
+        if not root.is_dir() or path.is_symlink():
+            raise CorpusError("invalid_corpus")
+        if os.path.commonpath((str(ROOT), str(root))) == str(ROOT):
+            raise CorpusError("invalid_corpus")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise CorpusError("missing_corpus") from error
+    if read_only:
+        mount_identity(root)
+    return root
+
+
+def mount_identity(path: Path) -> tuple[str, Path]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CorpusError("mount_info_unavailable") from error
+    covering = None
+    for line in lines:
+        sections = line.split(" - ", 1)
+        if len(sections) != 2 or not sections[1].strip():
+            raise CorpusError("mount_info_invalid")
+        fields = sections[0].split()
+        if len(fields) < 6:
+            raise CorpusError("mount_info_invalid")
+        mount_point = fields[4]
+        for escaped, character in (("\\040", " "), ("\\011", "\t"), ("\\012", "\n"), ("\\134", "\\")):
+            mount_point = mount_point.replace(escaped, character)
+        if "\\" in mount_point:
+            raise CorpusError("mount_info_invalid")
+        candidate = Path(mount_point)
+        if not candidate.is_absolute() or not mount_point:
+            raise CorpusError("mount_info_invalid")
+        try:
+            path.relative_to(candidate)
+        except ValueError:
+            continue
+        if covering is None or len(candidate.parts) > len(covering[1].parts):
+            covering = (fields[0], candidate, fields[5].split(","))
+    if covering is None or "ro" not in covering[2]:
+        raise CorpusError("corpus_not_read_only")
+    return covering[0], covering[1]
+
+
+def public_file(path: Path) -> Path:
+    try:
+        selected = path.resolve(strict=True)
+        if path.is_symlink() or not selected.is_file() or os.path.commonpath((str(ROOT), str(selected))) != str(ROOT):
+            raise CorpusError("invalid_layout")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise CorpusError("invalid_layout") from error
+    return selected
+
+
+
+def layout(path: str | None) -> dict:
+    selected = public_file(Path(path) if path else DEFAULT_LAYOUT)
+    try:
+        value = read_json(selected)
+    except CorpusError as error:
+        raise CorpusError("invalid_layout") from error
+    if value.get("schema") != "trimui-private-corpus-layout/v1":
+        raise CorpusError("invalid_layout")
+    if not isinstance(value.get("classificationRules"), list) or not isinstance(value.get("profiles"), dict):
+        raise CorpusError("invalid_layout")
+    if not isinstance(value.get("default"), dict):
+        raise CorpusError("invalid_layout")
+    return value
+
+
+def valid_hash(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
+def state_file(state: Path, name: str, required: bool = True) -> Path | None:
+    path = state / name
+    try:
+        if not path.exists():
+            if required:
+                raise CorpusError("missing_manifest" if name == CURRENT else "missing_private_artifact")
+            return None
+        if path.is_symlink() or not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600:
+            raise CorpusError("invalid_state")
+    except OSError as error:
+        raise CorpusError("invalid_state") from error
+    return path
+
+
+def safe_relative(value: str) -> bool:
+    if not value or "\\" in value or "\x00" in value or value.startswith("/") or value.endswith("/"):
+        return False
+    parts = value.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return False
+    return not PurePosixPath(value).is_absolute()
+
+
+def relative_name(root: Path, path: Path) -> str:
+    try:
+        relative = path.relative_to(root).as_posix()
+    except ValueError as error:
+        raise CorpusError("invalid_path") from error
+    if not safe_relative(relative):
+        raise CorpusError("invalid_path")
+    return relative
+
+
+def component_key(value: str) -> str:
+    return "".join(character for character in value.casefold() if character.isalnum())
+
+
+def classify(relative: str, rules: list, default: dict) -> dict:
+    parts = {component_key(part) for part in PurePosixPath(relative).parent.parts}
+    suffix = Path(relative).suffix.lower()
+    for rule in rules:
+        match = rule.get("match", {})
+        components = {component_key(str(item)) for item in match.get("pathComponents", [])}
+        component = match.get("pathComponent")
+        component = component_key(component) if component is not None else None
+        extensions = {str(item).lower() for item in match.get("extensions", [])}
+        if component is not None and component not in parts:
+            continue
+        if components and not parts.intersection(components):
+            continue
+        if extensions and suffix not in extensions:
+            continue
+        if component is None and not components and not extensions:
+            continue
+        classification = {"system": rule["system"], "requiredCore": rule["core"], "requiredRunner": rule["runner"]}
+        if "biosRole" in rule:
+            classification["biosRole"] = rule["biosRole"]
+        return classification
+    return {"system": default["system"], "requiredCore": default["core"], "requiredRunner": default["runner"]}
+
+
+def counts(entries: list[dict]) -> dict:
+    by_suffix = {"zip": 0, "m3u": 0, "chd": 0}
+    total = 0
+    for entry in entries:
+        total += entry["size"]
+        suffix = Path(entry["relativePath"]).suffix.lower().lstrip(".")
+        if suffix in by_suffix:
+            by_suffix[suffix] += 1
+    return {"files": len(entries), "bytes": total, **by_suffix}
+
+
+def validate_m3u(root: Path, path: Path) -> None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise CorpusError("invalid_m3u") from error
+    for line in text.splitlines():
+        member = line
+        if not member or member.startswith("#"):
+            continue
+        if not safe_relative(member) or ":" in member:
+            raise CorpusError("invalid_m3u")
+        candidate = (path.parent / Path(*PurePosixPath(member).parts))
+        try:
+            resolved = candidate.resolve(strict=True)
+            if resolved != candidate.absolute() or os.path.commonpath((str(root), str(resolved))) != str(root):
+                raise CorpusError("invalid_m3u")
+            if not resolved.is_file():
+                raise CorpusError("invalid_m3u")
+        except (OSError, RuntimeError, ValueError) as error:
+            raise CorpusError("invalid_m3u") from error
+
+
+def validate_zip(path: Path) -> None:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if archive.testzip() is not None:
+                raise CorpusError("invalid_zip_crc")
+    except CorpusError:
+        raise
+    except (OSError, zipfile.BadZipFile, RuntimeError) as error:
+        raise CorpusError("invalid_zip") from error
+
+
+def scan(root: Path, config: dict) -> tuple[list[dict], dict]:
+    entries: list[dict] = []
+    rules = config["classificationRules"]
+    default = config["default"]
+
+    def visit(directory: Path) -> None:
+        try:
+            children = sorted(os.scandir(directory), key=lambda item: item.name)
+        except OSError as error:
+            raise CorpusError("scan_failed") from error
+        for child in children:
+            child_path = Path(child.path)
+            if child.is_symlink():
+                raise CorpusError("invalid_path")
+            if child.is_dir(follow_symlinks=False):
+                visit(child_path)
+                continue
+            if not child.is_file(follow_symlinks=False):
+                raise CorpusError("invalid_path")
+            relative = relative_name(root, child_path)
+            classification = classify(relative, rules, default)
+            try:
+                before = child_path.stat()
+                digest = hashlib.sha256()
+                with child_path.open("rb") as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        digest.update(chunk)
+                after = child_path.stat()
+            except OSError as error:
+                raise CorpusError("scan_failed") from error
+            if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
+                raise CorpusError("corpus_changed_during_scan")
+            entry = {"relativePath": relative, **classification, "size": after.st_size, "sha256": digest.hexdigest()}
+            entry["contentId"] = f"sha256-{entry['sha256']}"
+            if Path(relative).suffix.lower() == ".zip":
+                validate_zip(child_path)
+            if Path(relative).suffix.lower() == ".m3u":
+                validate_m3u(root, child_path)
+            entries.append(entry)
+
+    visit(root)
+    entries.sort(key=lambda entry: entry["relativePath"])
+    return entries, counts(entries)
+
+
+def manifest_valid(value: dict) -> bool:
+    if value.get("schema") != "trimui-private-corpus-manifest/v1" or not valid_hash(value.get("manifestHash", "")):
+        return False
+    generation = value.get("generationId")
+    entries = value.get("entries")
+    try:
+        uuid.UUID(generation)
+    except (AttributeError, ValueError, TypeError):
+        return False
+    return isinstance(entries, list)
+
+
+def validate_manifest(value: dict) -> dict:
+    if not manifest_valid(value):
+        raise CorpusError("invalid_manifest")
+    previous = ""
+    for entry in value["entries"]:
+        required = {"relativePath", "system", "size", "sha256", "contentId", "requiredCore", "requiredRunner"}
+        if not isinstance(entry, dict) or not required.issubset(entry) or not safe_relative(entry["relativePath"]):
+            raise CorpusError("invalid_manifest")
+        if type(entry["size"]) is not int or entry["size"] < 0 or not valid_hash(entry["sha256"]):
+            raise CorpusError("invalid_manifest")
+        if entry["contentId"] != f"sha256-{entry['sha256']}" or not isinstance(entry["system"], str):
+            raise CorpusError("invalid_manifest")
+        if entry["relativePath"] <= previous:
+            raise CorpusError("invalid_manifest")
+        previous = entry["relativePath"]
+    if manifest_hash(value["entries"]) != value["manifestHash"]:
+        raise CorpusError("invalid_manifest")
+    return value
+
+
+def generation_file(kind: str, generation: str) -> str:
+    return f"{kind}-{generation}.json"
+
+
+def load_generation(state: Path) -> tuple[dict, dict, dict]:
+    try:
+        current = read_json(state_file(state, CURRENT))
+    except CorpusError as error:
+        if error.code == "missing_manifest":
+            raise
+        raise CorpusError("invalid_current_generation") from error
+    generation = current.get("generationId")
+    try:
+        uuid.UUID(generation)
+    except (AttributeError, ValueError, TypeError) as error:
+        raise CorpusError("invalid_current_generation") from error
+    selection_name = current.get("selections")
+    try:
+        selection_id = selection_name[len("selections-"):-len(".json")]
+        uuid.UUID(selection_id)
+    except (AttributeError, ValueError, TypeError):
+        raise CorpusError("invalid_current_generation")
+    if (current.get("schema") != "trimui-private-corpus-current/v1"
+            or current.get("manifest") != generation_file("manifest", generation)
+            or selection_name != generation_file("selections", selection_id)):
+        raise CorpusError("invalid_current_generation")
+    try:
+        manifest = validate_manifest(read_json(state_file(state, current["manifest"])))
+        selections = read_json(state_file(state, current["selections"]))
+    except CorpusError as error:
+        raise CorpusError("invalid_current_generation") from error
+    if (manifest["generationId"] != generation
+            or selections.get("schema") != "trimui-private-corpus-selections/v1"
+            or selections.get("generationId") != generation
+            or not isinstance(selections.get("profiles"), dict)):
+        raise CorpusError("invalid_current_generation")
+    return current, manifest, selections
+
+
+def manifest_hash(entries: list[dict]) -> str:
+    payload = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def make_manifest(entries: list[dict], generation: str) -> dict:
+    return {"schema": "trimui-private-corpus-manifest/v1", "generationId": generation, "manifestHash": manifest_hash(entries), "entries": entries}
+
+
+def entry_lookup(manifest: dict) -> dict[str, dict]:
+    lookup = {}
+    for entry in manifest["entries"]:
+        lookup.setdefault(entry["contentId"], entry)
+    return lookup
+
+
+def verify_entries(root: Path, manifest: dict, config: dict) -> dict:
+    for entry in manifest["entries"]:
+        path = root / Path(*PurePosixPath(entry["relativePath"]).parts)
+        try:
+            resolved = path.resolve(strict=True)
+            if (path.is_symlink() or not path.is_file() or resolved != path.absolute()
+                    or os.path.commonpath((str(root), str(resolved))) != str(root)
+                    or relative_name(root, path) != entry["relativePath"]):
+                raise CorpusError("corpus_drift")
+            before = path.stat()
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    digest.update(chunk)
+            if before.st_size != entry["size"] or digest.hexdigest() != entry["sha256"]:
+                raise CorpusError("corpus_drift")
+            if Path(entry["relativePath"]).suffix.lower() == ".zip":
+                validate_zip(path)
+            if Path(entry["relativePath"]).suffix.lower() == ".m3u":
+                validate_m3u(root, path)
+        except CorpusError:
+            raise
+        except OSError as error:
+            raise CorpusError("corpus_drift") from error
+    return counts(manifest["entries"])
+
+
+def profile_selection(manifest: dict, config: dict, profile_name: str) -> list[dict]:
+    profiles = config["profiles"]
+    profile = profiles.get(profile_name)
+    if not isinstance(profile, dict):
+        raise CorpusError("unknown_profile")
+    entries = manifest["entries"]
+    systems = profile.get("systems")
+    if systems is not None:
+        entries = [entry for entry in entries if entry["system"] in systems]
+    selected: list[dict] = []
+    if profile.get("strategy") == "first-per-system":
+        seen_systems: set[str] = set()
+        for entry in entries:
+            if entry["system"] not in seen_systems:
+                selected.append(entry)
+                seen_systems.add(entry["system"])
+    elif profile.get("strategy") == "all":
+        selected = list(entries)
+    else:
+        raise CorpusError("invalid_layout")
+    unique: list[dict] = []
+    seen_ids: set[str] = set()
+    for entry in selected:
+        if entry["contentId"] not in seen_ids:
+            unique.append(entry)
+            seen_ids.add(entry["contentId"])
+    selected = unique
+    limit = profile.get("limit")
+    if not isinstance(limit, int) or limit < 0:
+        raise CorpusError("invalid_layout")
+    if limit:
+        selected = selected[:limit]
+    if len({entry["contentId"] for entry in selected}) != len(selected):
+        raise CorpusError("duplicate_selection")
+    return selected
+
+
+def selection_record(manifest: dict, config: dict, override: dict | None = None) -> tuple[dict, dict]:
+    lookup = entry_lookup(manifest)
+    records = {}
+    for name in config["profiles"]:
+        entries = profile_selection(manifest, config, name)
+        if override and name in override.get("profiles", {}):
+            ids = override["profiles"][name]
+            if not isinstance(ids, list) or len(set(ids)) != len(ids) or any(item not in lookup for item in ids):
+                raise CorpusError("invalid_override")
+            entries = [lookup[item] for item in ids]
+        records[name] = {"contentIds": [entry["contentId"] for entry in entries], "relativePaths": [entry["relativePath"] for entry in entries], "runners": [entry["requiredRunner"] for entry in entries], "cores": [entry["requiredCore"] for entry in entries]}
+    return {"schema": "trimui-private-corpus-selections/v1", "generationId": manifest["generationId"], "profiles": records}, records
+
+
+def load_override(path: str | None) -> dict | None:
+    if not path:
+        return None
+    selected = private_file(Path(path))
+    try:
+        value = read_json(selected)
+    except CorpusError as error:
+        raise CorpusError("invalid_override") from error
+    if value.get("schema") != "trimui-private-selection-override/v1" or not isinstance(value.get("profiles"), dict):
+        raise CorpusError("invalid_override")
+    return value
+
+
+def commit_generation(state: Path, entries: list[dict], config: dict, override: dict | None = None) -> tuple[str, dict, dict]:
+    generation = str(uuid.uuid4())
+    manifest = make_manifest(entries, generation)
+    selections, _ = selection_record(manifest, config, override)
+    manifest_name = generation_file("manifest", generation)
+    selections_name = generation_file("selections", str(uuid.uuid4()))
+    write_atomic(state / manifest_name, manifest)
+    write_atomic(state / selections_name, selections)
+    write_atomic(state / CURRENT, {"schema": "trimui-private-corpus-current/v1", "generationId": generation, "manifest": manifest_name, "selections": selections_name})
+    return generation, manifest, selections
+
+
+def commit_selections(state: Path, current: dict, manifest: dict, config: dict, override: dict | None = None) -> tuple[str, dict]:
+    selections, _ = selection_record(manifest, config, override)
+    selections_name = generation_file("selections", str(uuid.uuid4()))
+    write_atomic(state / selections_name, selections)
+    write_atomic(state / CURRENT, {"schema": "trimui-private-corpus-current/v1", "generationId": current["generationId"], "manifest": current["manifest"], "selections": selections_name})
+    return current["generationId"], selections
+
+
+def check_bios_expectations(manifest: dict, value: dict) -> None:
+    if value.get("schema") != "trimui-private-bios-expectations/v1":
+        raise CorpusError("invalid_bios_expectations")
+    if value.get("generationId") != manifest["generationId"]:
+        raise CorpusError("invalid_bios_expectations")
+    expected = value.get("entries")
+    bios = {entry["relativePath"]: entry for entry in manifest["entries"] if entry["system"] == "bios"}
+    if not isinstance(expected, list) or len(expected) != len(bios):
+        raise CorpusError("bios_expectation_coverage")
+    seen_roles: set[str] = set()
+    seen_paths: set[str] = set()
+    for item in expected:
+        if not isinstance(item, dict) or set(item) - {"role", "relativePath", "sha256", "size"}:
+            raise CorpusError("invalid_bios_expectations")
+        role = item.get("role")
+        relative = item.get("relativePath")
+        if (not isinstance(role, str) or not role or role in seen_roles
+                or not isinstance(relative, str) or not safe_relative(relative) or relative in seen_paths
+                or not valid_hash(item.get("sha256"))):
+            raise CorpusError("bios_expectation_mapping")
+        entry = bios.get(relative)
+        if entry is None:
+            raise CorpusError("bios_expectation_mapping")
+        if entry["sha256"] != item["sha256"]:
+            raise CorpusError("bios_expectation_mismatch")
+        if "size" in item and (type(item["size"]) is not int or item["size"] != entry["size"]):
+            raise CorpusError("bios_expectation_mismatch")
+        seen_roles.add(role)
+        seen_paths.add(relative)
+    if seen_paths != set(bios):
+        raise CorpusError("bios_expectation_coverage")
+
+
+def bios_verify(state: Path, manifest: dict, require: bool) -> str:
+    path = state_file(state, EXPECTATIONS, required=False)
+    if path is None:
+        if require:
+            raise CorpusError("missing_bios_expectations")
+        return "unconfigured"
+    check_bios_expectations(manifest, read_json(path))
+    return "verified"
+
+
+def require_generation() -> tuple[Path, Path, dict, dict, dict]:
+    root = corpus_root()
+    state = state_dir(False)
+    current, manifest, selections = load_generation(state)
+    return root, state, current, manifest, selections
+
+
+def build(args: argparse.Namespace) -> int:
+    try:
+        root = corpus_root()
+        state = state_dir(True)
+        config = layout(args.layout)
+        entries, aggregate = scan(root, config)
+        old = None
+        try:
+            _, old, _ = load_generation(state)
+        except CorpusError as error:
+            if error.code not in {"missing_manifest", "invalid_current_generation"}:
+                raise
+        baseline_path = state_file(state, BASELINE, required=False)
+        if baseline_path:
+            baseline = read_json(baseline_path)
+            if baseline.get("schema") != "trimui-private-corpus-baseline/v1" or baseline.get("counts") != aggregate:
+                return fail(CorpusError("baseline_drift"), old.get("generationId") if old else None, aggregate)
+        generation, _, _ = commit_generation(state, entries, config)
+        result("ok", generation, aggregate)
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def verify(args: argparse.Namespace) -> int:
+    try:
+        root, state, _, manifest, _ = require_generation()
+        config = layout(args.layout)
+        current, aggregate = scan(root, config)
+        if current != manifest["entries"]:
+            raise CorpusError("corpus_drift")
+        bios = bios_verify(state, manifest, args.require_expectations)
+        result("ok", manifest["generationId"], {**aggregate, "biosExpectations": bios})
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state", "missing_manifest"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def profiles(args: argparse.Namespace) -> int:
+    if args.action == "list":
+        try:
+            config = layout(args.layout)
+            result("ok", counts={"profiles": len(config["profiles"])})
+            return 0
+        except CorpusError as error:
+            return fail(error)
+    if not args.name:
+        return fail(CorpusError("profile_required"))
+    try:
+        root, state, current, manifest, _ = require_generation()
+        config = layout(args.layout)
+        if args.action == "inspect":
+            selection = profile_selection(manifest, config, args.name)
+            result("ok", manifest["generationId"], {"selected": len(selection)})
+            return 0
+        generation, selections = commit_selections(state, current, manifest, config, load_override(args.override))
+        selected = selections["profiles"].get(args.name, {})
+        result("ok", generation, {"selected": len(selected.get("contentIds", []))})
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state", "missing_manifest"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def resolve(args: argparse.Namespace) -> int:
+    try:
+        root = corpus_root(read_only=True)
+        if args.generation:
+            try:
+                uuid.UUID(args.generation)
+            except ValueError as error:
+                raise CorpusError("generation_drift") from error
+        state = state_dir(False)
+        _, manifest, selections = load_generation(state)
+        if args.generation and args.generation != manifest["generationId"]:
+            raise CorpusError("generation_drift")
+        config = layout(args.layout)
+        if args.profile not in config["profiles"]:
+            raise CorpusError("unknown_profile")
+        selected = selections.get("profiles", {}).get(args.profile, {}).get("contentIds")
+        paths = selections.get("profiles", {}).get(args.profile, {}).get("relativePaths")
+        if (not isinstance(selected, list) or not isinstance(paths, list)
+                or not 0 <= args.slot < len(selected) or len(paths) != len(selected)):
+            raise CorpusError("invalid_selection")
+        entry = next((item for item in manifest["entries"] if item["relativePath"] == paths[args.slot]), None)
+        if entry and entry["contentId"] != selected[args.slot]:
+            entry = None
+        if entry is None:
+            raise CorpusError("invalid_selection")
+        verify_entries(root, {**manifest, "entries": [entry]}, config)
+        source = root / Path(*PurePosixPath(entry["relativePath"]).parts)
+        root_mount, _ = mount_identity(root)
+        source_mount, _ = mount_identity(source)
+        if source_mount != root_mount:
+            raise CorpusError("corpus_not_read_only")
+        write_atomic(state / RESOLUTION, {"schema": "trimui-private-corpus-resolution/v1", "generationId": manifest["generationId"], "profile": args.profile, "slot": args.slot, "entry": entry})
+        result("ok", manifest["generationId"], {"resolved": 1})
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state", "missing_manifest"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def expectations(args: argparse.Namespace) -> int:
+    try:
+        _, state, _, manifest, _ = require_generation()
+        if args.action == "verify":
+            bios_verify(state, manifest, True)
+            result("ok", manifest["generationId"], {"biosExpectations": "verified"})
+            return 0
+        if not args.reviewed or not args.input:
+            raise CorpusError("operator_review_required")
+        source = private_file(Path(args.input))
+        value = read_json(source)
+        if (value.get("schema") != "trimui-private-bios-expectations/v1"
+                or not isinstance(value.get("entries"), list)):
+            raise CorpusError("invalid_bios_expectations")
+        prepared = {"schema": value["schema"], "generationId": manifest["generationId"], "entries": value["entries"]}
+        check_bios_expectations(manifest, prepared)
+        write_atomic(state / EXPECTATIONS, prepared)
+        bios_verify(state, manifest, True)
+        result("ok", manifest["generationId"], {"biosExpectations": "verified"})
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state", "missing_manifest"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def baseline(args: argparse.Namespace) -> int:
+    try:
+        _, state, _, manifest, _ = require_generation()
+        aggregate = counts(manifest["entries"])
+        supplied = {"files": args.files, "bytes": args.bytes, "zip": args.zip, "m3u": args.m3u, "chd": args.chd}
+        if not args.reviewed or supplied != aggregate:
+            raise CorpusError("baseline_review_required")
+        write_atomic(state / BASELINE, {"schema": "trimui-private-corpus-baseline/v1", "counts": supplied})
+        result("ok", manifest["generationId"], aggregate)
+        return 0
+    except CorpusError as error:
+        if error.code in {"missing_corpus_configuration", "missing_corpus", "missing_state_configuration", "missing_state", "missing_manifest"}:
+            return skip(error.code)
+        return fail(error)
+
+
+def parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--layout", help="public layout JSON (repository default)")
+    root = argparse.ArgumentParser(prog="scripts/private-corpus", description="Private read-only corpus registry; public output is aggregate-only.", epilog="Private commands require TRIMUI_PRIVATE_CORPUS and TRIMUI_PRIVATE_CORPUS_STATE.")
+    commands = root.add_subparsers(dest="command")
+    for name in ("build", "rebuild"):
+        command = commands.add_parser(name, parents=[common], help="scan, validate, and atomically rotate the private manifest")
+        command.set_defaults(handler=build)
+    command = commands.add_parser("verify", parents=[common], help="verify manifest hashes, ZIP CRCs, M3U references, and optional BIOS expectations")
+    command.add_argument("--require-expectations", action="store_true")
+    command.set_defaults(handler=verify)
+    command = commands.add_parser("profile", parents=[common], help="list, inspect, or write private profile selections")
+    command.add_argument("action", choices=("list", "inspect", "select"))
+    command.add_argument("--name", help="configured profile name")
+    command.add_argument("--override", help="external operator-curated ID override")
+    command.set_defaults(handler=profiles)
+    for name in ("resolve", "probe"):
+        command = commands.add_parser(name, parents=[common], help="read-only resolve/probe of one private profile slot")
+        command.add_argument("--profile", required=True)
+        command.add_argument("--slot", required=True, type=int)
+        command.add_argument("--generation", help="expected private generation UUID")
+        command.set_defaults(handler=resolve)
+    command = commands.add_parser("expectations", parents=[common], help="reviewed private BIOS expectation initialization/update/verify")
+    command.add_argument("action", choices=("init", "update", "verify"))
+    command.add_argument("--input", help="external reviewed expectations JSON")
+    command.add_argument("--reviewed", action="store_true")
+    command.set_defaults(handler=expectations)
+    command = commands.add_parser("baseline", parents=[common], help="accept a reviewed aggregate baseline outside the repository")
+    command.add_argument("action", choices=("accept",))
+    for name in ("files", "bytes", "zip", "m3u", "chd"):
+        command.add_argument(f"--{name}", required=True, type=int)
+    command.add_argument("--reviewed", action="store_true")
+    command.set_defaults(handler=baseline)
+    return root
+
+
+def main() -> int:
+    arguments = parser().parse_args()
+    if not arguments.command:
+        parser().print_help()
+        return 2
+    try:
+        return arguments.handler(arguments)
+    except (KeyboardInterrupt, BrokenPipeError):
+        return 2
+    except Exception:
+        return fail(CorpusError("internal_error"))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-private-corpus.schema.json",
+  "title": "Private corpus state contracts",
+  "description": "Public schemas for private state shape. No private instance or corpus-derived value is included.",
+  "oneOf": [
+    {"$ref": "#/$defs/current"},
+    {"$ref": "#/$defs/manifest"},
+    {"$ref": "#/$defs/selections"},
+    {"$ref": "#/$defs/expectations"},
+    {"$ref": "#/$defs/resolution"},
+    {"$ref": "#/$defs/baseline"},
+    {"$ref": "#/$defs/override"},
+    {"$ref": "#/$defs/result"}
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "contentId": {"type": "string", "pattern": "^sha256-[0-9a-f]{64}$"},
+    "generation": {"type": "string", "format": "uuid"},
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relativePath", "system", "size", "sha256", "contentId", "requiredCore", "requiredRunner"],
+      "properties": {
+        "relativePath": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*//)[^\\u0000]+$"},
+        "system": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "size": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/hash"},
+        "contentId": {"$ref": "#/$defs/contentId"},
+        "requiredCore": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "requiredRunner": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "biosRole": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}
+      }
+    },
+    "current": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "generationId", "manifest", "selections"],
+      "properties": {
+        "schema": {"const": "trimui-private-corpus-current/v1"},
+        "generationId": {"$ref": "#/$defs/generation"},
+        "manifest": {"type": "string", "pattern": "^manifest-[0-9a-f-]{36}\\.json$"},
+        "selections": {"type": "string", "pattern": "^selections-[0-9a-f-]{36}\\.json$"}
+      }
+    },
+    "manifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "generationId", "manifestHash", "entries"],
+      "properties": {
+        "schema": {"const": "trimui-private-corpus-manifest/v1"},
+        "generationId": {"$ref": "#/$defs/generation"},
+        "manifestHash": {"$ref": "#/$defs/hash"},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}}
+      }
+    },
+    "profileSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contentIds", "relativePaths", "runners", "cores"],
+      "properties": {
+        "contentIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentId"}},
+        "relativePaths": {"type": "array", "items": {"type": "string"}},
+        "runners": {"type": "array", "items": {"type": "string"}},
+        "cores": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "selections": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "generationId", "profiles"],
+      "properties": {
+        "schema": {"const": "trimui-private-corpus-selections/v1"},
+        "generationId": {"$ref": "#/$defs/generation"},
+        "profiles": {"type": "object", "additionalProperties": {"$ref": "#/$defs/profileSelection"}}
+      }
+    },
+    "expectation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "relativePath", "sha256"],
+      "properties": {
+        "role": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "relativePath": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*//)[^\\u0000]+$"},
+        "sha256": {"$ref": "#/$defs/hash"}, "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "expectations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "generationId", "entries"],
+      "properties": {
+        "schema": {"const": "trimui-private-bios-expectations/v1"},
+        "generationId": {"$ref": "#/$defs/generation"},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/expectation"}}
+      }
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "counts"],
+      "properties": {
+        "schema": {"const": "trimui-private-corpus-baseline/v1"},
+        "counts": {"type": "object", "additionalProperties": false, "required": ["files", "bytes", "zip", "m3u", "chd"], "properties": {
+          "files": {"type": "integer", "minimum": 0}, "bytes": {"type": "integer", "minimum": 0},
+          "zip": {"type": "integer", "minimum": 0}, "m3u": {"type": "integer", "minimum": 0}, "chd": {"type": "integer", "minimum": 0}
+        }}
+      }
+    },
+    "override": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profiles"],
+      "properties": {
+        "schema": {"const": "trimui-private-selection-override/v1"},
+        "profiles": {"type": "object", "additionalProperties": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentId"}}}
+      }
+    },
+    "resolution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "generationId", "profile", "slot", "entry"],
+      "properties": {
+        "schema": {"const": "trimui-private-corpus-resolution/v1"},
+        "generationId": {"$ref": "#/$defs/generation"},
+        "profile": {"type": "string"}, "slot": {"type": "integer", "minimum": 0},
+        "entry": {"$ref": "#/$defs/entry"}
+      }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "status", "generationId", "counts"],
+      "properties": {
+        "schema": {"const": "private-corpus-result/v1"},
+        "status": {"enum": ["ok", "failed", "skipped_private_corpus"]},
+        "generationId": {"type": ["string", "null"]},
+        "counts": {"type": "object", "additionalProperties": {"type": ["integer", "string"]}},
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+      }
+    }
+  }
+}

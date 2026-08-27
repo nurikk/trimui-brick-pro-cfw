@@ -4585,6 +4585,24 @@
       "sourceUrl": "https://github.com/jedisct1/rust-minisign-verify",
       "status": "approved",
       "version": "0.2.5"
+    },
+    {
+      "componentClass": "emulator-package",
+      "copyrightAttribution": "No third-party attribution is asserted for this blocked project-authored contract.",
+      "id": "tg4040-stable-core-pack",
+      "intendedUse": "Blocked project-authored stable core-pack contract/catalog only; no package, runner, core, BIOS, or target payload is selected.",
+      "licenseEvidenceReason": "No third-party source or license claim was made for the blocked metadata-only contract.",
+      "licenseEvidenceUrl": null,
+      "licenseExpression": "NOASSERTION",
+      "name": "TG4040 stable core-pack contract",
+      "obligations": [],
+      "rationale": "The contract records prospective public planning identities without selecting upstream packages or asserting artifact, BIOS, license, or signature availability.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "project-authored blocked metadata",
+      "sourceUrl": null,
+      "sourceUrlReason": "No external source or payload is selected.",
+      "status": "blocked",
+      "version": "1.0.0"
     }
   ],
   "distributedArtifacts": [

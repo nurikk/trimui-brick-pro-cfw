@@ -3,12 +3,12 @@
   "format": "brickpro-launch-catalog",
   "schemaVersion": 1,
   "runners": [
-    {"id": "generated-libretro", "version": "1.0.0", "kinds": ["libretro"], "capabilities": ["display-basic", "input-standard", "suspend"]},
-    {"id": "generated-standalone", "version": "1.0.0", "kinds": ["standalone"], "capabilities": ["display-basic", "input-standard", "suspend"]},
-    {"id": "generated-portmaster", "version": "1.0.0", "kinds": ["portmaster"], "capabilities": ["display-basic", "input-standard", "suspend"]}
+    {"id": "generated-libretro", "version": "1.0.0", "kinds": ["libretro"], "capabilities": ["display-basic", "input-standard", "suspend"], "status": "approved"},
+    {"id": "generated-standalone", "version": "1.0.0", "kinds": ["standalone"], "capabilities": ["display-basic", "input-standard", "suspend"], "status": "approved"},
+    {"id": "generated-portmaster", "version": "1.0.0", "kinds": ["portmaster"], "capabilities": ["display-basic", "input-standard", "suspend"], "status": "approved"}
   ],
   "cores": [
-    {"id": "generated-core", "version": "1.0.0", "runnerId": "generated-libretro", "runnerVersion": "1.0.0", "kind": "libretro"}
+    {"id": "generated-core", "version": "1.0.0", "runnerId": "generated-libretro", "runnerVersion": "1.0.0", "kind": "libretro", "status": "approved"}
   ],
   "profiles": [
     {"id": "generated-default", "capabilities": ["display-basic", "input-standard", "suspend"]}

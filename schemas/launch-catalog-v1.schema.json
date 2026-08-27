@@ -36,24 +36,26 @@
     "runner": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "version", "kinds", "capabilities"],
+      "required": ["id", "version", "kinds", "capabilities", "status"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "version": {"$ref": "#/$defs/version"},
         "kinds": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/kind"}},
-        "capabilities": {"type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}
+        "capabilities": {"type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}},
+        "status": {"const": "approved"}
       }
     },
     "core": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "version", "runnerId", "runnerVersion", "kind"],
+      "required": ["id", "version", "runnerId", "runnerVersion", "kind", "status"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "version": {"$ref": "#/$defs/version"},
         "runnerId": {"$ref": "#/$defs/identifier"},
         "runnerVersion": {"$ref": "#/$defs/version"},
-        "kind": {"const": "libretro"}
+        "kind": {"const": "libretro"},
+        "status": {"const": "approved"}
       }
     },
     "profile": {

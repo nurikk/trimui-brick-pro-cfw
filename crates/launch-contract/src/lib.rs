@@ -174,6 +174,7 @@ pub struct RunnerEntry {
     pub version: String,
     pub kinds: Vec<LaunchKind>,
     pub capabilities: Vec<Capability>,
+    pub status: CatalogEntryStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -186,6 +187,7 @@ pub struct CoreEntry {
     #[serde(rename = "runnerVersion")]
     pub runner_version: String,
     pub kind: LaunchKind,
+    pub status: CatalogEntryStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -193,6 +195,13 @@ pub struct CoreEntry {
 pub struct ProfileEntry {
     pub id: String,
     pub capabilities: Vec<Capability>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CatalogEntryStatus {
+    Approved,
+    Blocked,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -331,7 +340,8 @@ fn validate_catalog_entries(catalog: &Catalog) -> Result<()> {
     for runner in &catalog.runners {
         validate_identifier(&runner.id, "runner identifier")?;
         validate_version(&runner.version, "runner version")?;
-        if runner.kinds.is_empty()
+        if runner.status != CatalogEntryStatus::Approved
+            || runner.kinds.is_empty()
             || runner.kinds.len() > 3
             || runner.capabilities.is_empty()
             || runner.capabilities.len() > 6
@@ -353,7 +363,8 @@ fn validate_catalog_entries(catalog: &Catalog) -> Result<()> {
         validate_identifier(&core.id, "core identifier")?;
         validate_version(&core.version, "core version")?;
         validate_version(&core.runner_version, "core runner version")?;
-        if core.kind != LaunchKind::Libretro
+        if core.status != CatalogEntryStatus::Approved
+            || core.kind != LaunchKind::Libretro
             || !catalog.runners.iter().any(|runner| {
                 runner.id == core.runner_id
                     && runner.version == core.runner_version

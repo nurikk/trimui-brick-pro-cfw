@@ -62,6 +62,24 @@ fn demo(fixtures: &Path) -> Result<()> {
     println!("PASS signed delegated package target progression");
 
     let (manifest, _) = load_manifest(&manifest_path)?;
+    let blocked_manifest = fixtures.join("payload/blocked-core-pack-manifest.json");
+    if install(
+        &root,
+        &blocked_manifest,
+        &payload_root,
+        &report.target,
+        TrustContext::community_signed(),
+        TransactionOptions::default(),
+    )
+    .is_ok()
+        || root
+            .join(".brickpro/package-state/tg4040-stable-core-pack.json")
+            .exists()
+        || protected_before != protected_bytes(&root)?
+    {
+        bail!("blocked core-pack was installed or changed protected data")
+    }
+    println!("PASS blocked core-pack rejected before installation");
     let activation = install(
         &root,
         &manifest_path,

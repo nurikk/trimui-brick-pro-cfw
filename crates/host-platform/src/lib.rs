@@ -1,11 +1,14 @@
-use std::{fs, path::Path};
+use std::{fmt, fs, path::Path};
 
 use png::{BitDepth, ColorType, Encoder};
 use sdl2::{pixels::PixelFormatEnum, rect::Rect, render::Canvas, video::Window, Sdl};
 use serde::Deserialize;
 use sim_platform_contract::{
-    Button, ButtonAction, ButtonEvent, HardwareChanges, HardwareState, Platform, PlatformResult,
-    PlatformSnapshot, Screen, StorageMode, SuspendResult, SuspendState,
+    AudioState, BatteryState, Button, ButtonAction, ButtonEvent, DisplayState,
+    HallCalibrationState, HardwareChanges, HardwareDomain, HardwareState, InputState,
+    LedState as PlatformLedState, Platform, PlatformCapabilities, PlatformError, PlatformIdentity,
+    PlatformResult, PlatformSnapshot, PlatformState, PowerState, RadioState, RadiosState,
+    RumbleState, Screen, StorageMode, SuspendResult, SuspendState, UsbRole, UsbState,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -67,7 +70,7 @@ struct Battery {
     level_percent: u8,
     charging: bool,
     #[serde(rename = "externalPower")]
-    _external_power: bool,
+    external_power: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,7 +78,7 @@ struct Battery {
 struct Led {
     state: LedState,
     #[serde(rename = "brightnessPercent")]
-    _brightness_percent: u8,
+    brightness_percent: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,9 +93,9 @@ enum LedState {
 struct Audio {
     enabled: bool,
     #[serde(rename = "volumePercent")]
-    _volume_percent: u8,
+    volume_percent: u8,
     #[serde(rename = "active")]
-    _active: bool,
+    active: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,30 +168,37 @@ struct Clock {
 pub struct HostPlatform {
     _sdl: Sdl,
     canvas: Canvas<Window>,
-    _initial_pressed: Vec<Button>,
+    state: PlatformState,
     events: Vec<ButtonEvent>,
     event_index: usize,
     logical_time_ms: u64,
-    snapshot: PlatformSnapshot,
-    hardware: HardwareState,
     target_sku: String,
 }
 
 impl HostPlatform {
     pub fn new(profile_path: &Path, backend: Backend) -> PlatformResult<Self> {
-        let bytes = fs::read(profile_path).map_err(|error| error.to_string())?;
-        let profile: Profile = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        let bytes = fs::read(profile_path).map_err(backend_error)?;
+        let profile: Profile = serde_json::from_slice(&bytes).map_err(backend_error)?;
         if profile.contract_version != "1.0.0" || profile.target_sku != "TG4040" {
-            return Err("unsupported synthetic profile".to_string());
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Display,
+                reason: "unsupported synthetic profile".to_string(),
+            });
         }
         if profile.display.logical_width != 1024 || profile.display.logical_height != 768 {
-            return Err("unsupported logical display".to_string());
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Display,
+                reason: "unsupported logical display".to_string(),
+            });
         }
         if !profile.virtual_storage.read_only {
-            return Err("virtual storage must be read-only".to_string());
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Storage,
+                reason: "virtual storage must be read-only".to_string(),
+            });
         }
         if profile.faults.iter().any(|fault| fault == "startup") {
-            return Err("injected startup fault".to_string());
+            return Err(PlatformError::Backend("injected startup fault".to_string()));
         }
         for file in &profile.virtual_storage.files {
             if file.logical_key.is_empty()
@@ -198,7 +208,10 @@ impl HostPlatform {
                 })
                 || !file.logical_key.as_bytes()[0].is_ascii_lowercase()
             {
-                return Err("invalid virtual storage key".to_string());
+                return Err(PlatformError::Invalid {
+                    domain: HardwareDomain::Storage,
+                    reason: "invalid virtual storage key".to_string(),
+                });
             }
         }
         let Controls {
@@ -214,10 +227,10 @@ impl HostPlatform {
             })
             .collect();
         let virtual_sd = std::env::temp_dir().join("trimui-virtual-sd");
-        fs::create_dir_all(&virtual_sd).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&virtual_sd).map_err(backend_error)?;
         for file in profile.virtual_storage.files {
             fs::write(virtual_sd.join(file.logical_key), file.content.as_str())
-                .map_err(|error| error.to_string())?;
+                .map_err(backend_error)?;
         }
 
         let video_driver = match backend {
@@ -225,50 +238,76 @@ impl HostPlatform {
             Backend::Dummy => "dummy",
         };
         std::env::set_var("SDL_VIDEODRIVER", video_driver);
-        let sdl = sdl2::init().map_err(|error| error.to_string())?;
-        let video = sdl.video().map_err(|error| error.to_string())?;
+        let sdl = sdl2::init().map_err(backend_error)?;
+        let video = sdl.video().map_err(backend_error)?;
         let window = video
-            .window("TG4040 host-native userspace simulator", 1024, 768)
+            .window("host-native userspace simulator", 1024, 768)
             .position_centered()
             .build()
-            .map_err(|error| error.to_string())?;
+            .map_err(backend_error)?;
         let canvas = window
             .into_canvas()
             .software()
             .build()
-            .map_err(|error| error.to_string())?;
-        let snapshot = PlatformSnapshot {
-            battery_level_percent: profile.battery.level_percent,
-            charging: profile.battery.charging,
-            led_on: matches!(profile.led.state, LedState::On),
-            audio_enabled: profile.audio.enabled,
-            radio_enabled: profile.radio.enabled,
-            suspended: matches!(profile.suspend.state, ProfileSuspendState::Suspended),
+            .map_err(backend_error)?;
+        let suspend_state = match profile.suspend.state {
+            ProfileSuspendState::Active => SuspendState::Active,
+            ProfileSuspendState::Suspended => SuspendState::Suspended,
         };
-        let hardware = HardwareState {
-            battery_percent: profile.battery.level_percent,
-            charging: profile.battery.charging,
-            storage_mode: StorageMode::Available,
-            radio_enabled: profile.radio.enabled,
-            radio_connected: profile.radio.connected,
-            suspend_state: match profile.suspend.state {
-                ProfileSuspendState::Active => SuspendState::Active,
-                ProfileSuspendState::Suspended => SuspendState::Suspended,
+        let suspend_result = match profile.suspend.wake_reason.as_str() {
+            "control" => SuspendResult::Success,
+            _ => SuspendResult::None,
+        };
+        let state = PlatformState {
+            display: DisplayState {
+                logical_width: profile.display.logical_width,
+                logical_height: profile.display.logical_height,
             },
-            suspend_result: match profile.suspend.wake_reason.as_str() {
-                "control" => SuspendResult::Success,
-                _ => SuspendResult::None,
+            input: InputState {
+                pressed: initial_pressed,
             },
+            hall_calibration: HallCalibrationState { calibrated: false },
+            power: PowerState {
+                external_power: profile.battery.external_power,
+            },
+            battery: BatteryState {
+                percent: profile.battery.level_percent,
+                charging: profile.battery.charging,
+            },
+            suspend: (suspend_state, suspend_result),
+            radios: RadiosState {
+                wifi: RadioState {
+                    enabled: profile.radio.enabled,
+                    connected: profile.radio.connected,
+                },
+                bluetooth: RadioState {
+                    enabled: false,
+                    connected: false,
+                },
+            },
+            audio: AudioState {
+                enabled: profile.audio.enabled,
+                volume_percent: profile.audio.volume_percent,
+                active: profile.audio.active,
+            },
+            leds: PlatformLedState {
+                on: matches!(profile.led.state, LedState::On),
+                brightness_percent: profile.led.brightness_percent,
+            },
+            rumble: RumbleState { active: false },
+            usb: UsbState {
+                connected: false,
+                role: UsbRole::None,
+            },
+            storage: StorageMode::Available,
         };
         Ok(Self {
             _sdl: sdl,
             canvas,
-            _initial_pressed: initial_pressed,
+            state,
             events,
             event_index: 0,
             logical_time_ms: profile.clock.start_ms,
-            snapshot,
-            hardware,
             target_sku: profile.target_sku,
         })
     }
@@ -279,12 +318,34 @@ impl HostPlatform {
 }
 
 impl Platform for HostPlatform {
+    fn identity(&self) -> PlatformIdentity {
+        PlatformIdentity {
+            target_sku: self.target_sku.clone(),
+            lane: "host-native userspace simulator".to_string(),
+        }
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        PlatformCapabilities::all(sim_platform_contract::CapabilityStatus::Supported)
+    }
+
     fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>> {
         let Some(event) = self.events.get(self.event_index).copied() else {
             return Ok(None);
         };
         self.event_index += 1;
         self.logical_time_ms = event.at_ms;
+        match event.action {
+            ButtonAction::Press if !self.state.input.pressed.contains(&event.button) => {
+                self.state.input.pressed.push(event.button);
+            }
+            ButtonAction::Release => self
+                .state
+                .input
+                .pressed
+                .retain(|button| *button != event.button),
+            ButtonAction::Press => {}
+        }
         Ok(Some(event))
     }
 
@@ -296,7 +357,7 @@ impl Platform for HostPlatform {
             .set_draw_color(sdl2::pixels::Color::RGB(40, 52, 75));
         self.canvas
             .fill_rect(Rect::new(48, 40, 928, 96))
-            .map_err(|error| error.to_string())?;
+            .map_err(backend_error)?;
         for index in 0..screen.entry_count {
             let y = 176 + (index as i32 * 104);
             let selected = index == screen.selected_index;
@@ -307,7 +368,7 @@ impl Platform for HostPlatform {
             });
             self.canvas
                 .fill_rect(Rect::new(96, y, 832, 72))
-                .map_err(|error| error.to_string())?;
+                .map_err(backend_error)?;
         }
         self.canvas.set_draw_color(match screen.route {
             sim_domain::Route::Catalog => sdl2::pixels::Color::RGB(96, 210, 130),
@@ -315,7 +376,7 @@ impl Platform for HostPlatform {
         });
         self.canvas
             .fill_rect(Rect::new(96, 680, 832, 32))
-            .map_err(|error| error.to_string())?;
+            .map_err(backend_error)?;
         self.canvas.present();
         Ok(())
     }
@@ -324,55 +385,179 @@ impl Platform for HostPlatform {
         let pixels = self
             .canvas
             .read_pixels(None, PixelFormatEnum::RGBA8888)
-            .map_err(|error| error.to_string())?;
-        let file = fs::File::create(path).map_err(|error| error.to_string())?;
+            .map_err(backend_error)?;
+        let file = fs::File::create(path).map_err(backend_error)?;
         let mut encoder = Encoder::new(file, 1024, 768);
         encoder.set_color(ColorType::Rgba);
         encoder.set_depth(BitDepth::Eight);
-        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-        writer
-            .write_image_data(&pixels)
-            .map_err(|error| error.to_string())
+        let mut writer = encoder.write_header().map_err(backend_error)?;
+        writer.write_image_data(&pixels).map_err(backend_error)
     }
 
     fn logical_time_ms(&self) -> u64 {
         self.logical_time_ms
     }
 
-    fn snapshot(&self) -> PlatformSnapshot {
-        self.snapshot.clone()
+    fn snapshot(&self) -> PlatformResult<PlatformSnapshot> {
+        Ok(PlatformSnapshot {
+            battery_level_percent: self.state.battery.percent,
+            charging: self.state.battery.charging,
+            led_on: self.state.leds.on,
+            audio_enabled: self.state.audio.enabled,
+            radio_enabled: self.state.radios.wifi.enabled,
+            suspended: matches!(self.state.suspend.0, SuspendState::Suspended),
+        })
     }
 
-    fn hardware_state(&self) -> HardwareState {
-        self.hardware.clone()
+    fn platform_state(&self) -> PlatformResult<PlatformState> {
+        Ok(self.state.clone())
+    }
+
+    fn hardware_state(&self) -> PlatformResult<HardwareState> {
+        Ok(HardwareState {
+            battery_percent: self.state.battery.percent,
+            charging: self.state.battery.charging,
+            storage_mode: self.state.storage.clone(),
+            radio_enabled: self.state.radios.wifi.enabled,
+            radio_connected: self.state.radios.wifi.connected,
+            suspend_state: self.state.suspend.0.clone(),
+            suspend_result: self.state.suspend.1.clone(),
+        })
     }
 
     fn mutate_hardware(&mut self, changes: HardwareChanges) -> PlatformResult<()> {
         if let Some(value) = changes.battery_percent {
-            self.hardware.battery_percent = value;
-            self.snapshot.battery_level_percent = value;
+            self.state.battery.percent = value;
         }
         if let Some(value) = changes.charging {
-            self.hardware.charging = value;
-            self.snapshot.charging = value;
+            self.state.battery.charging = value;
         }
         if let Some(value) = changes.storage_mode {
-            self.hardware.storage_mode = value;
+            self.state.storage = value;
         }
         if let Some(value) = changes.radio_enabled {
-            self.hardware.radio_enabled = value;
-            self.snapshot.radio_enabled = value;
+            self.state.radios.wifi.enabled = value;
         }
         if let Some(value) = changes.radio_connected {
-            self.hardware.radio_connected = value;
+            self.state.radios.wifi.connected = value;
         }
         if let Some(value) = changes.suspend_state {
-            self.hardware.suspend_state = value.clone();
-            self.snapshot.suspended = matches!(value, SuspendState::Suspended);
+            self.state.suspend.0 = value;
         }
         if let Some(value) = changes.suspend_result {
-            self.hardware.suspend_result = value;
+            self.state.suspend.1 = value;
         }
         Ok(())
     }
+
+    fn display_state(&self) -> PlatformResult<DisplayState> {
+        Ok(self.state.display.clone())
+    }
+
+    fn input_state(&self) -> PlatformResult<InputState> {
+        Ok(self.state.input.clone())
+    }
+
+    fn hall_calibration_state(&self) -> PlatformResult<HallCalibrationState> {
+        Ok(self.state.hall_calibration)
+    }
+
+    fn power_state(&self) -> PlatformResult<PowerState> {
+        Ok(self.state.power)
+    }
+
+    fn battery_state(&self) -> PlatformResult<BatteryState> {
+        Ok(self.state.battery)
+    }
+
+    fn suspend_state(&self) -> PlatformResult<(SuspendState, SuspendResult)> {
+        Ok(self.state.suspend.clone())
+    }
+
+    fn radios_state(&self) -> PlatformResult<RadiosState> {
+        Ok(self.state.radios)
+    }
+
+    fn audio_state(&self) -> PlatformResult<AudioState> {
+        Ok(self.state.audio)
+    }
+
+    fn leds_state(&self) -> PlatformResult<PlatformLedState> {
+        Ok(self.state.leds)
+    }
+
+    fn rumble_state(&self) -> PlatformResult<RumbleState> {
+        Ok(self.state.rumble)
+    }
+
+    fn usb_state(&self) -> PlatformResult<UsbState> {
+        Ok(self.state.usb)
+    }
+
+    fn set_hall_calibration(&mut self, calibrated: bool) -> PlatformResult<()> {
+        self.state.hall_calibration.calibrated = calibrated;
+        Ok(())
+    }
+
+    fn set_power(&mut self, state: PowerState) -> PlatformResult<()> {
+        self.state.power = state;
+        Ok(())
+    }
+
+    fn set_battery(&mut self, state: BatteryState) -> PlatformResult<()> {
+        if state.percent > 100 {
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Battery,
+                reason: "percent must be between 0 and 100".to_string(),
+            });
+        }
+        self.state.battery = state;
+        Ok(())
+    }
+
+    fn set_suspend(&mut self, state: (SuspendState, SuspendResult)) -> PlatformResult<()> {
+        self.state.suspend = state;
+        Ok(())
+    }
+
+    fn set_radios(&mut self, state: RadiosState) -> PlatformResult<()> {
+        self.state.radios = state;
+        Ok(())
+    }
+
+    fn set_audio(&mut self, state: AudioState) -> PlatformResult<()> {
+        if state.volume_percent > 100 {
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Audio,
+                reason: "volume must be between 0 and 100".to_string(),
+            });
+        }
+        self.state.audio = state;
+        Ok(())
+    }
+
+    fn set_leds(&mut self, state: PlatformLedState) -> PlatformResult<()> {
+        if state.brightness_percent > 100 {
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Leds,
+                reason: "brightness must be between 0 and 100".to_string(),
+            });
+        }
+        self.state.leds = state;
+        Ok(())
+    }
+
+    fn set_rumble(&mut self, state: RumbleState) -> PlatformResult<()> {
+        self.state.rumble = state;
+        Ok(())
+    }
+
+    fn set_usb(&mut self, state: UsbState) -> PlatformResult<()> {
+        self.state.usb = state;
+        Ok(())
+    }
+}
+
+fn backend_error(error: impl fmt::Display) -> PlatformError {
+    PlatformError::Backend(error.to_string())
 }

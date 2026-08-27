@@ -207,7 +207,7 @@ where
                 &Readiness {
                     schema: "sim-readiness/v1",
                     lane: LANE,
-                    target_sku: "TG4040",
+                    target_sku: "unknown",
                     run_id: &run_id,
                     ready: false,
                     elapsed_ms: 0,
@@ -238,6 +238,7 @@ fn run_session<P: Platform>(
     keep_alive: bool,
     stop: &AtomicBool,
 ) -> Result<()> {
+    let identity = platform.identity();
     let catalog: Catalog =
         serde_json::from_slice(&fs::read(catalog_path)?).context("read generated catalog")?;
     if catalog.catalog_version != "1"
@@ -266,14 +267,14 @@ fn run_session<P: Platform>(
         &Readiness {
             schema: "sim-readiness/v1",
             lane: LANE,
-            target_sku: "TG4040",
+            target_sku: &identity.target_sku,
             run_id: &log.run_id,
             ready: true,
             elapsed_ms: 0,
             reason: "ready",
         },
     )?;
-    let snapshot = platform.snapshot();
+    let snapshot = platform.snapshot().map_err(|error| anyhow!(error))?;
     let first_frame_sequence = log.emit(
         "first_frame",
         platform.logical_time_ms(),
@@ -322,14 +323,30 @@ fn run_session<P: Platform>(
                 .next_button_event()
                 .map_err(|error| anyhow!(error))?
             {
-                handle_button(&mut platform, evidence, log, &catalog, &mut state, event)?;
+                handle_button(
+                    &mut platform,
+                    evidence,
+                    log,
+                    &catalog,
+                    &mut state,
+                    event,
+                    &identity.target_sku,
+                )?;
                 did_work = true;
             } else {
                 fixture_done = true;
             }
         }
         if let Some(incoming) = server.poll() {
-            handle_request(&mut platform, evidence, log, &catalog, &mut state, incoming)?;
+            handle_request(
+                &mut platform,
+                evidence,
+                log,
+                &catalog,
+                &mut state,
+                incoming,
+                &identity.target_sku,
+            )?;
             did_work = true;
         }
         if !keep_alive && fixture_done && !did_work {
@@ -365,6 +382,7 @@ fn handle_request<P: Platform>(
     catalog: &Catalog,
     state: &mut AppState,
     incoming: control::Incoming,
+    target_sku: &str,
 ) -> Result<()> {
     let mut stream = incoming.stream;
     let request = match incoming.request {
@@ -392,32 +410,31 @@ fn handle_request<P: Platform>(
     }
     let result = match request.command.as_str() {
         "wait-ready" => wait_ready(request.args),
-        "state" => {
-            parse_empty(request.args).map(|_| state_json(platform, evidence, log, catalog, state))
-        }
+        "state" => parse_empty(request.args)
+            .and_then(|_| state_json(platform, evidence, log, catalog, state)),
         "button" => parse::<ButtonArgs>(request.args).and_then(|args| {
             let event = ButtonEvent {
                 at_ms: platform.logical_time_ms().saturating_add(1),
                 button: args.button,
                 action: args.action,
             };
-            handle_button(platform, evidence, log, catalog, state, event)
+            handle_button(platform, evidence, log, catalog, state, event, target_sku)
                 .map_err(|error| error.to_string())
-                .map(|_| state_json(platform, evidence, log, catalog, state))
+                .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
             apply_hardware(platform, log, args)?;
-            Ok(state_json(platform, evidence, log, catalog, state))
+            state_json(platform, evidence, log, catalog, state)
         }),
         "fault.set" => parse::<FaultArgs>(request.args).and_then(|args| {
             set_fault(log, state, args)?;
-            Ok(state_json(platform, evidence, log, catalog, state))
+            state_json(platform, evidence, log, catalog, state)
         }),
         "adapter" => parse::<AdapterArgs>(request.args).and_then(|args| {
             adapter_result(log, state, args)?;
             write_session(&evidence.root, session_state(state))
                 .map_err(|error| error.to_string())?;
-            Ok(state_json(platform, evidence, log, catalog, state))
+            state_json(platform, evidence, log, catalog, state)
         }),
         "screenshot" => parse::<ArtifactArgs>(request.args).and_then(|args| {
             capture_artifact(
@@ -491,11 +508,9 @@ fn apply_hardware<P: Platform>(
             changed = true;
         }
     }
-    if let Some(storage) = args.storage {
-        if let Some(value) = storage.mode {
-            changes.storage_mode = Some(value);
-            changed = true;
-        }
+    if let Some(value) = args.storage.and_then(|storage| storage.mode) {
+        changes.storage_mode = Some(value);
+        changed = true;
     }
     if let Some(radio) = args.radio {
         if let Some(value) = radio.enabled {
@@ -523,7 +538,9 @@ fn apply_hardware<P: Platform>(
     platform
         .mutate_hardware(changes)
         .map_err(|error| error.to_string())?;
-    let hardware = platform.hardware_state();
+    let hardware = platform
+        .hardware_state()
+        .map_err(|error| error.to_string())?;
     log.emit(
         "hardware",
         platform.logical_time_ms(),
@@ -619,6 +636,7 @@ fn handle_button<P: Platform>(
     catalog: &Catalog,
     state: &mut AppState,
     event: ButtonEvent,
+    target_sku: &str,
 ) -> Result<()> {
     log.emit(
         "control",
@@ -661,7 +679,7 @@ fn handle_button<P: Platform>(
                 write_json(
                     evidence.root.join("launch.json"),
                     &json!({
-                        "kind": "launch", "lane": LANE, "targetSku": "TG4040", "sessionId": SESSION_ID,
+                        "kind": "launch", "lane": LANE, "targetSku": target_sku, "sessionId": SESSION_ID,
                     }),
                 )?;
                 write_session(&evidence.root, SessionState::Started)?;
@@ -714,7 +732,7 @@ fn capture_artifact<P: Platform>(
     }
     write_json(
         state_path.clone(),
-        &state_json(platform, evidence, log, catalog, state),
+        &state_json(platform, evidence, log, catalog, state)?,
     )
     .map_err(|error| error.to_string())?;
     let sequence = log
@@ -739,10 +757,10 @@ fn state_json<P: Platform>(
     log: &EventLog,
     catalog: &Catalog,
     state: &AppState,
-) -> Value {
+) -> Result<Value, String> {
     let _ = evidence;
     let _ = catalog;
-    json!({
+    Ok(json!({
         "schema": "sim-state/v1",
         "runId": log.run_id,
         "route": state.route.as_str(),
@@ -750,9 +768,9 @@ fn state_json<P: Platform>(
         "activeFakeSession": state.active_fake_session,
         "modal": state.modal,
         "readinessGeneration": state.readiness_generation,
-        "hardware": hardware_json(&platform.hardware_state()),
+        "hardware": hardware_json(&platform.hardware_state().map_err(|error| error.to_string())?),
         "faults": state.faults,
-    })
+    }))
 }
 
 fn hardware_json(hardware: &sim_platform_contract::HardwareState) -> Value {

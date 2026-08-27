@@ -2018,6 +2018,2104 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-aho-corasick-1.1.5",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/aho-corasick/1.1.5",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba",
+        "name": "aho-corasick",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.5"
+      },
+      "name": "aho-corasick 1.1.5",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/aho-corasick",
+      "status": "approved",
+      "version": "1.1.5"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-aws-lc-rs-1.18.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'ISC AND (Apache-2.0 OR ISC)' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/aws-lc-rs/1.18.0",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "ce2b2dcc879c3bae0d371e77c99f2238400ef24ec001394befa67b6e543add9e",
+        "name": "aws-lc-rs",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.18.0"
+      },
+      "name": "aws-lc-rs 1.18.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/aws/aws-lc-rs",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "1.18.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-aws-lc-sys-0.44.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/aws-lc-sys/0.44.0",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "f09fae7be8bb3174e05c6afdb34199e6dc0c7c04ba9fa237b1967adfbde27483",
+        "name": "aws-lc-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.44.0"
+      },
+      "name": "aws-lc-sys 0.44.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/aws/aws-lc-rs",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "0.44.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-base64-0.22.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/base64/0.22.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
+        "name": "base64",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.22.1"
+      },
+      "name": "base64 0.22.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/marshallpierce/rust-base64",
+      "status": "approved",
+      "version": "0.22.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-base64ct-1.8.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/base64ct/1.8.3",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06",
+        "name": "base64ct",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.8.3"
+      },
+      "name": "base64ct 1.8.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats",
+      "status": "approved",
+      "version": "1.8.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-bitflags-2.13.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/bitflags/2.13.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da",
+        "name": "bitflags",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.13.1"
+      },
+      "name": "bitflags 2.13.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/bitflags/bitflags",
+      "status": "approved",
+      "version": "2.13.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-bstr-1.13.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/bstr/1.13.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f",
+        "name": "bstr",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.13.1"
+      },
+      "name": "bstr 1.13.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/bstr",
+      "status": "approved",
+      "version": "1.13.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-cc-1.4.4",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/cc/1.4.4",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273",
+        "name": "cc",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.4.4"
+      },
+      "name": "cc 1.4.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/cc-rs",
+      "status": "approved",
+      "version": "1.4.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-cmake-0.1.58",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/cmake/0.1.58",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678",
+        "name": "cmake",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.58"
+      },
+      "name": "cmake 0.1.58",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/cmake-rs",
+      "status": "approved",
+      "version": "0.1.58"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-const-oid-0.9.6",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/const-oid/0.9.6",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8",
+        "name": "const-oid",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.9.6"
+      },
+      "name": "const-oid 0.9.6",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/const-oid",
+      "status": "approved",
+      "version": "0.9.6"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-defmt-1.1.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/defmt/1.1.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "e2953bfe4f93bbd20cc71198842756f77d161884c99ebbabc41d80231ded88d1",
+        "name": "defmt",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.1"
+      },
+      "name": "defmt 1.1.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/knurling-rs/defmt",
+      "status": "approved",
+      "version": "1.1.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-defmt-macros-1.1.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/defmt-macros/1.1.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "bad9c72e7ca2137e0dc3813245a0d282fd6daad32fd800af018306a9169b5fe8",
+        "name": "defmt-macros",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.1"
+      },
+      "name": "defmt-macros 1.1.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/knurling-rs/defmt",
+      "status": "approved",
+      "version": "1.1.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-defmt-parser-1.0.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/defmt-parser/1.0.0",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e",
+        "name": "defmt-parser",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.0"
+      },
+      "name": "defmt-parser 1.0.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/knurling-rs/defmt",
+      "status": "approved",
+      "version": "1.0.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-der-0.7.10",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/der/0.7.10",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb",
+        "name": "der",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.10"
+      },
+      "name": "der 0.7.10",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/der",
+      "status": "approved",
+      "version": "0.7.10"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-der-derive-0.7.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/der_derive/0.7.3",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "8034092389675178f570469e6c3b0465d3d30b4505c294a6550db47f3c17ad18",
+        "name": "der_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.3"
+      },
+      "name": "der_derive 0.7.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/der/derive",
+      "status": "approved",
+      "version": "0.7.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-dunce-1.0.5",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'CC0-1.0 OR MIT-0 OR Apache-2.0' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/dunce/1.0.5",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813",
+        "name": "dunce",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.5"
+      },
+      "name": "dunce 1.0.5",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://gitlab.com/kornelski/dunce",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "1.0.5"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-fastrand-2.5.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/fastrand/2.5.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223",
+        "name": "fastrand",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.5.0"
+      },
+      "name": "fastrand 2.5.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/smol-rs/fastrand",
+      "status": "approved",
+      "version": "2.5.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-find-msvc-tools-0.1.11",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/find-msvc-tools/0.1.11",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890",
+        "name": "find-msvc-tools",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.11"
+      },
+      "name": "find-msvc-tools 0.1.11",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/cc-rs",
+      "status": "approved",
+      "version": "0.1.11"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-flagset-0.4.7",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/flagset/0.4.7",
+      "licenseExpression": "Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "b7ac824320a75a52197e8f2d787f6a38b6718bb6897a35142d749af3c0e8f4fe",
+        "name": "flagset",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.7"
+      },
+      "name": "flagset 0.4.7",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/enarx/flagset",
+      "status": "approved",
+      "version": "0.4.7"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-fs-extra-1.3.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/fs_extra/1.3.0",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c",
+        "name": "fs_extra",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.3.0"
+      },
+      "name": "fs_extra 1.3.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/webdesus/fs_extra",
+      "status": "approved",
+      "version": "1.3.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-getrandom-0.4.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/getrandom/0.4.3",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
+        "name": "getrandom",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.3"
+      },
+      "name": "getrandom 0.4.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-random/getrandom",
+      "status": "approved",
+      "version": "0.4.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-globset-0.4.16",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/globset/0.4.16",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "54a1028dfc5f5df5da8a56a73e6c153c9a9708ec57232470703592a3f18e49f5",
+        "name": "globset",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.16"
+      },
+      "name": "globset 0.4.16",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/ripgrep/tree/master/crates/globset",
+      "status": "approved",
+      "version": "0.4.16"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-hex-0.4.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/hex/0.4.3",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
+        "name": "hex",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.3"
+      },
+      "name": "hex 0.4.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/KokaKiwi/rust-hex",
+      "status": "approved",
+      "version": "0.4.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jiff-0.2.35",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jiff/0.2.35",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "668b7183bd07af9a4885f5c35b0cc5c83c4607a913c16b7e17291832910d2dcc",
+        "name": "jiff",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.35"
+      },
+      "name": "jiff 0.2.35",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/jiff",
+      "status": "approved",
+      "version": "0.2.35"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jiff-core-0.1.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jiff-core/0.1.0",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "7feca88439efe53da3754500c1851dedf3cb36c524dd5cf8225cc0794de95d09",
+        "name": "jiff-core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.0"
+      },
+      "name": "jiff-core 0.1.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/jiff",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jiff-static-0.2.35",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jiff-static/0.2.35",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "3a69dcb3a21cfb32ce1cd056169337ca284af0766dd766e7878819b251a49204",
+        "name": "jiff-static",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.35"
+      },
+      "name": "jiff-static 0.2.35",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/jiff",
+      "status": "approved",
+      "version": "0.2.35"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jiff-tzdb-0.1.8",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jiff-tzdb/0.1.8",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "142bd39932ad231f10513df9ab62661fead8719872150b7ad02a2df79f4e141e",
+        "name": "jiff-tzdb",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.8"
+      },
+      "name": "jiff-tzdb 0.1.8",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/jiff",
+      "status": "approved",
+      "version": "0.1.8"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jiff-tzdb-platform-0.1.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Unlicense OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jiff-tzdb-platform/0.1.3",
+      "licenseExpression": "Unlicense OR MIT",
+      "lockfilePackage": {
+        "checksum": "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8",
+        "name": "jiff-tzdb-platform",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.3"
+      },
+      "name": "jiff-tzdb-platform 0.1.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/BurntSushi/jiff",
+      "status": "approved",
+      "version": "0.1.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-jobserver-0.1.35",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/jobserver/0.1.35",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3",
+        "name": "jobserver",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.35"
+      },
+      "name": "jobserver 0.1.35",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/jobserver-rs",
+      "status": "approved",
+      "version": "0.1.35"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-linux-raw-sys-0.12.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/linux-raw-sys/0.12.1",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53",
+        "name": "linux-raw-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.12.1"
+      },
+      "name": "linux-raw-sys 0.12.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/sunfishcode/linux-raw-sys",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "0.12.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-log-0.4.34",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/log/0.4.34",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6",
+        "name": "log",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.34"
+      },
+      "name": "log 0.4.34",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/log",
+      "status": "approved",
+      "version": "0.4.34"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-once-cell-1.21.4",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/once_cell/1.21.4",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+        "name": "once_cell",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.21.4"
+      },
+      "name": "once_cell 1.21.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/matklad/once_cell",
+      "status": "approved",
+      "version": "1.21.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-pem-3.0.6",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/pem/3.0.6",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be",
+        "name": "pem",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.0.6"
+      },
+      "name": "pem 3.0.6",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/jcreekmore/pem-rs.git",
+      "status": "approved",
+      "version": "3.0.6"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-pem-rfc7468-0.7.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/pem-rfc7468/0.7.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412",
+        "name": "pem-rfc7468",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.0"
+      },
+      "name": "pem-rfc7468 0.7.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/pem-rfc7468",
+      "status": "approved",
+      "version": "0.7.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-pin-project-lite-0.2.17",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/pin-project-lite/0.2.17",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
+        "name": "pin-project-lite",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.17"
+      },
+      "name": "pin-project-lite 0.2.17",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/taiki-e/pin-project-lite",
+      "status": "approved",
+      "version": "0.2.17"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-pkg-config-0.3.34",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/pkg-config/0.3.34",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548",
+        "name": "pkg-config",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.34"
+      },
+      "name": "pkg-config 0.3.34",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/pkg-config-rs",
+      "status": "approved",
+      "version": "0.3.34"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-portable-atomic-1.15.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/portable-atomic/1.15.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85",
+        "name": "portable-atomic",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.15.0"
+      },
+      "name": "portable-atomic 1.15.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/taiki-e/portable-atomic",
+      "status": "approved",
+      "version": "1.15.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-portable-atomic-util-0.2.7",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/portable-atomic-util/0.2.7",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618",
+        "name": "portable-atomic-util",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.7"
+      },
+      "name": "portable-atomic-util 0.2.7",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/taiki-e/portable-atomic-util",
+      "status": "approved",
+      "version": "0.2.7"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-r-efi-6.0.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'MIT OR Apache-2.0 OR LGPL-2.1-or-later' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/r-efi/6.0.0",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf",
+        "name": "r-efi",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "6.0.0"
+      },
+      "name": "r-efi 6.0.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/r-efi/r-efi",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "6.0.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-rand-core-0.6.4",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/rand_core/0.6.4",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c",
+        "name": "rand_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.6.4"
+      },
+      "name": "rand_core 0.6.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-random/rand",
+      "status": "approved",
+      "version": "0.6.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-rand-core-0.9.5",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/rand_core/0.9.5",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
+        "name": "rand_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.9.5"
+      },
+      "name": "rand_core 0.9.5",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-random/rand",
+      "status": "approved",
+      "version": "0.9.5"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-regex-automata-0.4.18",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/regex-automata/0.4.18",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2",
+        "name": "regex-automata",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.18"
+      },
+      "name": "regex-automata 0.4.18",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/regex",
+      "status": "approved",
+      "version": "0.4.18"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-regex-syntax-0.8.11",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/regex-syntax/0.8.11",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4",
+        "name": "regex-syntax",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.8.11"
+      },
+      "name": "regex-syntax 0.8.11",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/rust-lang/regex",
+      "status": "approved",
+      "version": "0.8.11"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-rustix-1.1.4",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/rustix/1.1.4",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190",
+        "name": "rustix",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.4"
+      },
+      "name": "rustix 1.1.4",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/bytecodealliance/rustix",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "1.1.4"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-sha1-0.10.7",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sha1/0.10.7",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8",
+        "name": "sha1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.10.7"
+      },
+      "name": "sha1 0.10.7",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/hashes",
+      "status": "approved",
+      "version": "0.10.7"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-shlex-2.0.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/shlex/2.0.1",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+        "name": "shlex",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.1"
+      },
+      "name": "shlex 2.0.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/comex/rust-shlex",
+      "status": "approved",
+      "version": "2.0.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-signature-2.2.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/signature/2.2.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de",
+        "name": "signature",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.2.0"
+      },
+      "name": "signature 2.2.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/traits/tree/master/signature",
+      "status": "approved",
+      "version": "2.2.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-sigstore-crypto-0.11.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sigstore-crypto/0.11.0",
+      "licenseExpression": "Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "22f27364b37bec104a904f10a675c8cdf05d5e48a980569368f0cd0c119b2652",
+        "name": "sigstore-crypto",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
+      },
+      "name": "sigstore-crypto 0.11.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/prefix-dev/sigstore-rust",
+      "status": "approved",
+      "version": "0.11.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-sigstore-tuf-0.11.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sigstore-tuf/0.11.0",
+      "licenseExpression": "Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "eedac50883a917b7b434db22e2e6e853ace8c00f4a9c27f53e1e9c87e6d89fe4",
+        "name": "sigstore-tuf",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
+      },
+      "name": "sigstore-tuf 0.11.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/prefix-dev/sigstore-rust",
+      "status": "approved",
+      "version": "0.11.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-sigstore-types-0.11.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/sigstore-types/0.11.0",
+      "licenseExpression": "Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "236474c535a3157839926a0ae18f9c0c22b151e49634da6e5b18ad7cac8a3b69",
+        "name": "sigstore-types",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
+      },
+      "name": "sigstore-types 0.11.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/prefix-dev/sigstore-rust",
+      "status": "approved",
+      "version": "0.11.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-spki-0.7.3",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/spki/0.7.3",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d",
+        "name": "spki",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.3"
+      },
+      "name": "spki 0.7.3",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/spki",
+      "status": "approved",
+      "version": "0.7.3"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-syn-2.0.119",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/syn/2.0.119",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+        "name": "syn",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.119"
+      },
+      "name": "syn 2.0.119",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/syn",
+      "status": "approved",
+      "version": "2.0.119"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tempfile-3.27.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tempfile/3.27.0",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+        "name": "tempfile",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.27.0"
+      },
+      "name": "tempfile 3.27.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/Stebalien/tempfile",
+      "status": "approved",
+      "version": "3.27.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-thiserror-2.0.20",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/thiserror/2.0.20",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f",
+        "name": "thiserror",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.20"
+      },
+      "name": "thiserror 2.0.20",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/thiserror",
+      "status": "approved",
+      "version": "2.0.20"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-thiserror-impl-2.0.20",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT OR Apache-2.0"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/thiserror-impl/2.0.20",
+      "licenseExpression": "MIT OR Apache-2.0",
+      "lockfilePackage": {
+        "checksum": "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af",
+        "name": "thiserror-impl",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.20"
+      },
+      "name": "thiserror-impl 2.0.20",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/dtolnay/thiserror",
+      "status": "approved",
+      "version": "2.0.20"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tls-codec-0.4.2",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tls_codec/0.4.2",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "0de2e01245e2bb89d6f05801c564fa27624dbd7b1846859876c7dad82e90bf6b",
+        "name": "tls_codec",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.2"
+      },
+      "name": "tls_codec 0.4.2",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats",
+      "status": "approved",
+      "version": "0.4.2"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tls-codec-derive-0.4.2",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tls_codec_derive/0.4.2",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "2d2e76690929402faae40aebdda620a2c0e25dd6d3b9afe48867dfd95991f4bd",
+        "name": "tls_codec_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.2"
+      },
+      "name": "tls_codec_derive 0.4.2",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats",
+      "status": "approved",
+      "version": "0.4.2"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tracing-0.1.44",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tracing/0.1.44",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
+        "name": "tracing",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.44"
+      },
+      "name": "tracing 0.1.44",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "status": "approved",
+      "version": "0.1.44"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tracing-attributes-0.1.31",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tracing-attributes/0.1.31",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da",
+        "name": "tracing-attributes",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.31"
+      },
+      "name": "tracing-attributes 0.1.31",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "status": "approved",
+      "version": "0.1.31"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-tracing-core-0.1.36",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/tracing-core/0.1.36",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
+        "name": "tracing-core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.36"
+      },
+      "name": "tracing-core 0.1.36",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "status": "approved",
+      "version": "0.1.36"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-untrusted-0.7.1",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidenceReason": "Exact crates.io expression 'ISC' includes an identifier outside this inventory schema; redistribution remains blocked.",
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/untrusted/0.7.1",
+      "licenseExpression": "NOASSERTION",
+      "lockfilePackage": {
+        "checksum": "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a",
+        "name": "untrusted",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.1"
+      },
+      "name": "untrusted 0.7.1",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "blocked",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/briansmith/untrusted",
+      "sourceUrlReason": "The dependency is recorded for build provenance but not approved for redistribution.",
+      "status": "blocked",
+      "version": "0.7.1"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-x509-cert-0.2.5",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/x509-cert/0.2.5",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94",
+        "name": "x509-cert",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.5"
+      },
+      "name": "x509-cert 0.2.5",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/x509-cert",
+      "status": "approved",
+      "version": "0.2.5"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-zeroize-1.9.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/zeroize/1.9.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e",
+        "name": "zeroize",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.9.0"
+      },
+      "name": "zeroize 1.9.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/utils",
+      "status": "approved",
+      "version": "1.9.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "crate-zeroize-derive-1.5.0",
+      "intendedUse": "Resolved build dependency of the package trust foundation; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version API metadata",
+        "observedExpression": "Apache-2.0 OR MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/api/v1/crates/zeroize_derive/1.5.0",
+      "licenseExpression": "Apache-2.0 OR MIT",
+      "lockfilePackage": {
+        "checksum": "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328",
+        "name": "zeroize_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.0"
+      },
+      "name": "zeroize_derive 1.5.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/RustCrypto/utils",
+      "status": "approved",
+      "version": "1.5.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "project-package-manager-0.1.0",
+      "intendedUse": "Clean-room project-authored package-manager/trust source; not a target release payload.",
+      "licenseEvidence": {
+        "basis": "repository Cargo.toml at pinned commit",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "package-manager",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "TrimUI Brick Pro CFW package-manager 0.1.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored repository source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "The exact crates.io metadata is the license evidence source; consult the pinned source for applicable attribution.",
+      "id": "project-package-trust-0.1.0",
+      "intendedUse": "Clean-room project-authored package-manager/trust source; not a target release payload.",
+      "licenseEvidence": {
+        "basis": "repository Cargo.toml at pinned commit",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "package-trust",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "TrimUI Brick Pro CFW package-trust 0.1.0",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact Cargo.lock identity recorded for the package trust foundation. It is not a target release artifact.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored repository source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "status": "approved",
+      "version": "0.1.0"
     }
   ],
   "distributedArtifacts": [
@@ -2163,16 +4261,52 @@
         "version": "2.0.1"
       },
       {
+        "checksum": "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba",
+        "name": "aho-corasick",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.5"
+      },
+      {
         "checksum": "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470",
         "name": "anyhow",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.104"
       },
       {
+        "checksum": "ce2b2dcc879c3bae0d371e77c99f2238400ef24ec001394befa67b6e543add9e",
+        "name": "aws-lc-rs",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.18.0"
+      },
+      {
+        "checksum": "f09fae7be8bb3174e05c6afdb34199e6dc0c7c04ba9fa237b1967adfbde27483",
+        "name": "aws-lc-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.44.0"
+      },
+      {
+        "checksum": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
+        "name": "base64",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.22.1"
+      },
+      {
+        "checksum": "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06",
+        "name": "base64ct",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.8.3"
+      },
+      {
         "checksum": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
         "name": "bitflags",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.3.2"
+      },
+      {
+        "checksum": "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da",
+        "name": "bitflags",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.13.1"
       },
       {
         "checksum": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71",
@@ -2193,10 +4327,34 @@
         "version": "0.1.0"
       },
       {
+        "checksum": "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f",
+        "name": "bstr",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.13.1"
+      },
+      {
+        "checksum": "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273",
+        "name": "cc",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.4.4"
+      },
+      {
         "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
         "name": "cfg-if",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.4"
+      },
+      {
+        "checksum": "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678",
+        "name": "cmake",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.58"
+      },
+      {
+        "checksum": "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8",
+        "name": "const-oid",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.9.6"
       },
       {
         "checksum": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280",
@@ -2217,10 +4375,46 @@
         "version": "0.1.7"
       },
       {
+        "checksum": "e2953bfe4f93bbd20cc71198842756f77d161884c99ebbabc41d80231ded88d1",
+        "name": "defmt",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.1"
+      },
+      {
+        "checksum": "bad9c72e7ca2137e0dc3813245a0d282fd6daad32fd800af018306a9169b5fe8",
+        "name": "defmt-macros",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.1"
+      },
+      {
+        "checksum": "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e",
+        "name": "defmt-parser",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.0"
+      },
+      {
+        "checksum": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb",
+        "name": "der",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.10"
+      },
+      {
+        "checksum": "8034092389675178f570469e6c3b0465d3d30b4505c294a6550db47f3c17ad18",
+        "name": "der_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.3"
+      },
+      {
         "checksum": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292",
         "name": "digest",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.10.7"
+      },
+      {
+        "checksum": "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813",
+        "name": "dunce",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.5"
       },
       {
         "checksum": "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
@@ -2229,10 +4423,28 @@
         "version": "0.3.14"
       },
       {
+        "checksum": "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223",
+        "name": "fastrand",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.5.0"
+      },
+      {
         "checksum": "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c",
         "name": "fdeflate",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.3.7"
+      },
+      {
+        "checksum": "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890",
+        "name": "find-msvc-tools",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.11"
+      },
+      {
+        "checksum": "b7ac824320a75a52197e8f2d787f6a38b6718bb6897a35142d749af3c0e8f4fe",
+        "name": "flagset",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.7"
       },
       {
         "checksum": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
@@ -2241,16 +4453,88 @@
         "version": "1.1.9"
       },
       {
+        "checksum": "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c",
+        "name": "fs_extra",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.3.0"
+      },
+      {
         "checksum": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a",
         "name": "generic-array",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.14.7"
       },
       {
+        "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
+        "name": "getrandom",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.3"
+      },
+      {
+        "checksum": "54a1028dfc5f5df5da8a56a73e6c153c9a9708ec57232470703592a3f18e49f5",
+        "name": "globset",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.16"
+      },
+      {
+        "checksum": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
+        "name": "hex",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.3"
+      },
+      {
         "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
         "name": "itoa",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.18"
+      },
+      {
+        "checksum": "668b7183bd07af9a4885f5c35b0cc5c83c4607a913c16b7e17291832910d2dcc",
+        "name": "jiff",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.35"
+      },
+      {
+        "checksum": "7feca88439efe53da3754500c1851dedf3cb36c524dd5cf8225cc0794de95d09",
+        "name": "jiff-core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.0"
+      },
+      {
+        "checksum": "3a69dcb3a21cfb32ce1cd056169337ca284af0766dd766e7878819b251a49204",
+        "name": "jiff-static",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.35"
+      },
+      {
+        "checksum": "142bd39932ad231f10513df9ab62661fead8719872150b7ad02a2df79f4e141e",
+        "name": "jiff-tzdb",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.8"
+      },
+      {
+        "checksum": "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8",
+        "name": "jiff-tzdb-platform",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.3"
+      },
+      {
+        "checksum": "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3",
+        "name": "jobserver",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.35"
+      },
+      {
+        "checksum": null,
+        "name": "launch-contract",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "launcher-theme",
+        "source": null,
+        "version": "0.1.0"
       },
       {
         "checksum": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
@@ -2263,6 +4547,18 @@
         "name": "libc",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.2.189"
+      },
+      {
+        "checksum": "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53",
+        "name": "linux-raw-sys",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.12.1"
+      },
+      {
+        "checksum": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6",
+        "name": "log",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.34"
       },
       {
         "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
@@ -2283,10 +4579,64 @@
         "version": "0.8.9"
       },
       {
+        "checksum": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+        "name": "once_cell",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.21.4"
+      },
+      {
+        "checksum": null,
+        "name": "package-manager",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "package-trust",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be",
+        "name": "pem",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.0.6"
+      },
+      {
+        "checksum": "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412",
+        "name": "pem-rfc7468",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.0"
+      },
+      {
+        "checksum": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
+        "name": "pin-project-lite",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.17"
+      },
+      {
+        "checksum": "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548",
+        "name": "pkg-config",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.3.34"
+      },
+      {
         "checksum": "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526",
         "name": "png",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.17.16"
+      },
+      {
+        "checksum": "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85",
+        "name": "portable-atomic",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.15.0"
+      },
+      {
+        "checksum": "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618",
+        "name": "portable-atomic-util",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.7"
       },
       {
         "checksum": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
@@ -2299,6 +4649,42 @@
         "name": "quote",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.47"
+      },
+      {
+        "checksum": "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf",
+        "name": "r-efi",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "6.0.0"
+      },
+      {
+        "checksum": "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c",
+        "name": "rand_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.6.4"
+      },
+      {
+        "checksum": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
+        "name": "rand_core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.9.5"
+      },
+      {
+        "checksum": "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2",
+        "name": "regex-automata",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.18"
+      },
+      {
+        "checksum": "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4",
+        "name": "regex-syntax",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.8.11"
+      },
+      {
+        "checksum": "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190",
+        "name": "rustix",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.1.4"
       },
       {
         "checksum": "3b498da7d14d1ad6c839729bd4ad6fc11d90a57583605f3b4df2cd709a9cd380",
@@ -2337,16 +4723,22 @@
         "version": "1.0.151"
       },
       {
+        "checksum": "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8",
+        "name": "sha1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.10.7"
+      },
+      {
         "checksum": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283",
         "name": "sha2",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.10.9"
       },
       {
-        "checksum": null,
-        "name": "launcher-theme",
-        "source": null,
-        "version": "0.1.0"
+        "checksum": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+        "name": "shlex",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.1"
       },
       {
         "checksum": "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2",
@@ -2361,10 +4753,28 @@
         "version": "1.4.8"
       },
       {
-        "checksum": null,
-        "name": "launch-contract",
-        "source": null,
-        "version": "0.1.0"
+        "checksum": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de",
+        "name": "signature",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.2.0"
+      },
+      {
+        "checksum": "22f27364b37bec104a904f10a675c8cdf05d5e48a980569368f0cd0c119b2652",
+        "name": "sigstore-crypto",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
+      },
+      {
+        "checksum": "eedac50883a917b7b434db22e2e6e853ace8c00f4a9c27f53e1e9c87e6d89fe4",
+        "name": "sigstore-tuf",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
+      },
+      {
+        "checksum": "236474c535a3157839926a0ae18f9c0c22b151e49634da6e5b18ad7cac8a3b69",
+        "name": "sigstore-types",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.11.0"
       },
       {
         "checksum": null,
@@ -2397,16 +4807,76 @@
         "version": "0.3.10"
       },
       {
+        "checksum": "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d",
+        "name": "spki",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.3"
+      },
+      {
         "checksum": null,
         "name": "storage-layout",
         "source": null,
         "version": "0.1.0"
       },
       {
+        "checksum": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+        "name": "syn",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.119"
+      },
+      {
         "checksum": "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f",
         "name": "syn",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "3.0.4"
+      },
+      {
+        "checksum": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+        "name": "tempfile",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "3.27.0"
+      },
+      {
+        "checksum": "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f",
+        "name": "thiserror",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.20"
+      },
+      {
+        "checksum": "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af",
+        "name": "thiserror-impl",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "2.0.20"
+      },
+      {
+        "checksum": "0de2e01245e2bb89d6f05801c564fa27624dbd7b1846859876c7dad82e90bf6b",
+        "name": "tls_codec",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.2"
+      },
+      {
+        "checksum": "2d2e76690929402faae40aebdda620a2c0e25dd6d3b9afe48867dfd95991f4bd",
+        "name": "tls_codec_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.4.2"
+      },
+      {
+        "checksum": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
+        "name": "tracing",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.44"
+      },
+      {
+        "checksum": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da",
+        "name": "tracing-attributes",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.31"
+      },
+      {
+        "checksum": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
+        "name": "tracing-core",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.1.36"
       },
       {
         "checksum": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
@@ -2419,6 +4889,12 @@
         "name": "unicode-ident",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.24"
+      },
+      {
+        "checksum": "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a",
+        "name": "untrusted",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.7.1"
       },
       {
         "checksum": "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29",
@@ -2445,6 +4921,24 @@
         "version": "0.61.2"
       },
       {
+        "checksum": "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94",
+        "name": "x509-cert",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.5"
+      },
+      {
+        "checksum": "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e",
+        "name": "zeroize",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.9.0"
+      },
+      {
+        "checksum": "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328",
+        "name": "zeroize_derive",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.5.0"
+      },
+      {
         "checksum": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
         "name": "zmij",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -2452,7 +4946,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "be3fbf87f98957f8b74e2457c18ec1aaade398f5cb6eef0a8da3ee7db1948a41"
+    "sha256": "da287a06f18bdde6d9129435a764634014cdf4cd3ac184bed765894d691ed7cb"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

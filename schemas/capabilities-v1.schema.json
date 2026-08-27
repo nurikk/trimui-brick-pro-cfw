@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-brick-capabilities-v1.schema.json",
+  "title": "Brick Pro package capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "network": { "type": "array", "uniqueItems": true, "items": { "enum": ["https"] } },
+    "input": { "type": "array", "uniqueItems": true, "items": { "enum": ["buttons"] } },
+    "audio": { "type": "array", "uniqueItems": true, "items": { "enum": ["playback"] } },
+    "display": { "type": "array", "uniqueItems": true, "items": { "enum": ["read", "overlay"] } },
+    "save": { "type": "array", "uniqueItems": true, "items": { "enum": ["read", "write"] } }
+  },
+  "required": ["network", "input", "audio", "display", "save"]
+}

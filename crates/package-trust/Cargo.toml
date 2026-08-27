@@ -1,0 +1,13 @@
+[package]
+name = "package-trust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+jiff.workspace = true
+sigstore-tuf = { version = "0.11.0", default-features = false }

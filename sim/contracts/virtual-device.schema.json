@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/virtual-device.schema.json",
+  "title": "Virtual device deterministic test double",
+  "description": "A clean-room synthetic test-double contract. This schema is not a hardware-emulation interface. Its scope intentionally has no fields for source paths, ROM, BIOS, firmware content, vendor blobs, or hardware identity claims; such values are prohibited by this contract and its documentation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "targetSku",
+    "display",
+    "controls",
+    "battery",
+    "led",
+    "audio",
+    "radio",
+    "suspend",
+    "virtualStorage",
+    "clock",
+    "faults"
+  ],
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "targetSku": {
+      "type": "string",
+      "const": "TG4040"
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalWidth", "logicalHeight"],
+      "properties": {
+        "logicalWidth": {
+          "type": "integer",
+          "const": 1024
+        },
+        "logicalHeight": {
+          "type": "integer",
+          "const": 768
+        }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "description": "Deterministic semantic control state and an ordered injected event sequence, not physical input.",
+      "additionalProperties": false,
+      "required": ["initialPressed", "events"],
+      "properties": {
+        "initialPressed": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"]
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["atMs", "control", "action"],
+            "properties": {
+              "atMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "control": {
+                "type": "string",
+                "enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"]
+              },
+              "action": {
+                "type": "string",
+                "enum": ["press", "release"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "battery": {
+      "type": "object",
+      "description": "Deterministic fixture state, not a battery or power measurement.",
+      "additionalProperties": false,
+      "required": ["levelPercent", "charging", "externalPower"],
+      "properties": {
+        "levelPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "charging": {
+          "type": "boolean"
+        },
+        "externalPower": {
+          "type": "boolean"
+        }
+      }
+    },
+    "led": {
+      "type": "object",
+      "description": "Deterministic logical LED state, not a physical LED claim.",
+      "additionalProperties": false,
+      "required": ["state", "brightnessPercent"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["off", "on"]
+        },
+        "brightnessPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "description": "Deterministic logical audio state, not physical audio evidence.",
+      "additionalProperties": false,
+      "required": ["enabled", "volumePercent", "active"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "volumePercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "active": {
+          "type": "boolean"
+        }
+      }
+    },
+    "radio": {
+      "type": "object",
+      "description": "Deterministic logical radio state, not radio hardware or network evidence.",
+      "additionalProperties": false,
+      "required": ["enabled", "connected", "rxPackets", "txPackets"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "rxPackets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "txPackets": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "suspend": {
+      "type": "object",
+      "description": "Deterministic lifecycle state, not physical suspend/resume evidence.",
+      "additionalProperties": false,
+      "required": ["state", "wakeReason"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["active", "suspended"]
+        },
+        "wakeReason": {
+          "type": "string",
+          "enum": ["cold-start", "control", "timeout", "none"]
+        }
+      }
+    },
+    "virtualStorage": {
+      "type": "object",
+      "description": "Small synthetic logical storage content. Keys are logical names only, and content is restricted to the generated fixture tokens listed by the content schema.",
+      "additionalProperties": false,
+      "required": ["readOnly", "files"],
+      "properties": {
+        "readOnly": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["logicalKey", "content"],
+            "properties": {
+              "logicalKey": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$",
+                "maxLength": 32
+              },
+              "content": {
+                "type": "string",
+                "enum": ["generated-state-v1", "generated-save-v1"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "description": "Deterministic synthetic clock in milliseconds.",
+      "additionalProperties": false,
+      "required": ["startMs", "stepMs"],
+      "properties": {
+        "startMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "faults": {
+      "type": "array",
+      "description": "Names of deterministic injected test faults; an empty list means no fault is injected.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      }
+    }
+  }
+}

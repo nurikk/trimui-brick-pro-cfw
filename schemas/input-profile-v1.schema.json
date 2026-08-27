@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trimui-input-profile-v1",
+  "title": "TrimUI input profile catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "profiles", "selections"],
+  "properties": {
+    "schema": { "const": "trimui-input-profile-catalog" },
+    "schemaVersion": { "const": 1 },
+    "profiles": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/profile" } },
+    "selections": { "$ref": "#/$defs/selections" }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "transform", "mappings", "externalController"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["built-in", "southpaw", "d-pad-to-stick", "stick-to-d-pad", "external"] },
+        "transform": { "enum": ["standard", "southpaw", "d-pad-to-stick", "stick-to-d-pad"] },
+        "mappings": { "type": "array", "minItems": 14, "items": { "$ref": "#/$defs/mapping" } },
+        "externalController": { "anyOf": [{ "$ref": "#/$defs/external" }, { "type": "null" }] }
+      }
+    },
+    "mapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["control", "action", "axis"],
+      "properties": {
+        "control": { "enum": ["up", "down", "left", "right", "a", "b", "start", "select", "l3", "r3", "f1", "f2", "fn", "home"] },
+        "action": { "enum": ["move-up", "move-down", "move-left", "move-right", "primary", "secondary", "start", "select", "left-stick-click", "right-stick-click", "f1", "f2", "fn", "home"] },
+        "axis": { "$ref": "#/$defs/axis" }
+      }
+    },
+    "axis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["deadzone", "curve"],
+      "properties": { "deadzone": { "type": "number", "minimum": 0, "maximum": 1 }, "curve": { "enum": ["linear", "smooth"] } }
+    },
+    "external": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sdlGuid", "requiredCapabilities"],
+      "properties": { "sdlGuid": { "type": "string", "pattern": "^[0-9a-fA-F]{32}$" }, "requiredCapabilities": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } } }
+    },
+    "system": {
+      "type": "object", "additionalProperties": false,
+      "required": ["systemId", "profileId"],
+      "properties": { "systemId": { "type": "string", "minLength": 1 }, "profileId": { "type": "string", "minLength": 1 } }
+    },
+    "game": {
+      "type": "object", "additionalProperties": false,
+      "required": ["systemId", "gameId", "profileId"],
+      "properties": { "systemId": { "type": "string", "minLength": 1 }, "gameId": { "type": "string", "minLength": 1 }, "profileId": { "type": "string", "minLength": 1 } }
+    },
+    "selections": {
+      "type": "object", "additionalProperties": false,
+      "required": ["builtIn", "systems", "games"],
+      "properties": {
+        "builtIn": { "type": "string", "minLength": 1 },
+        "systems": { "type": "array", "items": { "$ref": "#/$defs/system" } },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/game" } }
+      }
+    }
+  }
+}

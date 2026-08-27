@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+python3 - "$ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+schema_path = root / "schemas/input-profile-v1.schema.json"
+catalog_path = root / "config/input/profiles.json"
+schema = json.loads(schema_path.read_text(encoding="utf-8"))
+catalog_raw = catalog_path.read_bytes()
+catalog = json.loads(catalog_raw.decode("utf-8"))
+assert schema["$id"] == "trimui-input-profile-v1"
+assert schema["$defs"]["profile"]["additionalProperties"] is False
+assert schema["$defs"]["mapping"]["additionalProperties"] is False
+assert catalog["schema"] == "trimui-input-profile-catalog"
+assert catalog["schemaVersion"] == 1
+assert catalog["selections"]["builtIn"] == "default"
+assert any(mapping["axis"]["curve"] == "smooth" for profile in catalog["profiles"] for mapping in profile["mappings"])
+ids = {profile["id"] for profile in catalog["profiles"]}
+assert len(ids) == len(catalog["profiles"])
+assert {"default", "southpaw", "dpad-to-stick", "stick-to-dpad", "external-controller"} <= ids
+for profile in catalog["profiles"]:
+    assert len(profile["mappings"]) == 14
+    controls = [mapping["control"] for mapping in profile["mappings"]]
+    assert len(set(controls)) == 14
+    assert profile["externalController"] is not None if profile["kind"] == "external" else profile["externalController"] is None
+    assert profile["kind"] in {"built-in", "southpaw", "d-pad-to-stick", "stick-to-d-pad", "external"}
+    for mapping in profile["mappings"]:
+        assert 0 <= mapping["axis"]["deadzone"] <= 1
+        assert mapping["axis"]["curve"] in {"linear", "smooth"}
+assert catalog_raw == (json.dumps(catalog, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+print("input profile schema/static check passed: strict schema, canonical catalog, unique controls")
+PY

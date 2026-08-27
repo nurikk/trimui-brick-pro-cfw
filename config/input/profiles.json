@@ -1,0 +1,765 @@
+{
+  "schema": "trimui-input-profile-catalog",
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "default",
+      "kind": "built-in",
+      "transform": "standard",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "smooth"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": null
+    },
+    {
+      "id": "southpaw",
+      "kind": "southpaw",
+      "transform": "southpaw",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": null
+    },
+    {
+      "id": "dpad-to-stick",
+      "kind": "d-pad-to-stick",
+      "transform": "d-pad-to-stick",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": null
+    },
+    {
+      "id": "stick-to-dpad",
+      "kind": "stick-to-d-pad",
+      "transform": "stick-to-d-pad",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": null
+    },
+    {
+      "id": "external-controller",
+      "kind": "external",
+      "transform": "standard",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": {
+        "sdlGuid": "0123456789abcdef0123456789abcdef",
+        "requiredCapabilities": [
+          "a",
+          "left-stick",
+          "right-stick"
+        ]
+      }
+    },
+    {
+      "id": "external-controller-alt",
+      "kind": "external",
+      "transform": "standard",
+      "mappings": [
+        {
+          "control": "up",
+          "action": "move-up",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "down",
+          "action": "move-down",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "left",
+          "action": "move-left",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "right",
+          "action": "move-right",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "a",
+          "action": "primary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "b",
+          "action": "secondary",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "start",
+          "action": "start",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "select",
+          "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l3",
+          "action": "left-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r3",
+          "action": "right-stick-click",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f1",
+          "action": "f1",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "f2",
+          "action": "f2",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "fn",
+          "action": "fn",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "home",
+          "action": "home",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        }
+      ],
+      "externalController": {
+        "sdlGuid": "0123456789abcdef0123456789abcdef",
+        "requiredCapabilities": [
+          "a",
+          "left-stick",
+          "right-stick"
+        ]
+      }
+    }
+  ],
+  "selections": {
+    "builtIn": "default",
+    "systems": [
+      {
+        "systemId": "arcade",
+        "profileId": "southpaw"
+      },
+      {
+        "systemId": "puzzle",
+        "profileId": "dpad-to-stick"
+      }
+    ],
+    "games": [
+      {
+        "systemId": "arcade",
+        "gameId": "space-quest",
+        "profileId": "stick-to-dpad"
+      },
+      {
+        "systemId": "standalone",
+        "gameId": "solo",
+        "profileId": "southpaw"
+      }
+    ]
+  }
+}

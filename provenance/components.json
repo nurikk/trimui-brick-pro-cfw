@@ -4278,6 +4278,34 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-input-profile",
+      "intendedUse": "Clean-room project-authored input-profile and synthetic calibration contract; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "input-profile",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "input-profile",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
     }
   ],
   "distributedArtifacts": [
@@ -4655,6 +4683,12 @@
         "name": "itoa",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "1.0.18"
+      },
+      {
+        "checksum": null,
+        "name": "input-profile",
+        "source": null,
+        "version": "0.1.0"
       },
       {
         "checksum": "668b7183bd07af9a4885f5c35b0cc5c83c4607a913c16b7e17291832910d2dcc",
@@ -5144,7 +5178,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "31b673e7889cd149050d1539878459c79f69879c997c4b8ea6d9a17c69b844c3"
+    "sha256": "fe81d395291d589d3f33d1ce93586d8e20ca509050e9a402f3c9a75edc92aeac"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

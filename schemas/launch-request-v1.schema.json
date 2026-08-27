@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-launch-request-v1.schema.json",
+  "title": "Brick Pro LaunchRequest v1",
+  "description": "Closed, typed launch intent. It contains no executable path, argv, environment, shell, or working-directory fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "requestId", "kind", "contentId", "contentSha256", "contentPath", "savePath", "statePath", "runner", "profileId", "resumeMode", "display", "input", "power"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-launch-request-v1.schema.json"},
+    "format": {"const": "brickpro-launch-request"},
+    "schemaVersion": {"const": 1},
+    "requestId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "kind": {"enum": ["libretro", "standalone", "port"]},
+    "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "contentSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "contentPath": {"$ref": "#/$defs/contentPath"},
+    "savePath": {"$ref": "#/$defs/savePath"},
+    "statePath": {"$ref": "#/$defs/statePath"},
+    "runner": {"$ref": "#/$defs/versionedId"},
+    "core": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/versionedId"}]},
+    "profileId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "resumeMode": {"enum": ["fresh", "resume", "auto"]},
+    "display": {"$ref": "#/$defs/display"},
+    "input": {"$ref": "#/$defs/input"},
+    "power": {"$ref": "#/$defs/power"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "libretro"}}},
+      "then": {"required": ["core"], "properties": {"core": {"$ref": "#/$defs/versionedId"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"enum": ["standalone", "port"]}}},
+      "then": {"properties": {"core": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "versionedId": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 32}
+      }
+    },
+    "logicalPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "relative"],
+      "properties": {
+        "root": {"enum": ["roms", "data/saves", "data/states"]},
+        "relative": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^/\\\\\\u0000.][^/\\\\\\u0000]*(/[^/\\\\\\u0000.][^/\\\\\\u0000]*)*$"}
+      }
+    },
+    "contentPath": {
+      "allOf": [{"$ref": "#/$defs/logicalPath"}, {"properties": {"root": {"const": "roms"}}}]
+    },
+    "savePath": {
+      "allOf": [{"$ref": "#/$defs/logicalPath"}, {"properties": {"root": {"const": "data/saves"}}}]
+    },
+    "statePath": {
+      "allOf": [{"$ref": "#/$defs/logicalPath"}, {"properties": {"root": {"const": "data/states"}}}]
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "refreshHz", "scaling"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 320, "maximum": 4096},
+        "height": {"type": "integer", "minimum": 240, "maximum": 2160},
+        "refreshHz": {"type": "integer", "minimum": 1, "maximum": 240},
+        "scaling": {"enum": ["integer", "fit"]}
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout", "rumble"],
+      "properties": {
+        "layout": {"enum": ["standard", "arcade"]},
+        "rumble": {"type": "boolean"}
+      }
+    },
+    "power": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suspend", "batterySaver"],
+      "properties": {
+        "suspend": {"enum": ["allowed", "blocked"]},
+        "batterySaver": {"type": "boolean"}
+      }
+    }
+  }
+}

@@ -7,6 +7,7 @@ members = [
     "crates/storage-layout",
     "crates/bootstrap-probe",
     "crates/brick-recovery",
+    "crates/launch-contract",
 ]
 resolver = "2"
 

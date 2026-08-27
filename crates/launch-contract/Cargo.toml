@@ -1,0 +1,12 @@
+[package]
+name = "launch-contract"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "launch-contract-fixtures"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

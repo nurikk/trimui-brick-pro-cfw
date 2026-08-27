@@ -1,0 +1,45 @@
+{
+  "$schema": "https://example.invalid/trimui-launch-request-v1.schema.json",
+  "format": "brickpro-launch-request",
+  "schemaVersion": 1,
+  "requestId": "generated-request-1",
+  "kind": "libretro",
+  "contentId": "generated-content-1",
+  "contentSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "contentPath": {
+    "root": "roms",
+    "relative": "/generated/content.bin"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "generated/content.sav"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "generated/content.state"
+  },
+  "runner": {
+    "id": "generated-libretro",
+    "version": "1.0.0"
+  },
+  "core": {
+    "id": "generated-core",
+    "version": "1.0.0"
+  },
+  "profileId": "generated-default",
+  "resumeMode": "fresh",
+  "display": {
+    "width": 640,
+    "height": 480,
+    "refreshHz": 60,
+    "scaling": "integer"
+  },
+  "input": {
+    "layout": "standard",
+    "rumble": false
+  },
+  "power": {
+    "suspend": "allowed",
+    "batterySaver": false
+  }
+}

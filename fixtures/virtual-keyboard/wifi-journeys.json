@@ -1,0 +1,1 @@
+{"schema":"virtual-keyboard-journey/v1","journeys":[{"id":"wifi-manual-ssid","field":"text","mode":"manual","result":{"kind":"text","length_scalars":6}},{"id":"wifi-masked-wpa","field":"secret","mode":"manual","result":{"kind":"secret","length_scalars":3,"display":"***"},"redaction":"masked-only"}],"evidence":"controller-only semantic events; no field values are recorded"}

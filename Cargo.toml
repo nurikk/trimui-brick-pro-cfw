@@ -13,6 +13,7 @@ members = [
     "crates/package-trust",
     "crates/package-manager",
     "crates/settings-schema",
+    "crates/virtual-keyboard",
 ]
 resolver = "2"
 

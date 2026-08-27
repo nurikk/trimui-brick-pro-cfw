@@ -1,0 +1,12 @@
+[package]
+name = "sim-host-platform"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+png.workspace = true
+sdl2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sim-domain = { path = "../domain" }
+sim-platform-contract = { path = "../platform-contract" }

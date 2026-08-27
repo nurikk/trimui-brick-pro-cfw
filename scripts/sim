@@ -1,0 +1,257 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+IMAGE=trimui-brick-pro-cfw-simulator:local
+LABEL=org.trimui-brick-pro-cfw.simulator=host-native
+
+fail() {
+    printf '%s\n' "sim: $*" >&2
+    exit 2
+}
+
+usage() {
+    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS" >&2
+    exit 2
+}
+
+require_run_dir() {
+    if [ -z "${RUN_DIR:-}" ]; then
+        fail "--run-dir is required"
+    fi
+    case "$RUN_DIR" in
+        /*) ;;
+        *) fail "--run-dir must be an absolute path" ;;
+    esac
+    [ -d "$RUN_DIR" ] || fail "--run-dir must already exist"
+    RUN_REAL=$(CDPATH= cd -- "$RUN_DIR" && pwd -P) || fail "cannot resolve --run-dir"
+    [ "$RUN_REAL" != / ] || fail "--run-dir cannot be /"
+    case "$RUN_REAL" in
+        "$ROOT"|"$ROOT"/*) fail "--run-dir must be outside the repository" ;;
+    esac
+}
+
+container_name() {
+    printf '%s' "$RUN_REAL" | cksum | awk '{print "trimui-sim-" $1}'
+}
+
+reject_stale_evidence() {
+    for artifact in \
+        readiness.json route-selection.json launch.json session.json exit-status.json \
+        .readiness.json.tmp .route-selection.json.tmp .launch.json.tmp \
+        .session.json.tmp .exit-status.json.tmp logs/launcher.jsonl; do
+        [ ! -e "$RUN_REAL/$artifact" ] || fail "--run-dir contains existing simulator evidence: $artifact"
+    done
+    for artifact in "$RUN_REAL"/screenshots/screen-*.png; do
+        [ ! -e "$artifact" ] || fail "--run-dir contains existing simulator evidence: screenshots"
+    done
+}
+
+json_readiness_valid() {
+    python3 - "$RUN_REAL/readiness.json" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        record = json.load(stream)
+    if set(record) != {"schema", "lane", "targetSku", "ready", "elapsedMs", "reason"}:
+        raise ValueError
+    if record["schema"] != "sim-readiness/v1":
+        raise ValueError
+    if record["lane"] != "host-native userspace simulator":
+        raise ValueError
+    if record["targetSku"] != "TG4040" or record["ready"] is not True:
+        raise ValueError
+    if type(record["elapsedMs"]) is not int or record["elapsedMs"] < 0:
+        raise ValueError
+    if record["reason"] != "ready":
+        raise ValueError
+except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    raise SystemExit(1)
+PY
+}
+
+json_first_frame_valid() {
+    python3 - "$RUN_REAL/logs/launcher.jsonl" <<'PY'
+import json
+import sys
+
+try:
+    previous_sequence = -1
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        for line in stream:
+            record = json.loads(line)
+            if not isinstance(record, dict):
+                raise ValueError
+            sequence = record["sequence"]
+            at_ms = record["atMs"]
+            if (type(sequence) is not int or sequence < 0 or sequence <= previous_sequence
+                    or type(at_ms) is not int or at_ms < 0
+                    or record["lane"] != "host-native userspace simulator"):
+                raise ValueError
+            previous_sequence = sequence
+            if record["event"] == "first_frame":
+                raise SystemExit(0)
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(2)
+raise SystemExit(1)
+PY
+}
+
+startup_failure() {
+    printf '%s\n' "sim: $1" >&2
+    docker logs "$NAME" >&2 || true
+    docker stop --time 5 "$NAME" >/dev/null 2>&1 || true
+    docker rm "$NAME" >/dev/null 2>&1 || true
+    exit 1
+}
+
+parse_run_options() {
+    BACKEND=dummy
+    WAIT_READY=10
+    DETACH=0
+    RUN_DIR=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --backend=x11) BACKEND=x11 ;;
+            --backend=dummy) BACKEND=dummy ;;
+            --backend=*) fail "backend must be x11 or dummy" ;;
+            --run-dir)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --run-dir value"
+                RUN_DIR=$1
+                ;;
+            --run-dir=*) RUN_DIR=${1#--run-dir=} ;;
+            --wait-ready)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --wait-ready value"
+                WAIT_READY=$1
+                ;;
+            --wait-ready=*) WAIT_READY=${1#--wait-ready=} ;;
+            --detach) DETACH=1 ;;
+            *) fail "unknown run option: $1" ;;
+        esac
+        shift
+    done
+    case "$WAIT_READY" in
+        ''|*[!0-9]*) fail "--wait-ready must be a positive integer" ;;
+    esac
+    [ "$WAIT_READY" -gt 0 ] || fail "--wait-ready must be a positive integer"
+    require_run_dir
+}
+
+build() {
+    [ "$#" -eq 0 ] || usage
+    docker build --platform linux/amd64 -f "$ROOT/containers/simulator/Dockerfile" -t "$IMAGE" "$ROOT"
+}
+
+run_sim() {
+    parse_run_options "$@"
+    reject_stale_evidence
+    command -v python3 >/dev/null 2>&1 || fail "python3 is required for structural evidence validation"
+    docker image inspect "$IMAGE" >/dev/null 2>&1 || fail "image is missing; run ./scripts/sim build first"
+    NAME=$(container_name)
+    chmod 0777 "$RUN_REAL" || fail "--run-dir must be writable"
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    set -- --backend="$BACKEND"
+    [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
+    docker run -d \
+        --name "$NAME" \
+        --label "$LABEL" \
+        --platform linux/amd64 \
+        --network none \
+        --read-only \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --pids-limit=64 \
+        --user 10001:10001 \
+        --mount "type=bind,src=$ROOT,dst=/src,readonly" \
+        --mount "type=bind,src=$RUN_REAL,dst=/evidence" \
+        --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
+        "$IMAGE" "$@" >/dev/null
+
+    elapsed=0
+    ready=0
+    first_frame=0
+    while [ "$elapsed" -lt "$WAIT_READY" ]; do
+        if [ -f "$RUN_REAL/readiness.json" ]; then
+            json_readiness_valid || startup_failure "startup produced failed or malformed readiness"
+            ready=1
+        fi
+        if [ "$ready" -eq 1 ] && [ -f "$RUN_REAL/logs/launcher.jsonl" ]; then
+            frame_status=0
+            json_first_frame_valid || frame_status=$?
+            case "$frame_status" in
+                0) first_frame=1; break ;;
+                1) ;;
+                *) startup_failure "launcher log is malformed" ;;
+            esac
+        fi
+        if ! docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'; then
+            if [ "$ready" -eq 1 ]; then
+                startup_failure "container exited before first_frame"
+            fi
+            startup_failure "container exited before readiness"
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    if [ "$ready" -ne 1 ] || [ "$first_frame" -ne 1 ]; then
+        startup_failure "readiness or first_frame timeout after ${WAIT_READY}s"
+    fi
+    if [ "$DETACH" -eq 1 ]; then
+        return 0
+    fi
+    wait_output=
+    wait_status=0
+    wait_output=$(docker wait "$NAME") || wait_status=$?
+    docker rm "$NAME" >/dev/null 2>&1 || true
+    [ "$wait_status" -eq 0 ] || fail "docker wait failed with status $wait_status"
+    case "$wait_output" in
+        ''|*[!0-9]*) fail "docker wait returned malformed exit code: $wait_output" ;;
+    esac
+    [ "$wait_output" -eq 0 ] || fail "simulator exited with status $wait_output"
+}
+
+stop_sim() {
+    parse_run_options "$@"
+    NAME=$(container_name)
+    if docker container inspect "$NAME" >/dev/null 2>&1; then
+        docker stop --time 10 "$NAME" >/dev/null || fail "failed to stop simulator"
+        docker rm "$NAME" >/dev/null 2>&1 || true
+    fi
+    [ -f "$RUN_REAL/logs/launcher.jsonl" ] || fail "launcher log is missing"
+    grep -q '"event":"clean_shutdown"' "$RUN_REAL/logs/launcher.jsonl" \
+        || fail "clean_shutdown was not recorded"
+    grep -q '"exitCode":0' "$RUN_REAL/exit-status.json" \
+        && grep -q '"cleanShutdown":true' "$RUN_REAL/exit-status.json" \
+        || fail "clean exit status was not recorded"
+}
+
+clean_run() {
+    parse_run_options "$@"
+    NAME=$(container_name)
+    if docker container inspect "$NAME" >/dev/null 2>&1; then
+        docker stop --time 10 "$NAME" >/dev/null 2>&1 || true
+        docker rm "$NAME" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" \
+        "$RUN_REAL/readiness.json" "$RUN_REAL/route-selection.json" \
+        "$RUN_REAL/launch.json" "$RUN_REAL/session.json" "$RUN_REAL/exit-status.json" \
+        "$RUN_REAL/.readiness.json.tmp" "$RUN_REAL/.route-selection.json.tmp" \
+        "$RUN_REAL/.launch.json.tmp" "$RUN_REAL/.session.json.tmp" \
+        "$RUN_REAL/.exit-status.json.tmp"
+    run_sim "$@"
+}
+
+[ "$#" -gt 0 ] || usage
+command=$1
+shift
+case "$command" in
+    build) build "$@" ;;
+    run) run_sim "$@" ;;
+    stop) stop_sim "$@" ;;
+    clean-run) clean_run "$@" ;;
+    *) usage ;;
+esac

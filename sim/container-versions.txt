@@ -1,0 +1,13 @@
+base=rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0 (linux/amd64)
+rustc=1.85.1 (4eb161250 2025-03-15)
+cargo=1.85.1 (d73d2caf9 2024-12-31)
+rustfmt=1.85.1
+clippy=1.85.1
+libsdl2-dev=2.26.5+dfsg-1
+xvfb=2:21.1.7-3+deb12u13
+sdl2=0.37.0
+png=0.17.16
+serde=1.0.229
+serde_json=1.0.151
+anyhow=1.0.104
+signal-hook=0.3.18

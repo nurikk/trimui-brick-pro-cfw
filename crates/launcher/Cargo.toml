@@ -1,0 +1,13 @@
+[package]
+name = "sim-launcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+signal-hook.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sim-domain = { path = "../domain" }
+sim-host-platform = { path = "../host-platform" }
+sim-platform-contract = { path = "../platform-contract" }

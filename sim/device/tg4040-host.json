@@ -20,11 +20,31 @@
       },
       {
         "atMs": 32,
-        "control": "primary",
+        "control": "down",
         "action": "press"
       },
       {
         "atMs": 48,
+        "control": "down",
+        "action": "release"
+      },
+      {
+        "atMs": 64,
+        "control": "down",
+        "action": "press"
+      },
+      {
+        "atMs": 80,
+        "control": "down",
+        "action": "release"
+      },
+      {
+        "atMs": 96,
+        "control": "primary",
+        "action": "press"
+      },
+      {
+        "atMs": 112,
         "control": "primary",
         "action": "release"
       }

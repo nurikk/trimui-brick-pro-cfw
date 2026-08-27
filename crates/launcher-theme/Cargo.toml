@@ -1,0 +1,15 @@
+[package]
+name = "launcher-theme"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Strict declarative generated-scene theme engine"
+
+[[bin]]
+name = "launcher-theme"
+path = "src/main.rs"
+
+[dependencies]
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true

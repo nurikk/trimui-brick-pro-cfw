@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/theme-v1.schema.json",
+  "title": "Declarative launcher theme v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "metadata", "canvas", "colors", "resources", "layout", "settings", "fallback"],
+  "properties": {
+    "$schema": { "const": "urn:project:theme-v1" },
+    "format": { "const": "theme-v1" },
+    "schemaVersion": { "const": 1 },
+    "metadata": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "author", "license", "provenance"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "author": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "license": { "const": "MIT" },
+        "provenance": { "const": "project-authored" }
+      }
+    },
+    "canvas": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "aspect"],
+      "properties": {
+        "width": { "const": 1024 }, "height": { "const": 768 }, "aspect": { "const": "4:3" }
+      }
+    },
+    "colors": {
+      "type": "object", "additionalProperties": false,
+      "required": ["background", "surface", "accent", "text", "muted", "highlight"],
+      "properties": {
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "surface": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "text": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "muted": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "highlight": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+      }
+    },
+    "resources": {
+      "type": "object", "additionalProperties": false,
+      "required": ["font", "icon", "background", "sound"],
+      "properties": {
+        "font": { "$ref": "#/$defs/resource" }, "icon": { "$ref": "#/$defs/resource" },
+        "background": { "$ref": "#/$defs/resource" }, "sound": { "$ref": "#/$defs/resource" }
+      }
+    },
+    "layout": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preset", "regions", "maxVisibleGames"],
+      "properties": {
+        "preset": { "enum": ["artbook", "contrast", "minimal"] },
+        "maxVisibleGames": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "regions": {
+          "type": "array", "minItems": 9, "maxItems": 16,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "kind", "x", "y", "width", "height", "visible"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "maxLength": 32 },
+              "kind": { "enum": ["system-art", "game-list", "box-art-placeholder", "screenshot-placeholder", "metadata", "menu", "help-strip", "clock", "battery"] },
+              "x": { "type": "integer", "minimum": 0, "maximum": 1023 }, "y": { "type": "integer", "minimum": 0, "maximum": 767 },
+              "width": { "type": "integer", "minimum": 1, "maximum": 1024 }, "height": { "type": "integer", "minimum": 1, "maximum": 768 },
+              "visible": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artworkMode", "metadataVisibility", "fontScale", "colorScheme"],
+      "properties": {
+        "artworkMode": { "enum": ["system-art", "box-art", "screenshot"] },
+        "metadataVisibility": { "enum": ["full", "compact", "hidden"] },
+        "fontScale": { "type": "integer", "minimum": 80, "maximum": 160 },
+        "colorScheme": { "enum": ["dark", "high-contrast", "minimal"] }
+      }
+    },
+    "fallback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["splash", "onInvalid"],
+      "properties": { "splash": { "const": "generated-neutral" }, "onInvalid": { "const": "safe-artbook" } }
+    }
+  },
+  "$defs": {
+    "resource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "ref", "budgetBytes"],
+      "properties": {
+        "kind": { "enum": ["generated", "builtin"] },
+        "ref": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "budgetBytes": { "type": "integer", "minimum": 0, "maximum": 65536 }
+      }
+    }
+  }
+}

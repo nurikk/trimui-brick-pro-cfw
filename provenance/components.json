@@ -1990,6 +1990,34 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-launcher-theme",
+      "intendedUse": "Current project workspace source for declarative theme previews; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "launcher-theme",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "launcher-theme",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored workspace source; no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
     }
   ],
   "distributedArtifacts": [
@@ -2315,6 +2343,12 @@
         "version": "0.10.9"
       },
       {
+        "checksum": null,
+        "name": "launcher-theme",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
         "checksum": "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2",
         "name": "signal-hook",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -2418,7 +2452,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "432d45a233ec21e8e9a623a495ed7169a4c3d212306de8d13ee9248d2e8351cd"
+    "sha256": "be3fbf87f98957f8b74e2457c18ec1aaade398f5cb6eef0a8da3ee7db1948a41"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

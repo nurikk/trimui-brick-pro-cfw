@@ -9,6 +9,7 @@ members = [
     "crates/brick-recovery",
     "crates/launch-contract",
     "crates/metadata-scraper",
+    "crates/launcher-theme",
 ]
 resolver = "2"
 

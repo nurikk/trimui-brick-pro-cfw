@@ -281,6 +281,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "launcher-theme"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "signal-hook"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

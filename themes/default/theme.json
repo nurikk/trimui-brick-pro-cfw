@@ -1,0 +1,48 @@
+{
+  "$schema": "urn:project:theme-v1",
+  "format": "theme-v1",
+  "schemaVersion": 1,
+  "metadata": {
+    "name": "Artbook",
+    "author": "Project Authors",
+    "license": "MIT",
+    "provenance": "project-authored"
+  },
+  "canvas": { "width": 1024, "height": 768, "aspect": "4:3" },
+  "colors": {
+    "background": "#10131C",
+    "surface": "#202638",
+    "accent": "#4D83D8",
+    "text": "#EDF2FA",
+    "muted": "#56627A",
+    "highlight": "#F0B35B"
+  },
+  "resources": {
+    "font": { "kind": "builtin", "ref": "generated-sans", "budgetBytes": 0 },
+    "icon": { "kind": "generated", "ref": "controller-mark", "budgetBytes": 0 },
+    "background": { "kind": "generated", "ref": "grid-gradient", "budgetBytes": 0 },
+    "sound": { "kind": "builtin", "ref": "silent", "budgetBytes": 0 }
+  },
+  "layout": {
+    "preset": "artbook",
+    "maxVisibleGames": 8,
+    "regions": [
+      { "id": "system-art", "kind": "system-art", "x": 32, "y": 72, "width": 360, "height": 250, "visible": true },
+      { "id": "game-list", "kind": "game-list", "x": 420, "y": 72, "width": 572, "height": 250, "visible": true },
+      { "id": "box-art", "kind": "box-art-placeholder", "x": 32, "y": 340, "width": 176, "height": 210, "visible": true },
+      { "id": "screenshot", "kind": "screenshot-placeholder", "x": 224, "y": 340, "width": 280, "height": 158, "visible": true },
+      { "id": "metadata", "kind": "metadata", "x": 528, "y": 340, "width": 464, "height": 210, "visible": true },
+      { "id": "menu", "kind": "menu", "x": 32, "y": 580, "width": 960, "height": 86, "visible": true },
+      { "id": "help", "kind": "help-strip", "x": 32, "y": 690, "width": 700, "height": 44, "visible": true },
+      { "id": "clock", "kind": "clock", "x": 760, "y": 12, "width": 104, "height": 36, "visible": true },
+      { "id": "battery", "kind": "battery", "x": 880, "y": 12, "width": 112, "height": 36, "visible": true }
+    ]
+  },
+  "settings": {
+    "artworkMode": "system-art",
+    "metadataVisibility": "full",
+    "fontScale": 100,
+    "colorScheme": "dark"
+  },
+  "fallback": { "splash": "generated-neutral", "onInvalid": "safe-artbook" }
+}

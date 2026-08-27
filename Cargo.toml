@@ -25,6 +25,9 @@ members = [
     "crates/session-broker",
     "crates/settings-ui",
     "crates/display-profile",
+    "crates/boot-state",
+    "crates/update-agent",
+    "crates/userspace-supervisor",
 ]
 resolver = "2"
 

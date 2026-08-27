@@ -1,0 +1,16 @@
+[package]
+name = "update-agent"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "update-agent"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+minisign-verify = { version = "=0.2.5", default-features = false }
+boot-state = { path = "../boot-state" }

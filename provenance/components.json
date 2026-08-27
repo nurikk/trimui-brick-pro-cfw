@@ -4469,6 +4469,122 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "project-authored-boot-state",
+      "intendedUse": "Current project workspace source for the synthetic boot-state lifecycle contract; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "boot-state",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "boot-state",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored source; its exact workspace package is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "project-authored-update-agent",
+      "intendedUse": "Current project workspace source for the synthetic update-agent lifecycle contract; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "update-agent",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "update-agent",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored source; its exact workspace package is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "project-authored-userspace-supervisor",
+      "intendedUse": "Current project workspace source for the synthetic userspace-supervisor lifecycle contract; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "userspace-supervisor",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "userspace-supervisor",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored source; its exact workspace package is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored workspace source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0.1.0"
+    },
+    {
+      "componentClass": "rust-crate",
+      "copyrightAttribution": "The minisign-verify crate is published under the MIT license; retain its upstream attribution when redistributing.",
+      "id": "crate-minisign-verify-0.2.5",
+      "intendedUse": "Pure-Rust Minisign detached-signature verification for the TG4040 userspace updater; not independently target-shipped.",
+      "licenseEvidence": {
+        "basis": "crates.io exact-version package metadata and local source audit",
+        "observedExpression": "MIT"
+      },
+      "licenseEvidenceUrl": "https://crates.io/crates/minisign-verify/0.2.5",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e",
+        "name": "minisign-verify",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.5"
+      },
+      "name": "minisign-verify 0.2.5",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Exact pinned zero-dependency pure-Rust verifier required by the updater trust boundary; no executable or private signing material is distributed.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "resolved crates.io registry dependency",
+      "sourceUrl": "https://github.com/jedisct1/rust-minisign-verify",
+      "status": "approved",
+      "version": "0.2.5"
     }
   ],
   "distributedArtifacts": [
@@ -4691,6 +4807,12 @@
       },
       {
         "checksum": null,
+        "name": "boot-state",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
         "name": "bootstrap-probe",
         "source": null,
         "version": "0.1.0"
@@ -4876,16 +4998,16 @@
         "version": "0.4.3"
       },
       {
-        "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
-        "name": "itoa",
-        "source": "registry+https://github.com/rust-lang/crates.io-index",
-        "version": "1.0.18"
-      },
-      {
         "checksum": null,
         "name": "input-profile",
         "source": null,
         "version": "0.1.0"
+      },
+      {
+        "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+        "name": "itoa",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "1.0.18"
       },
       {
         "checksum": "668b7183bd07af9a4885f5c35b0cc5c83c4607a913c16b7e17291832910d2dcc",
@@ -4976,6 +5098,12 @@
         "name": "metadata-scraper",
         "source": null,
         "version": "0.1.0"
+      },
+      {
+        "checksum": "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e",
+        "name": "minisign-verify",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "version": "0.2.5"
       },
       {
         "checksum": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
@@ -5129,6 +5257,12 @@
       },
       {
         "checksum": null,
+        "name": "session-broker",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
         "name": "settings-schema",
         "source": null,
         "version": "0.1.0"
@@ -5214,12 +5348,6 @@
       {
         "checksum": null,
         "name": "sim-platform-contract",
-        "source": null,
-        "version": "0.1.0"
-      },
-      {
-        "checksum": null,
-        "name": "session-broker",
         "source": null,
         "version": "0.1.0"
       },
@@ -5332,6 +5460,18 @@
         "version": "0.7.1"
       },
       {
+        "checksum": null,
+        "name": "update-agent",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "userspace-supervisor",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
         "checksum": "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29",
         "name": "version-compare",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -5399,7 +5539,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "71e6f60a75a997525d95b5c57121591f041e4e188125882771f16918a665462d"
+    "sha256": "20d9e85e2e3eadd07a33a6b793d211cd8b48655b176b570e43760e53f5a1b9e4"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

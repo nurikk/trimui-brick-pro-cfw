@@ -1,0 +1,20 @@
+{
+  "$schema": "https://trimui.invalid/schemas/update-manifest-v1.schema.json",
+  "dataSchema": {
+    "max": 1,
+    "min": 1
+  },
+  "deviceId": "TG4040",
+  "manifestVersion": 1,
+  "payloadSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "payloadSize": 4096,
+  "payloadType": "squashfs-userspace",
+  "releaseId": "release-20260827",
+  "releaseSequence": 2,
+  "stockFirmware": {
+    "max": "9.9.9",
+    "min": "1.0.0"
+  },
+  "trustedComment": "project=trimui-brick-pro-cfw; target=tg4040; release=release-20260827; sequence=2; payload-sha256=0000000000000000000000000000000000000000000000000000000000000000; manifest-sha256=797b5487c0d5107cdfa491720b5702036792eaf3d09120fa844053220b8f4873",
+  "userspaceAbi": "tg4040-userspace-v1"
+}

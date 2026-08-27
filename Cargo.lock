@@ -81,6 +81,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "boot-state"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "bootstrap-probe"
 version = "0.1.0"
 dependencies = [
@@ -362,12 +372,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "itoa"
-version = "1.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
-
-[[package]]
 name = "input-profile"
 version = "0.1.0"
 dependencies = [
@@ -375,6 +379,12 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
+
+[[package]]
+name = "itoa"
+version = "1.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jiff"
@@ -506,6 +516,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"
@@ -740,6 +756,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-broker"
+version = "0.1.0"
+dependencies = [
+ "launch-contract",
+ "libc",
+ "package-manager",
+ "package-trust",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sim-platform-contract",
+]
+
+[[package]]
 name = "settings-schema"
 version = "0.1.0"
 dependencies = [
@@ -913,20 +943,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "session-broker"
-version = "0.1.0"
-dependencies = [
- "launch-contract",
- "libc",
- "package-manager",
- "package-trust",
- "serde",
- "serde_json",
- "sha2",
- "sim-platform-contract",
-]
-
-[[package]]
 name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,7 +1016,6 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
-
 
 [[package]]
 name = "thiserror"
@@ -1099,6 +1114,27 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "update-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "boot-state",
+ "minisign-verify",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "userspace-supervisor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "version-compare"

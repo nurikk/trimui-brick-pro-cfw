@@ -116,15 +116,21 @@ docker run --rm \
         export CARGO_TARGET_DIR=/tmp/cargo-target
         export CARGO_NET_OFFLINE=true
         cargo fmt --check
-        cargo clippy --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -- -D warnings
-        cargo build --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics
-        cargo build --locked --offline --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery -p brick-diagnostics
+        cargo clippy --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor -- -D warnings
+        cargo build --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor
+        cargo build --locked --offline --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor
         install -m 0755 /tmp/cargo-target/release/bootstrap-probe /work/host/bootstrap-probe
         install -m 0755 /tmp/cargo-target/release/brick-recovery /work/host/brick-recovery
         install -m 0755 /tmp/cargo-target/release/brickpro-diagnostics /work/host/brickpro-diagnostics
+        install -m 0755 /tmp/cargo-target/release/boot-state /work/host/boot-state
+        install -m 0755 /tmp/cargo-target/release/update-agent /work/host/update-agent
+        install -m 0755 /tmp/cargo-target/release/userspace-supervisor /work/host/userspace-supervisor
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/bootstrap-probe /work/payload/bootstrap-probe
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/brick-recovery /work/payload/brick-recovery
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/brickpro-diagnostics /work/payload/brickpro-diagnostics
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/boot-state /work/payload/boot-state
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/update-agent /work/payload/update-agent
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/userspace-supervisor /work/payload/userspace-supervisor
         cp /usr/share/trimui-baseline-toolchain.txt /work/toolchain.txt
     '
 
@@ -146,6 +152,12 @@ grep -Fq '"reason":"real-fingerprint-not-approved"' "$WORK/host/recovery-denial.
 
 "$ROOT/tools/sim/journeys/bootstrap-recovery.sh" "$WORK/host"
 "$ROOT/tools/sim/journeys/diagnostics-recovery.sh" "$WORK/host"
+"$WORK/host/boot-state" journey --root "$WORK/host/boot-state-journey"
+"$WORK/host/boot-state" healthy-journey --root "$WORK/host/boot-state-health"
+"$WORK/host/update-agent" journey --root "$WORK/host/update-agent-journey"
+for scenario in healthy launcher-restart broker-restart session-failure essential-failure hal-loss shutdown; do
+    "$WORK/host/userspace-supervisor" simulate --root "$WORK/host/supervisor-$scenario" --scenario "$scenario"
+done
 
 STAGE=$WORK/stage
 mkdir -p "$STAGE/usr/bin" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"

@@ -4116,6 +4116,34 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "workspace-settings-schema",
+      "intendedUse": "Clean-room project-authored declarative settings schema source; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "settings-schema",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "TrimUI Brick Pro CFW settings-schema crate",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored repository source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": "0dc94c07fafdfec6cd8dfae26384dfccf8669e1b"
     }
   ],
   "distributedArtifacts": [
@@ -4723,6 +4751,12 @@
         "version": "1.0.151"
       },
       {
+        "checksum": null,
+        "name": "settings-schema",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
         "checksum": "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8",
         "name": "sha1",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -4946,7 +4980,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "da287a06f18bdde6d9129435a764634014cdf4cd3ac184bed765894d691ed7cb"
+    "sha256": "30c16782cdfd5befe2ef45889bd839cdc2c4a1b9a4d3f8eace9cdaf8dae372ee"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

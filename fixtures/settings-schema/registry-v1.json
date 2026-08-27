@@ -1,0 +1,155 @@
+{
+  "format": "brickpro-settings-registry",
+  "schemaVersion": 1,
+  "allowedNamespaces": ["core", "provider.scraper"],
+  "sections": [
+    {"id": "display", "labelKey": "settings.display.label", "descriptionKey": "settings.display.description", "order": 10},
+    {"id": "audio", "labelKey": "settings.audio.label", "descriptionKey": "settings.audio.description", "order": 20},
+    {"id": "input", "labelKey": "settings.input.label", "descriptionKey": "settings.input.description", "order": 30},
+    {"id": "scraper", "labelKey": "settings.scraper.label", "descriptionKey": "settings.scraper.description", "order": 40},
+    {"id": "theme", "labelKey": "settings.theme.label", "descriptionKey": "settings.theme.description", "order": 50},
+    {"id": "system", "labelKey": "settings.system.label", "descriptionKey": "settings.system.description", "order": 60},
+    {"id": "network", "labelKey": "settings.network.label", "descriptionKey": "settings.network.description", "order": 70},
+    {"id": "wifi", "labelKey": "settings.wifi.label", "descriptionKey": "settings.wifi.description", "order": 80}
+  ],
+  "settings": [
+    {
+      "id": "core.display.brightness", "namespace": "core", "section": "display", "group": "screen", "order": 10,
+      "labelKey": "settings.display.brightness.label", "descriptionKey": "settings.display.brightness.description", "kind": "integer",
+      "default": {"kind": "integer", "value": 50}, "current": {"kind": "integer", "value": 60}, "pending": {"kind": "integer", "value": 70},
+      "constraints": {"range": {"min": 0, "max": 100, "step": 10}, "text": null, "options": []},
+      "units": "percent", "display": {"unit": "percent", "format": "slider", "redact": false}, "scope": "system", "apply": ["immediate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.display.gamma", "namespace": "core", "section": "display", "group": "screen", "order": 20,
+      "labelKey": "settings.display.gamma.label", "descriptionKey": "settings.display.gamma.description", "kind": "decimal",
+      "default": {"kind": "decimal", "value": 1.0}, "current": {"kind": "decimal", "value": 1.2}, "pending": null,
+      "constraints": {"range": {"min": 0.5, "max": 2.0, "step": 0.1}, "text": null, "options": []},
+      "units": null, "display": {"unit": null, "format": "decimal", "redact": false}, "scope": "user", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.display.night-mode", "namespace": "core", "section": "display", "group": "screen", "order": 30,
+      "labelKey": "settings.display.nightMode.label", "descriptionKey": "settings.display.nightMode.description", "kind": "boolean",
+      "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": true}, "pending": null,
+      "constraints": null, "units": null, "display": {"unit": null, "format": "toggle", "redact": false}, "scope": "theme", "apply": ["restart-launcher"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.audio.volume", "namespace": "core", "section": "audio", "group": "output", "order": 10,
+      "labelKey": "settings.audio.volume.label", "descriptionKey": "settings.audio.volume.description", "kind": "integer",
+      "default": {"kind": "integer", "value": 70}, "current": {"kind": "integer", "value": 70}, "pending": null,
+      "constraints": {"range": {"min": 0, "max": 100, "step": 5}, "text": null, "options": []},
+      "units": "percent", "display": {"unit": "percent", "format": "slider", "redact": false}, "scope": "core", "apply": ["reboot-candidate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.audio.output", "namespace": "core", "section": "audio", "group": "output", "order": 20,
+      "labelKey": "settings.audio.output.label", "descriptionKey": "settings.audio.output.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "speaker"}, "current": {"kind": "enum-single", "value": "headphones"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "speaker", "labelKey": "settings.audio.output.speaker"},
+        {"value": "headphones", "labelKey": "settings.audio.output.headphones"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "system", "apply": ["on-confirm"],
+      "requiresCapabilities": ["audio"], "unsupportedReason": "Audio output is unavailable on this platform", "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.input.hotkey", "namespace": "core", "section": "input", "group": "shortcuts", "order": 10,
+      "labelKey": "settings.input.hotkey.label", "descriptionKey": "settings.input.hotkey.description", "kind": "text",
+      "default": {"kind": "text", "value": "menu"}, "current": {"kind": "text", "value": "menu"}, "pending": null,
+      "constraints": {"range": null, "text": {"minLength": 1, "maxLength": 16, "pattern": "^[A-Za-z0-9_-]+$"}, "options": []},
+      "units": null, "display": {"unit": null, "format": "text", "redact": false}, "scope": "emulator-profile", "apply": ["immediate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": true, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.input.turbo-buttons", "namespace": "core", "section": "input", "group": "shortcuts", "order": 20,
+      "labelKey": "settings.input.turboButtons.label", "descriptionKey": "settings.input.turboButtons.description", "kind": "enum-multi",
+      "default": {"kind": "enum-multi", "value": ["a"]}, "current": {"kind": "enum-multi", "value": ["a", "b"]}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "a", "labelKey": "settings.button.a"}, {"value": "b", "labelKey": "settings.button.b"}, {"value": "x", "labelKey": "settings.button.x"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "multi-select", "redact": false}, "scope": "game", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": false, "trim": false, "allowEmpty": true}, "migration": null
+    },
+    {
+      "id": "provider.scraper.api-key", "namespace": "provider.scraper", "section": "scraper", "group": "credentials", "order": 10,
+      "labelKey": "settings.scraper.apiKey.label", "descriptionKey": "settings.scraper.apiKey.description", "kind": "secret",
+      "default": {"kind": "secret", "value": {"credentialRef": "scraper-api-key"}}, "current": {"kind": "secret", "value": {"credentialRef": "scraper-api-key"}}, "pending": null,
+      "constraints": null, "units": null, "display": {"unit": null, "format": "password", "redact": true}, "scope": "provider", "apply": ["external-operation"],
+      "requiresCapabilities": ["network"], "unsupportedReason": "Scraper credentials require network support", "visibility": null, "enabledIf": null, "redacted": true,
+      "validation": {"required": false, "trim": true, "allowEmpty": true}, "migration": {"key": "scraper.api-key", "introducedIn": 1, "removedIn": null}
+    },
+    {
+      "id": "core.theme.style", "namespace": "core", "section": "theme", "group": "appearance", "order": 10,
+      "labelKey": "settings.theme.style.label", "descriptionKey": "settings.theme.style.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "brick"}, "current": {"kind": "enum-single", "value": "brick"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "brick", "labelKey": "settings.theme.style.brick"}, {"value": "dark", "labelKey": "settings.theme.style.dark"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "theme", "apply": ["restart-launcher"],
+      "requiresCapabilities": ["theme-engine"], "unsupportedReason": "Theme engine is unavailable", "visibility": {"kind": "all", "predicates": [
+        {"kind": "capability", "capability": "theme-engine"},
+        {"kind": "any", "predicates": [
+          {"kind": "equals", "setting": "core.display.night-mode", "value": {"kind": "boolean", "value": true}},
+          {"kind": "present", "setting": "core.display.brightness"}
+        ]}
+      ]}, "enabledIf": {"kind": "not", "predicate": {"kind": "equals", "setting": "core.display.night-mode", "value": {"kind": "boolean", "value": false}}}, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.system.factory-reset", "namespace": "core", "section": "system", "group": "maintenance", "order": 10,
+      "labelKey": "settings.system.factoryReset.label", "descriptionKey": "settings.system.factoryReset.description", "kind": "action",
+      "default": null, "current": null, "pending": null, "constraints": null, "units": null, "display": {"unit": null, "format": "button", "redact": false}, "scope": "system", "apply": ["external-operation"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": false, "trim": false, "allowEmpty": true}, "migration": null
+    },
+    {
+      "id": "core.system.version", "namespace": "core", "section": "system", "group": "information", "order": 20,
+      "labelKey": "settings.system.version.label", "descriptionKey": "settings.system.version.description", "kind": "read-only",
+      "default": null, "current": {"kind": "text", "value": "fixture-v1"}, "pending": null, "constraints": null, "units": null, "display": {"unit": null, "format": "value", "redact": false}, "scope": "system", "apply": ["immediate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.network.state", "namespace": "core", "section": "network", "group": "status", "order": 10,
+      "labelKey": "settings.network.state.label", "descriptionKey": "settings.network.state.description", "kind": "status",
+      "default": null, "current": {"kind": "text", "value": "offline"}, "pending": null, "constraints": null, "units": null, "display": {"unit": null, "format": "status", "redact": false}, "scope": "system", "apply": ["immediate"],
+      "requiresCapabilities": ["network"], "unsupportedReason": "Network support is not available in this fixture", "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.wifi.enabled", "namespace": "core", "section": "wifi", "group": "connection", "order": 10,
+      "labelKey": "settings.wifi.enabled.label", "descriptionKey": "settings.wifi.enabled.description", "kind": "boolean",
+      "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": false}, "pending": null, "constraints": null, "units": null,
+      "display": {"unit": null, "format": "toggle", "redact": false}, "scope": "system", "apply": ["immediate"], "requiresCapabilities": ["wifi"], "unsupportedReason": "Wi-Fi is a placeholder; no network operation is implemented",
+      "visibility": null, "enabledIf": null, "redacted": false, "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.wifi.ssid", "namespace": "core", "section": "wifi", "group": "connection", "order": 20,
+      "labelKey": "settings.wifi.ssid.label", "descriptionKey": "settings.wifi.ssid.description", "kind": "text",
+      "default": {"kind": "text", "value": ""}, "current": {"kind": "text", "value": ""}, "pending": null,
+      "constraints": {"range": null, "text": {"minLength": 0, "maxLength": 32, "pattern": "^[A-Za-z0-9 _-]*$"}, "options": []},
+      "units": null, "display": {"unit": null, "format": "text", "redact": false}, "scope": "system", "apply": ["on-confirm"], "requiresCapabilities": ["wifi"], "unsupportedReason": "Wi-Fi is a placeholder; no network operation is implemented",
+      "visibility": null, "enabledIf": {"kind": "equals", "setting": "core.wifi.enabled", "value": {"kind": "boolean", "value": true}}, "redacted": false,
+      "validation": {"required": false, "trim": true, "allowEmpty": true}, "migration": null
+    },
+    {
+      "id": "core.wifi.password", "namespace": "core", "section": "wifi", "group": "credentials", "order": 30,
+      "labelKey": "settings.wifi.password.label", "descriptionKey": "settings.wifi.password.description", "kind": "secret",
+      "default": {"kind": "secret", "value": {"credentialRef": "wifi-password"}}, "current": {"kind": "secret", "value": {"credentialRef": "wifi-password"}}, "pending": null,
+      "constraints": null, "units": null, "display": {"unit": null, "format": "password", "redact": true}, "scope": "system", "apply": ["external-operation"], "requiresCapabilities": ["wifi"], "unsupportedReason": "Wi-Fi is a placeholder; no network operation is implemented",
+      "visibility": null, "enabledIf": {"kind": "present", "setting": "core.wifi.ssid"}, "redacted": true,
+      "validation": {"required": false, "trim": true, "allowEmpty": true}, "migration": null
+    }
+  ],
+  "migrations": []
+}

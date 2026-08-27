@@ -12,6 +12,7 @@ members = [
     "crates/launcher-theme",
     "crates/package-trust",
     "crates/package-manager",
+    "crates/settings-schema",
 ]
 resolver = "2"
 

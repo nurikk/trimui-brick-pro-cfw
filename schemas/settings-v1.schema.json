@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/brickpro-settings-v1.schema.json",
+  "title": "Brick Pro declarative settings registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schemaVersion", "allowedNamespaces", "sections", "settings", "migrations"],
+  "properties": {
+    "format": {"const": "brickpro-settings-registry"},
+    "schemaVersion": {"const": 1},
+    "allowedNamespaces": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
+    "settings": {"type": "array", "items": {"$ref": "#/$defs/setting"}},
+    "migrations": {"type": "array", "items": {"$ref": "#/$defs/migration"}}
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$", "maxLength": 128},
+    "key": {"type": "string", "pattern": "^[^\\s]{1,128}$"},
+    "section": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "labelKey", "descriptionKey", "order"],
+      "properties": {"id": {"$ref": "#/$defs/key"}, "labelKey": {"$ref": "#/$defs/key"}, "descriptionKey": {"$ref": "#/$defs/key"}, "order": {"type": "integer"}}
+    },
+    "setting": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "namespace", "section", "group", "order", "labelKey", "descriptionKey", "kind", "default", "current", "pending", "constraints", "units", "display", "scope", "apply", "requiresCapabilities", "unsupportedReason", "visibility", "enabledIf", "redacted", "validation", "migration"],
+      "properties": {
+        "id": {"$ref": "#/$defs/name"}, "namespace": {"$ref": "#/$defs/name"}, "section": {"$ref": "#/$defs/key"}, "group": {"$ref": "#/$defs/key"}, "order": {"type": "integer"},
+        "labelKey": {"$ref": "#/$defs/key"}, "descriptionKey": {"$ref": "#/$defs/key"},
+        "kind": {"enum": ["boolean", "integer", "decimal", "text", "secret", "enum-single", "enum-multi", "action", "read-only", "status"]},
+        "default": {"anyOf": [{"$ref": "#/$defs/value"}, {"type": "null"}]}, "current": {"anyOf": [{"$ref": "#/$defs/value"}, {"type": "null"}]}, "pending": {"anyOf": [{"$ref": "#/$defs/value"}, {"type": "null"}]},
+        "constraints": {"anyOf": [{"$ref": "#/$defs/constraints"}, {"type": "null"}]},
+        "units": {"anyOf": [{"type": "string", "maxLength": 64}, {"type": "null"}]}, "display": {"anyOf": [{"$ref": "#/$defs/display"}, {"type": "null"}]},
+        "scope": {"enum": ["system", "user", "emulator-profile", "core", "game", "theme", "provider"]},
+        "apply": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"enum": ["immediate", "on-confirm", "restart-launcher", "reboot-candidate", "external-operation"]}},
+        "requiresCapabilities": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/key"}}, "unsupportedReason": {"anyOf": [{"type": "string", "maxLength": 256}, {"type": "null"}]},
+        "visibility": {"anyOf": [{"$ref": "#/$defs/predicate"}, {"type": "null"}]}, "enabledIf": {"anyOf": [{"$ref": "#/$defs/predicate"}, {"type": "null"}]},
+        "redacted": {"type": "boolean"}, "validation": {"$ref": "#/$defs/validation"}, "migration": {"anyOf": [{"$ref": "#/$defs/settingMigration"}, {"type": "null"}]}
+      }
+    },
+    "value": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "boolean"}, "value": {"type": "boolean"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "integer"}, "value": {"type": "integer"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "decimal"}, "value": {"type": "number"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "text"}, "value": {"type": "string"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "secret"}, "value": {"$ref": "#/$defs/credential"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "enum-single"}, "value": {"type": "string"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "enum-multi"}, "value": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}}
+    ]},
+    "credential": {"type": "object", "additionalProperties": false, "required": ["credentialRef"], "properties": {"credentialRef": {"$ref": "#/$defs/key"}}},
+    "constraints": {
+      "type": "object", "additionalProperties": false, "required": ["range", "text", "options"],
+      "properties": {"range": {"anyOf": [{"$ref": "#/$defs/range"}, {"type": "null"}]}, "text": {"anyOf": [{"$ref": "#/$defs/text"}, {"type": "null"}]}, "options": {"type": "array", "items": {"$ref": "#/$defs/option"}}}
+    },
+    "range": {"type": "object", "additionalProperties": false, "required": ["min", "max", "step"], "properties": {"min": {"type": "number"}, "max": {"type": "number"}, "step": {"type": "number", "exclusiveMinimum": 0}}},
+    "text": {"type": "object", "additionalProperties": false, "required": ["minLength", "maxLength", "pattern"], "properties": {"minLength": {"type": "integer", "minimum": 0}, "maxLength": {"type": "integer", "minimum": 0, "maximum": 4096}, "pattern": {"anyOf": [{"type": "string", "maxLength": 256}, {"type": "null"}]}}},
+    "option": {"type": "object", "additionalProperties": false, "required": ["value", "labelKey"], "properties": {"value": {"$ref": "#/$defs/key"}, "labelKey": {"$ref": "#/$defs/key"}}},
+    "display": {"type": "object", "additionalProperties": false, "required": ["unit", "format", "redact"], "properties": {"unit": {"anyOf": [{"type": "string", "maxLength": 64}, {"type": "null"}]}, "format": {"anyOf": [{"type": "string", "maxLength": 64}, {"type": "null"}]}, "redact": {"type": "boolean"}}},
+    "validation": {"type": "object", "additionalProperties": false, "required": ["required", "trim", "allowEmpty"], "properties": {"required": {"type": "boolean"}, "trim": {"type": "boolean"}, "allowEmpty": {"type": "boolean"}}},
+    "settingMigration": {"type": "object", "additionalProperties": false, "required": ["key", "introducedIn", "removedIn"], "properties": {"key": {"$ref": "#/$defs/key"}, "introducedIn": {"type": "integer", "minimum": 1}, "removedIn": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}}},
+    "migration": {"type": "object", "additionalProperties": false, "required": ["id", "fromVersion", "toVersion", "changes"], "properties": {"id": {"$ref": "#/$defs/key"}, "fromVersion": {"type": "integer", "minimum": 0}, "toVersion": {"type": "integer", "minimum": 1}, "changes": {"type": "array", "items": {"$ref": "#/$defs/change"}}}},
+    "change": {"type": "object", "additionalProperties": false, "required": ["settingId", "operation"], "properties": {"settingId": {"$ref": "#/$defs/key"}, "operation": {"enum": ["rename", "replace", "remove"]}}},
+    "predicate": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["kind", "predicates"], "properties": {"kind": {"const": "all"}, "predicates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/predicate"}}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "predicates"], "properties": {"kind": {"const": "any"}, "predicates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/predicate"}}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "predicate"], "properties": {"kind": {"const": "not"}, "predicate": {"$ref": "#/$defs/predicate"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "setting", "value"], "properties": {"kind": {"const": "equals"}, "setting": {"$ref": "#/$defs/key"}, "value": {"$ref": "#/$defs/value"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "setting"], "properties": {"kind": {"const": "present"}, "setting": {"$ref": "#/$defs/key"}}},
+      {"type": "object", "additionalProperties": false, "required": ["kind", "capability"], "properties": {"kind": {"const": "capability"}, "capability": {"$ref": "#/$defs/key"}}}
+    ]}
+  }
+}

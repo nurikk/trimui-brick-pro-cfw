@@ -1,0 +1,303 @@
+{
+  "fixtureMetadata": {
+    "fixtureId": "time-domain-scenarios",
+    "artifactKind": "generated-scenario-data",
+    "domain": "time-and-locale",
+    "contractPath": "docs/settings/time.md",
+    "synthetic": true,
+    "deviceAccess": "none",
+    "networkAccess": "none",
+    "deterministic": true,
+    "scenarioClasses": [
+      "normal",
+      "unsupported",
+      "invalid",
+      "pending-change",
+      "confirm",
+      "cancel",
+      "reset"
+    ]
+  },
+  "allowlists": {
+    "timezones": [
+      "UTC",
+      "America/New_York",
+      "Europe/London",
+      "Asia/Tokyo"
+    ],
+    "languages": [
+      "en-US",
+      "es-ES",
+      "fr-FR",
+      "de-DE"
+    ],
+    "clockFormats": [
+      "12h",
+      "24h"
+    ]
+  },
+  "defaults": {
+    "timezone": "UTC",
+    "clockFormat": "24h",
+    "showClock": true,
+    "automaticNetworkTime": false,
+    "manualDate": "2000-01-01",
+    "manualTime": "00:00",
+    "language": "en-US"
+  },
+  "scenarios": [
+    {
+      "id": "time-normal-network-candidate",
+      "name": "normal supported automatic network time candidate",
+      "scenarioClass": "normal",
+      "capabilities": {
+        "network_time_sync": true,
+        "physical_clock": false
+      },
+      "committedValues": {
+        "timezone": "UTC",
+        "clockFormat": "24h",
+        "showClock": true,
+        "automaticNetworkTime": true,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00",
+        "language": "en-US"
+      },
+      "runtimeStatus": {
+        "physicalClockState": "unavailable",
+        "syncSource": "none",
+        "syncStatus": "pending",
+        "syncError": "none"
+      },
+      "expected": {
+        "automaticNetworkTime": "visible-and-enabled",
+        "manualDate": "visible-but-disabled",
+        "manualTime": "visible-but-disabled",
+        "networkSyncClaimed": false,
+        "physicalClockClaimed": false,
+        "committedUnchanged": true
+      }
+    },
+    {
+      "id": "time-unsupported-network-candidate",
+      "name": "unsupported automatic network time candidate",
+      "scenarioClass": "unsupported",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedValues": {
+        "timezone": "UTC",
+        "automaticNetworkTime": false,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00"
+      },
+      "attempt": {
+        "field": "automaticNetworkTime",
+        "value": true
+      },
+      "runtimeStatus": {
+        "physicalClockState": "unavailable",
+        "syncSource": "none",
+        "syncStatus": "unavailable",
+        "syncError": "capability_unavailable"
+      },
+      "expected": {
+        "result": "unsupported",
+        "committedUnchanged": true,
+        "networkSyncClaimed": false,
+        "manualEntry": "visible-and-enabled"
+      }
+    },
+    {
+      "id": "time-invalid-values-atomic-rejection",
+      "name": "invalid date time and allowlist values",
+      "scenarioClass": "invalid",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedValues": {
+        "timezone": "UTC",
+        "clockFormat": "24h",
+        "showClock": true,
+        "automaticNetworkTime": false,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00",
+        "language": "en-US"
+      },
+      "attempt": {
+        "timezone": "Mars/Phobos",
+        "clockFormat": "25h",
+        "manualDate": "2099-02-29",
+        "manualTime": "24:00",
+        "language": "xx-ZZ"
+      },
+      "expected": {
+        "result": "invalid",
+        "errorCodes": [
+          "timezone_not_allowlisted",
+          "clock_format_not_allowlisted",
+          "date_invalid_calendar_day",
+          "time_hour_out_of_range",
+          "language_not_allowlisted"
+        ],
+        "committedUnchanged": true,
+        "pendingChange": null,
+        "partialPersisted": false
+      }
+    },
+    {
+      "id": "time-pending-valid-change",
+      "name": "stage valid manual change",
+      "scenarioClass": "pending-change",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedValues": {
+        "timezone": "UTC",
+        "clockFormat": "24h",
+        "showClock": true,
+        "automaticNetworkTime": false,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00",
+        "language": "en-US"
+      },
+      "pendingValues": {
+        "timezone": "Europe/London",
+        "clockFormat": "12h",
+        "showClock": false,
+        "automaticNetworkTime": false,
+        "manualDate": "2024-02-29",
+        "manualTime": "23:59",
+        "language": "fr-FR"
+      },
+      "expected": {
+        "state": "pending-confirmation",
+        "committedUnchanged": true,
+        "pendingVisible": true,
+        "manualEntry": "visible-and-enabled"
+      }
+    },
+    {
+      "id": "time-confirm-valid-change",
+      "name": "confirm valid staged change",
+      "scenarioClass": "confirm",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedBefore": {
+        "timezone": "UTC",
+        "clockFormat": "24h",
+        "showClock": true,
+        "automaticNetworkTime": false,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00",
+        "language": "en-US"
+      },
+      "pendingValues": {
+        "timezone": "Asia/Tokyo",
+        "clockFormat": "12h",
+        "showClock": false,
+        "automaticNetworkTime": false,
+        "manualDate": "2030-06-15",
+        "manualTime": "08:05",
+        "language": "es-ES"
+      },
+      "action": "confirm",
+      "expected": {
+        "result": "committed",
+        "committedValues": {
+          "timezone": "Asia/Tokyo",
+          "clockFormat": "12h",
+          "showClock": false,
+          "automaticNetworkTime": false,
+          "manualDate": "2030-06-15",
+          "manualTime": "08:05",
+          "language": "es-ES"
+        },
+        "pendingChange": null,
+        "partialPersisted": false
+      }
+    },
+    {
+      "id": "time-cancel-preserves-committed",
+      "name": "cancel staged change",
+      "scenarioClass": "cancel",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedBefore": {
+        "timezone": "UTC",
+        "clockFormat": "24h",
+        "showClock": true,
+        "automaticNetworkTime": false,
+        "manualDate": "2000-01-01",
+        "manualTime": "00:00",
+        "language": "en-US"
+      },
+      "pendingValues": {
+        "timezone": "America/New_York",
+        "clockFormat": "12h",
+        "showClock": false,
+        "automaticNetworkTime": false,
+        "manualDate": "2028-11-05",
+        "manualTime": "17:30",
+        "language": "de-DE"
+      },
+      "action": "cancel",
+      "expected": {
+        "result": "cancelled",
+        "committedValues": {
+          "timezone": "UTC",
+          "clockFormat": "24h",
+          "showClock": true,
+          "automaticNetworkTime": false,
+          "manualDate": "2000-01-01",
+          "manualTime": "00:00",
+          "language": "en-US"
+        },
+        "pendingChange": null
+      }
+    },
+    {
+      "id": "time-reset-to-defaults",
+      "name": "reset confirmed domain defaults",
+      "scenarioClass": "reset",
+      "capabilities": {
+        "network_time_sync": false,
+        "physical_clock": false
+      },
+      "committedBefore": {
+        "timezone": "Asia/Tokyo",
+        "clockFormat": "12h",
+        "showClock": false,
+        "automaticNetworkTime": false,
+        "manualDate": "2030-06-15",
+        "manualTime": "08:05",
+        "language": "es-ES"
+      },
+      "actionSequence": [
+        "reset",
+        "confirm"
+      ],
+      "expected": {
+        "result": "committed-defaults",
+        "committedValues": {
+          "timezone": "UTC",
+          "clockFormat": "24h",
+          "showClock": true,
+          "automaticNetworkTime": false,
+          "manualDate": "2000-01-01",
+          "manualTime": "00:00",
+          "language": "en-US"
+        },
+        "pendingChange": null,
+        "readOnlyRuntimeStatusReset": false
+      }
+    }
+  ]
+}

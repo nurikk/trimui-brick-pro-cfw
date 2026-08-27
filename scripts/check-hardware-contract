@@ -1,0 +1,303 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+exec python3 - "$ROOT" <<'PY'
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(sys.argv[1])
+INDEX_PATH = ROOT / "docs/hardware/evidence/tg4040/index.json"
+INVENTORY_PATH = ROOT / "docs/hardware/evidence/tg4040/stock-archive-inventories.json"
+DOCUMENT_PATH = ROOT / "docs/hardware/tg4040.md"
+ALLOWED_STATUSES = {"verified", "stock-derived", "unknown"}
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+ID = re.compile(r"^[EA]-[A-Z0-9-]+$")
+REFERENCE = re.compile(r"\b[EA]-[A-Z0-9-]+\b")
+TARGET = re.compile(r"(?i)TG[0-9]{4}")
+MAC = re.compile(r"(?i)\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b")
+CREDENTIAL = re.compile(r"(?i)(?:password|passwd|secret|token|api[_-]?key|authorization|bearer|credential|private[_-]?key)")
+SERIAL = re.compile(r"(?i)\b(?:serial(?:number)?|s/n)\b")
+PRIVATE_PATH = re.compile(r"(?i)(?:^|[/\\])(?:private|roms?|bios|portmaster|ports)(?:[/\\]|$)")
+PRIVATE_EXTENSION = re.compile(r"(?i)\.(?:rom|bin|iso|cue|chd|gba|gbc|gb|nes|sfc|smc|md|gen|sms|pce|pbp|m3u)(?:$|[?#])")
+
+EXPECTED = {
+    "sd_recovery_tg4040_brick_pro_v1.1.1_20260717.7z": {
+        "attemptId": "A-FW-RECOVERY-20260717",
+        "evidenceId": "E-FW-RECOVERY-20260717",
+        "releaseTag": "v1.1.1-20260717",
+        "releaseCommit": "08cb7b5c92ea6b0df5f43f1bc66334f351a3f6eb",
+        "releaseRepo": "trimui/firmware_brickpro",
+        "publishedAt": "2026-07-18T07:12:28Z",
+        "publishedSize": 154211740,
+        "digest": "385cd2affdd9f6d73421012c8c6a78ef601f69589d5addb6b0a6b01b335102d1",
+        "entryCount": 8,
+        "entryTypeCounts": {"directory": 1, "file": 7, "other": 0, "symlink": 0},
+        "fullExternalInventorySha256": "bb06d5ca208e3882dfebfea9f9e6d75809ca224c5ee8adcf112c15edfd9a3db3",
+    },
+    "trimui_tg4040_20260717_v1.1.1.7z": {
+        "attemptId": "A-FW-SYSTEM-20260717",
+        "evidenceId": "E-FW-SYSTEM-20260717",
+        "releaseTag": "v1.1.1-20260717",
+        "releaseCommit": "08cb7b5c92ea6b0df5f43f1bc66334f351a3f6eb",
+        "releaseRepo": "trimui/firmware_brickpro",
+        "publishedAt": "2026-07-18T07:12:28Z",
+        "publishedSize": 133262803,
+        "digest": "36189b7966717c520901e6ef7318d1b092067598959b030cc0fd66b0747e5585",
+        "entryCount": 6,
+        "entryTypeCounts": {"directory": 1, "file": 5, "other": 0, "symlink": 0},
+        "fullExternalInventorySha256": "bc3c170492ad60837923be3de6d863a9fc94129b08e407e1c5da5ba3e4a04fec",
+    },
+    "trimui_brick_pro_tg4040_sd_base_20260626.7z": {
+        "attemptId": "A-ASSET-SD-BASE-20260626",
+        "evidenceId": "E-ASSET-SD-BASE-20260626",
+        "releaseTag": "v1.0.0-20260626",
+        "releaseCommit": "18182893374a412d36fe541a1c55b4838616f7a4",
+        "releaseRepo": "trimui/assets_brickpro",
+        "publishedAt": "2026-07-18T07:24:42Z",
+        "publishedSize": 418547604,
+        "digest": "bf029612fab90bb427c54c11a816f862c2bbf33e3d64e5830c38e8fc1b9fc8eb",
+        "entryCount": 16820,
+        "entryTypeCounts": {"directory": 893, "file": 15927, "other": 0, "symlink": 0},
+        "fullExternalInventorySha256": "1633d2b3e45f4bc53b649c858389404754d2bff8d97662612055e92ea459c272",
+    },
+}
+
+
+def fail(message: str) -> None:
+    raise ValueError(message)
+
+
+def load_json(path: Path) -> tuple[dict, bytes]:
+    try:
+        raw = path.read_bytes()
+        value = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        fail(f"{path}: malformed JSON: {exc}")
+    if not isinstance(value, dict):
+        fail(f"{path}: top level must be an object")
+    return value, raw
+
+
+def exact_keys(value: dict, expected: set[str], label: str) -> None:
+    if set(value) != expected:
+        fail(f"{label}: fields must be exactly {sorted(expected)}")
+
+
+def string(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        fail(f"{label}: expected non-empty string")
+    return value
+
+
+def sha(value: object, label: str) -> str:
+    value = string(value, label)
+    if not HEX64.fullmatch(value):
+        fail(f"{label}: expected lowercase SHA-256")
+    return value
+
+
+def reject_sensitive_strings(value: object, label: str = "evidence") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            reject_sensitive_strings(child, f"{label}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            reject_sensitive_strings(child, f"{label}[{index}]")
+    elif isinstance(value, str):
+        if MAC.search(value) or CREDENTIAL.search(value) or SERIAL.search(value):
+            fail(f"{label}: sensitive identifier or credential marker")
+        if PRIVATE_PATH.search(value) or PRIVATE_EXTENSION.search(value):
+            fail(f"{label}: private-content path or extension marker")
+        for match in TARGET.finditer(value):
+            if match.group(0).upper() != "TG4040":
+                fail(f"{label}: non-TG4040 target identifier")
+
+
+def canonical(raw: bytes, value: dict, path: Path) -> None:
+    expected = (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    if raw != expected:
+        fail(f"{path}: JSON is not deterministic sorted JSON")
+
+
+def url(repo: str, suffix: str) -> str:
+    return f"https://github.com/{repo}/{suffix}"
+
+
+def validate_common(record: dict, expected: dict, label: str) -> None:
+    asset = expected["assetName"]
+    repo = expected["releaseRepo"]
+    if record["assetName"] != asset:
+        fail(f"{label}.assetName does not match pinned asset")
+    if record["releaseTag"] != expected["releaseTag"] or record["releaseCommit"] != expected["releaseCommit"]:
+        fail(f"{label}: release tag or commit does not match")
+    if record["releaseUrl"] != url(repo, f"releases/tag/{expected['releaseTag']}"):
+        fail(f"{label}.releaseUrl is not the pinned release URL")
+    if record["tagUrl"] != record["releaseUrl"] or record["commitUrl"] != url(repo, f"commit/{expected['releaseCommit']}"):
+        fail(f"{label}: tag or commit URL does not match")
+    if record["sourceUrl"] != url(repo, f"releases/download/{expected['releaseTag']}/{asset}"):
+        fail(f"{label}.sourceUrl is not the pinned asset URL")
+    if record["publishedAt"] != expected["publishedAt"] or record["publishedSize"] != expected["publishedSize"]:
+        fail(f"{label}: published metadata does not match")
+    if record["publishedDigest"] != f"sha256:{expected['digest']}":
+        fail(f"{label}.publishedDigest does not match")
+    if record["redactionStatus"] != "sanitized-no-content":
+        fail(f"{label}.redactionStatus is not sanitized")
+
+
+def validate_index(index: dict, raw: bytes) -> dict[str, dict]:
+    exact_keys(index, {"allowedStatuses", "description", "records", "schema", "schemaVersion", "targetSku"}, "index")
+    if index["schema"] != "trimui-tg4040-hardware-evidence" or index["schemaVersion"] != "1.0.0" or index["targetSku"] != "TG4040":
+        fail("index schema, version, or targetSku is unsupported")
+    statuses = index["allowedStatuses"]
+    if statuses != ["verified", "stock-derived", "unknown"]:
+        fail("index.allowedStatuses must contain exactly the three permitted statuses")
+    string(index["description"], "index.description")
+    records = index["records"]
+    if not isinstance(records, list) or len(records) != len(EXPECTED):
+        fail("index.records must contain exactly the three pinned asset records")
+    by_asset = {}
+    allowed = {"artifactPath", "assetName", "attemptId", "captureMethod", "commitUrl", "evidenceId", "inventory", "localVerification", "publishedAt", "publishedDigest", "publishedSize", "redactionStatus", "releaseCommit", "releaseTag", "releaseUrl", "sourceUrl", "tagUrl"}
+    for i, record in enumerate(records):
+        label = f"index.records[{i}]"
+        if not isinstance(record, dict):
+            fail(f"{label} must be an object")
+        exact_keys(record, allowed, label)
+        asset = string(record["assetName"], f"{label}.assetName")
+        if asset in by_asset or asset not in EXPECTED:
+            fail(f"{label}: unexpected or duplicate asset")
+        expected = dict(EXPECTED[asset], assetName=asset)
+        by_asset[asset] = record
+        validate_common(record, expected, label)
+        if record["evidenceId"] != expected["evidenceId"] or record["attemptId"] != expected["attemptId"]:
+            fail(f"{label}: evidence or attempt ID does not match")
+        if not ID.fullmatch(record["evidenceId"]) or not ID.fullmatch(record["attemptId"]):
+            fail(f"{label}: malformed evidence or attempt ID")
+        if record["artifactPath"] != "docs/hardware/evidence/tg4040/stock-archive-inventories.json":
+            fail(f"{label}.artifactPath is not repository-relative sanitized evidence")
+        string(record["captureMethod"], f"{label}.captureMethod")
+        local = record["localVerification"]
+        if not isinstance(local, dict):
+            fail(f"{label}.localVerification must be an object")
+        exact_keys(local, {"result", "sha256", "size"}, f"{label}.localVerification")
+        if local["result"] != "matched" or local["size"] != expected["publishedSize"] or local["sha256"] != expected["digest"]:
+            fail(f"{label}.localVerification does not match published metadata")
+        sha(local["sha256"], f"{label}.localVerification.sha256")
+        inventory = record["inventory"]
+        if not isinstance(inventory, dict):
+            fail(f"{label}.inventory must be an object")
+        exact_keys(inventory, {"entryCount", "entryTypeCounts", "fullExternalInventorySha256", "method", "result", "tool"}, f"{label}.inventory")
+        if inventory["result"] != "success" or inventory["entryCount"] != expected["entryCount"] or inventory["entryTypeCounts"] != expected["entryTypeCounts"] or inventory["fullExternalInventorySha256"] != expected["fullExternalInventorySha256"]:
+            fail(f"{label}.inventory does not match the verified external inventory")
+        sha(inventory["fullExternalInventorySha256"], f"{label}.inventory.fullExternalInventorySha256")
+        string(inventory["method"], f"{label}.inventory.method")
+        if inventory["tool"] != "py7zr 1.1.3":
+            fail(f"{label}.inventory.tool is not pinned")
+    if set(by_asset) != set(EXPECTED):
+        fail("index records do not cover the pinned assets")
+    reject_sensitive_strings(index)
+    canonical(raw, index, INDEX_PATH)
+    return by_asset
+
+
+def validate_inventory(inventory: dict, raw: bytes, index_by_asset: dict[str, dict]) -> set[str]:
+    exact_keys(inventory, {"description", "records", "schema", "schemaVersion", "targetSku"}, "archive inventory")
+    if inventory["schema"] != "trimui-tg4040-stock-archive-inventory" or inventory["schemaVersion"] != "1.0.0" or inventory["targetSku"] != "TG4040":
+        fail("archive inventory schema, version, or targetSku is unsupported")
+    string(inventory["description"], "archive inventory.description")
+    records = inventory["records"]
+    if not isinstance(records, list) or len(records) != len(EXPECTED):
+        fail("archive inventory must contain exactly the three pinned asset records")
+    allowed = {"archiveFormat", "artifactPath", "assetName", "attemptId", "commitUrl", "entryCount", "entryTypeCounts", "evidenceId", "fullExternalInventorySha256", "inventoryTool", "localDigest", "publishedAt", "publishedDigest", "publishedSize", "redactionStatus", "releaseCommit", "releaseTag", "releaseUrl", "result", "selectedObservations", "sourceUrl", "tagUrl"}
+    seen = set()
+    ids = set()
+    for i, record in enumerate(records):
+        label = f"archive inventory.records[{i}]"
+        if not isinstance(record, dict):
+            fail(f"{label} must be an object")
+        exact_keys(record, allowed, label)
+        asset = string(record["assetName"], f"{label}.assetName")
+        if asset in seen or asset not in EXPECTED:
+            fail(f"{label}: unexpected or duplicate asset")
+        seen.add(asset)
+        expected = dict(EXPECTED[asset], assetName=asset)
+        validate_common(record, expected, label)
+        if record["localDigest"] != expected["digest"] or record["evidenceId"] != expected["evidenceId"] or record["attemptId"] != expected["attemptId"]:
+            fail(f"{label}: local digest or ID does not match index")
+        if record["evidenceId"] not in {index_by_asset[asset]["evidenceId"]} or record["attemptId"] not in {index_by_asset[asset]["attemptId"]}:
+            fail(f"{label}: evidence IDs do not match index")
+        ids.update((record["evidenceId"], record["attemptId"]))
+        if record["archiveFormat"] != "7z" or record["result"] != "success" or record["entryCount"] != expected["entryCount"] or record["entryTypeCounts"] != expected["entryTypeCounts"] or record["fullExternalInventorySha256"] != expected["fullExternalInventorySha256"]:
+            fail(f"{label}: archive observation does not match")
+        if record["artifactPath"] != "docs/hardware/evidence/tg4040/stock-archive-inventories.json" or record["redactionStatus"] != "sanitized-no-content":
+            fail(f"{label}: archive evidence is not sanitized")
+        tool = record["inventoryTool"]
+        if not isinstance(tool, dict):
+            fail(f"{label}.inventoryTool must be an object")
+        exact_keys(tool, {"method", "name", "version"}, f"{label}.inventoryTool")
+        if tool["name"] != "py7zr" or tool["version"] != "1.1.3":
+            fail(f"{label}.inventoryTool is not pinned")
+        string(tool["method"], f"{label}.inventoryTool.method")
+        observations = record["selectedObservations"]
+        if observations != [{"entryType": "directory", "pathClass": "root-and-nested-directory-entries"}, {"entryType": "regular-file", "pathClass": "non-directory-entries"}]:
+            fail(f"{label}.selectedObservations are not the permitted broad observations")
+    if seen != set(EXPECTED):
+        fail("archive inventory does not cover the pinned assets")
+    reject_sensitive_strings(inventory)
+    canonical(raw, inventory, INVENTORY_PATH)
+    return ids
+
+
+def validate_document(ids: set[str]) -> None:
+    try:
+        lines = DOCUMENT_PATH.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        fail(f"document cannot be read: {exc}")
+    header = "| Area | Status | Contract position | Evidence / attempt IDs |"
+    try:
+        start = lines.index(header) + 2
+    except ValueError:
+        fail("document fact table header is missing")
+    rows = []
+    for line in lines[start:]:
+        if not line.startswith("|"):
+            break
+        columns = [column.strip() for column in line.strip().strip("|").split("|")]
+        if len(columns) != 4:
+            fail("document fact table contains a malformed row")
+        rows.append(columns)
+    if not rows:
+        fail("document fact table is empty")
+    for number, columns in enumerate(rows, 1):
+        status = columns[1]
+        if status not in ALLOWED_STATUSES:
+            fail(f"document fact row {number} does not have exactly one permitted status")
+        references = REFERENCE.findall(columns[3])
+        if not references or any(reference not in ids for reference in references):
+            fail(f"document fact row {number} has an unknown evidence or attempt ID")
+        if len(re.findall(r"verified|stock-derived|unknown", status)) != 1:
+            fail(f"document fact row {number} has more than one status word")
+    if "TG4040" not in DOCUMENT_PATH.read_text(encoding="utf-8"):
+        fail("document does not identify TG4040")
+
+
+def main() -> int:
+    index, index_raw = load_json(INDEX_PATH)
+    inventory, inventory_raw = load_json(INVENTORY_PATH)
+    index_by_asset = validate_index(index, index_raw)
+    ids = validate_inventory(inventory, inventory_raw, index_by_asset)
+    validate_document(ids)
+    print(f"hardware contract check passed: {len(index_by_asset)} assets, {len(ids)} evidence/attempt IDs, fact table valid")
+    return 0
+
+
+try:
+    raise SystemExit(main())
+except (OSError, ValueError, KeyError, TypeError) as exc:
+    print(f"hardware contract check failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY

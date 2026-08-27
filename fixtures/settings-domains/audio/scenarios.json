@@ -1,0 +1,700 @@
+{
+  "fixture_metadata": {
+    "format": "mvp-audio-settings-scenarios",
+    "version": 1,
+    "generated": true,
+    "scope": "audio-domain semantic contract",
+    "schema_status": "local fixture contract; not a global settings schema"
+  },
+  "required_scenario_categories": [
+    "normal_supported",
+    "unsupported_capability",
+    "invalid_value",
+    "pending_change",
+    "confirm",
+    "cancel",
+    "reset"
+  ],
+  "setting_ids": [
+    "audio.master_volume",
+    "audio.mute",
+    "audio.menu_sounds",
+    "audio.launch_sound",
+    "audio.exit_sound",
+    "audio.background_music_enabled",
+    "audio.background_music_volume",
+    "audio.output_status"
+  ],
+  "editable_defaults": {
+    "audio.master_volume": 50,
+    "audio.mute": false,
+    "audio.menu_sounds": true,
+    "audio.launch_sound": true,
+    "audio.exit_sound": true,
+    "audio.background_music_enabled": true,
+    "audio.background_music_volume": 30
+  },
+  "read_only_settings": [
+    "audio.output_status"
+  ],
+  "scenarios": [
+    {
+      "id": "audio-synthetic-normal-001",
+      "category": "normal_supported",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.mute",
+        "audio.menu_sounds",
+        "audio.launch_sound",
+        "audio.exit_sound",
+        "audio.background_music_enabled",
+        "audio.background_music_volume",
+        "audio.output_status"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values=committed_values",
+        "audio.background_music_enabled=true"
+      ],
+      "actions": [
+        {
+          "type": "read",
+          "setting_ids": [
+            "audio.master_volume",
+            "audio.mute",
+            "audio.menu_sounds",
+            "audio.launch_sound",
+            "audio.exit_sound",
+            "audio.background_music_enabled",
+            "audio.background_music_volume",
+            "audio.output_status"
+          ]
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "visible_setting_ids": [
+          "audio.master_volume",
+          "audio.mute",
+          "audio.menu_sounds",
+          "audio.launch_sound",
+          "audio.exit_sound",
+          "audio.background_music_enabled",
+          "audio.background_music_volume",
+          "audio.output_status"
+        ],
+        "pending_values": "unchanged",
+        "committed_values": "unchanged",
+        "operations": [
+          "read-supported-settings"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-independent-toggles-001",
+      "category": "pending_change",
+      "setting_ids": [
+        "audio.mute",
+        "audio.menu_sounds",
+        "audio.launch_sound",
+        "audio.exit_sound"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.mute",
+          "value": true
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.menu_sounds",
+          "value": false
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.launch_sound",
+          "value": false
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.exit_sound",
+          "value": true
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": {
+          "audio.mute": true,
+          "audio.menu_sounds": false,
+          "audio.launch_sound": false,
+          "audio.exit_sound": true
+        },
+        "committed_values": "unchanged",
+        "operations": [
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-volume-lower-bound-001",
+      "category": "normal_supported",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "audio.background_music_enabled=true",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 0
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 0
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": {
+          "audio.master_volume": 0,
+          "audio.background_music_volume": 0
+        },
+        "committed_values": "unchanged",
+        "operations": [
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-volume-upper-bound-001",
+      "category": "normal_supported",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "audio.background_music_enabled=true",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 100
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 100
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": {
+          "audio.master_volume": 100,
+          "audio.background_music_volume": 100
+        },
+        "committed_values": "unchanged",
+        "operations": [
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-invalid-volume-001",
+      "category": "invalid_value",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "audio.background_music_enabled=true",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": -1
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 101
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 50.5
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": -1
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 101
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 30.5
+        }
+      ],
+      "expected": {
+        "accepted": false,
+        "rejected_values": [
+          {
+            "setting_id": "audio.master_volume",
+            "values": [
+              -1,
+              101,
+              50.5
+            ]
+          },
+          {
+            "setting_id": "audio.background_music_volume",
+            "values": [
+              -1,
+              101,
+              30.5
+            ]
+        }
+        ],
+        "pending_values": "unchanged",
+        "committed_values": "unchanged",
+        "operations": [
+          "none"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-read-only-write-001",
+      "category": "invalid_value",
+      "setting_ids": [
+        "audio.output_status"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "output_status_visible=true",
+        "output_status_read_only=true"
+      ],
+      "actions": [
+        {
+          "type": "write",
+          "setting_id": "audio.output_status",
+          "value": "synthetic-requested-status"
+        }
+      ],
+      "expected": {
+        "accepted": false,
+        "failure": "read-only-write-rejected",
+        "pending_values": "unchanged",
+        "committed_values": "unchanged",
+        "operations": [
+          "none"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-background-dependency-001",
+      "category": "pending_change",
+      "setting_ids": [
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed.audio.background_music_enabled=true",
+        "committed.audio.background_music_volume=30",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 64
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_enabled",
+          "value": false
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "visible_setting_ids": [
+          "audio.background_music_enabled"
+        ],
+        "hidden_setting_ids": [
+          "audio.background_music_volume"
+        ],
+        "pending_values": {
+          "audio.background_music_enabled": false,
+          "audio.background_music_volume": 64
+        },
+        "committed_values": "unchanged",
+        "operations": [
+          "none-until-confirm",
+          "no-background-music-volume-apply-while-disabled"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-background-confirm-disabled-001",
+      "category": "confirm",
+      "setting_ids": [
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed.audio.background_music_enabled=true",
+        "committed.audio.background_music_volume=30",
+        "pending.audio.background_music_enabled=true",
+        "pending.audio.background_music_volume=64"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_enabled",
+          "value": false
+        },
+        {
+          "type": "confirm"
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "visible_setting_ids": [
+          "audio.background_music_enabled"
+        ],
+        "hidden_setting_ids": [
+          "audio.background_music_volume"
+        ],
+        "committed_values": {
+          "audio.background_music_enabled": false,
+          "audio.background_music_volume": 64
+        },
+        "pending_values": "equals-committed",
+        "operations": [
+          "apply-background-music-enablement",
+          "no-background-music-volume-apply-while-disabled"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-background-reenable-001",
+      "category": "normal_supported",
+      "setting_ids": [
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "pending.audio.background_music_enabled=false",
+        "pending.audio.background_music_volume=64"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_enabled",
+          "value": true
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "visible_setting_ids": [
+          "audio.background_music_enabled",
+          "audio.background_music_volume"
+        ],
+        "pending_values": {
+          "audio.background_music_enabled": true,
+          "audio.background_music_volume": 64
+        },
+        "committed_values": "unchanged",
+        "operations": [
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-pending-001",
+      "category": "pending_change",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.mute",
+        "audio.menu_sounds",
+        "audio.launch_sound",
+        "audio.exit_sound",
+        "audio.background_music_enabled",
+        "audio.background_music_volume",
+        "audio.output_status"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values=committed_values",
+        "audio.background_music_enabled=true"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 0
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.mute",
+          "value": true
+        },
+        {
+          "type": "read",
+          "setting_id": "audio.output_status"
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": {
+          "audio.master_volume": 0,
+          "audio.mute": true
+        },
+        "committed_values": "unchanged",
+        "output_status_write_allowed": false,
+        "operations": [
+          "read-status",
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-confirm-001",
+      "category": "confirm",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.mute",
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values=committed_values",
+        "audio.background_music_enabled=true"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 0
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.mute",
+          "value": true
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 100
+        },
+        {
+          "type": "confirm"
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": "equals-committed",
+        "committed_values": {
+          "audio.master_volume": 0,
+          "audio.mute": true,
+          "audio.background_music_volume": 100,
+          "audio.background_music_enabled": true
+        },
+        "operations": [
+          "apply-confirmed-pending-atomically"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-cancel-001",
+      "category": "cancel",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.menu_sounds",
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values=committed_values"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 100
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.menu_sounds",
+          "value": false
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_enabled",
+          "value": false
+        },
+        {
+          "type": "cancel"
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": "equals-committed",
+        "committed_values": "unchanged",
+        "operations": [
+          "discard-pending",
+          "no-apply"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-reset-001",
+      "category": "reset",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.mute",
+        "audio.menu_sounds",
+        "audio.launch_sound",
+        "audio.exit_sound",
+        "audio.background_music_enabled",
+        "audio.background_music_volume"
+      ],
+      "preconditions": [
+        "capability_supported=true",
+        "committed_values=editable_defaults",
+        "pending_values has non-default edits"
+      ],
+      "actions": [
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 0
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.mute",
+          "value": true
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.background_music_volume",
+          "value": 100
+        },
+        {
+          "type": "reset"
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "pending_values": "editable_defaults",
+        "committed_values": "unchanged",
+        "operations": [
+          "restore-defaults-to-pending",
+          "none-until-confirm"
+        ]
+      }
+    },
+    {
+      "id": "audio-synthetic-unsupported-001",
+      "category": "unsupported_capability",
+      "setting_ids": [
+        "audio.master_volume",
+        "audio.mute",
+        "audio.menu_sounds",
+        "audio.launch_sound",
+        "audio.exit_sound",
+        "audio.background_music_enabled",
+        "audio.background_music_volume",
+        "audio.output_status"
+      ],
+      "preconditions": [
+        "capability_supported=false",
+        "no prior audio operation has been performed"
+      ],
+      "actions": [
+        {
+          "type": "read",
+          "setting_ids": [
+            "audio.master_volume",
+            "audio.mute",
+            "audio.menu_sounds",
+            "audio.launch_sound",
+            "audio.exit_sound",
+            "audio.background_music_enabled",
+            "audio.background_music_volume",
+            "audio.output_status"
+          ]
+        },
+        {
+          "type": "set",
+          "setting_id": "audio.master_volume",
+          "value": 50
+        },
+        {
+          "type": "write",
+          "setting_id": "audio.output_status",
+          "value": "synthetic-requested-status"
+        },
+        {
+          "type": "confirm"
+        },
+        {
+          "type": "cancel"
+        },
+        {
+          "type": "reset"
+        },
+        {
+          "type": "probe"
+        }
+      ],
+      "expected": {
+        "accepted": false,
+        "visible_setting_ids": [],
+        "hidden_setting_ids": [
+          "audio.master_volume",
+          "audio.mute",
+          "audio.menu_sounds",
+          "audio.launch_sound",
+          "audio.exit_sound",
+          "audio.background_music_enabled",
+          "audio.background_music_volume",
+          "audio.output_status"
+        ],
+        "pending_values": "unchanged",
+        "committed_values": "unchanged",
+        "operations": [],
+        "failure": "fail-closed-no-audio-operation-or-probe"
+      }
+    }
+  ]
+}

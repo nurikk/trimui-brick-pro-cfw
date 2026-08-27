@@ -6,13 +6,15 @@
 
 Each JSON document in `catalog/systems`, `catalog/runners`, `catalog/cores`, `catalog/profiles`, and `catalog/channels` carries the schema URL, format, version, kind, and an explicit channel. Rust parsing uses `serde(deny_unknown_fields)` and validation rejects malformed IDs, versions, hashes, URLs, logical paths, duplicate IDs, duplicate normalized extensions, dangling references, unsupported targets, and unpinned artifacts.
 
-Extensions are stored as lowercase, dotless, case-folded values (`gb`, not `.GB`). Paths are logical rooted paths only: `roms`, `bios`, `data/saves`, or `data/states`; they are never host paths. Save and state roots are part of the system metadata.
+Extensions are stored as lowercase, dotless, case-folded values (`gb`, not `.GB`). Paths are logical rooted paths only: `roms`, `bios`, `data/saves`, or `data/states`; they are never host paths. Save and state roots are part of the system metadata. The stable core-pack permits shared `zip` only under its explicit typed-system routing policy; extension-only routing and every other normalized cross-system collision are rejected.
 
 `Runner` and `Core` entries carry exact versions, target architecture, support scope, capabilities, license/provenance URL, channel, and an artifact identifier plus lowercase SHA-256 pin. The pilot artifact identifiers and digests are synthetic contract metadata; no corresponding binary is included or claimed.
 
 ## Channels and promotion
 
 `catalog/channels/stable.json` and `experimental.json` contain disjoint IDs and versions. A stable selection requires a pinned runner artifact, provenance URL, TG4040 synthetic smoke evidence ID, complete BIOS requirement records, and an empty runtime-requirement list. A stable-only resolution cannot select an experimental runner, core, system, profile, or extension. Experimental entries remain isolated until independently reviewed and promoted by changing their catalog metadata and channel membership.
+
+`catalog/core-packs/stable.json` is a separate stable-pack contract for the public 8/16-bit, Neo Geo/arcade, and PS1 planning scope. It is intentionally blocked: every package, runner, and core identity is exact and target-pinned, but manifest/artifact hashes are null until separately sourced, licensed, signed, and approved. It is not an installable selection and has no upstream package mapping.
 
 The smoke evidence ID in this pilot is **host/static contract evidence only, not hardware evidence**. No physical TG4040 smoke test is represented.
 
@@ -34,4 +36,4 @@ A stable entry needs an independently reviewable license/provenance URL and evid
 
 ## Fixture evidence
 
-Run `emulator-catalog schema-validation-journey` for strict positive-document and unknown-field checks, and `emulator-catalog journey` for the deterministic precedence and fail-closed negative journeys. The tracked cases cover stable/experimental isolation, extension collision, missing BIOS, invalid runner/core versions, capability and device-limit rejection, every precedence layer, path escape, unknown fields, TG3040 rejection, unpinned artifacts, and channel leaks.
+Run `emulator-catalog schema-validation-journey` for strict positive-document and unknown-field checks, `emulator-catalog journey` for the deterministic precedence and fail-closed negative journeys, and `emulator-catalog core-pack-journey` for the generated synthetic blocked-pack and BIOS-boundary journey. The tracked cases cover stable/experimental isolation, extension collision, missing BIOS, invalid runner/core versions, capability and device-limit rejection, every precedence layer, path escape, unknown fields, TG3040 rejection, unpinned artifacts, and channel leaks.

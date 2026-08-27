@@ -1,0 +1,15 @@
+{
+  "$schema": "https://example.invalid/trimui-tg4040-core-pack-journey-v1.schema.json",
+  "format": "trimui-tg4040-core-pack-journey",
+  "schemaVersion": 1,
+  "fixtureKind": "generated-synthetic-core-pack-journey",
+  "catalog": "catalog/core-packs/stable.json",
+  "cases": [
+    {"systemId": "gba", "extension": "gba", "biosReady": true, "expectedCode": "core_pack_blocked"},
+    {"systemId": "neo-geo", "extension": "zip", "biosReady": true, "expectedCode": "core_pack_blocked"},
+    {"systemId": "arcade", "extension": "zip", "biosReady": true, "expectedCode": "core_pack_blocked"},
+    {"systemId": "arcade", "extension": "gb", "biosReady": true, "expectedCode": "extension_unavailable"},
+    {"systemId": "ps1", "extension": "iso", "biosReady": false, "expectedCode": "bios_missing"},
+    {"systemId": "ps1", "extension": "iso", "biosReady": true, "expectedCode": "core_pack_blocked"}
+  ]
+}

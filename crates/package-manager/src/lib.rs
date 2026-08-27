@@ -38,6 +38,8 @@ pub struct PackageManifest {
     pub uninstall: UninstallRules,
     pub license: License,
     pub provenance: Provenance,
+    #[serde(rename = "corePack", default)]
+    pub core_pack: Option<BlockedCorePack>,
     pub developer: DeveloperPolicy,
 }
 
@@ -159,6 +161,20 @@ pub struct Provenance {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct BlockedCorePack {
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CorePackStatus {
+    Blocked,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeveloperPolicy {
     pub enabled: bool,
     #[serde(rename = "localKeyTrusted")]
@@ -242,6 +258,11 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         || manifest.target_sku != "TG4040"
     {
         bail!("unsupported package schema or target")
+    }
+    if manifest.package_type == PackageType::Core {
+        reject_core_pack(manifest)?;
+    } else if manifest.core_pack.is_some() {
+        bail!("core-pack metadata is only valid for core packages")
     }
     if !identifier(&manifest.id) || !version(&manifest.version) {
         bail!("invalid package id or version")
@@ -369,6 +390,7 @@ where
     F: FnOnce(&PackageManifest, &Path) -> Result<()>,
 {
     let (manifest, manifest_bytes) = load_manifest(manifest_path)?;
+    reject_core_pack(&manifest)?;
     let expected_target = if target.delegated_role == "themes" {
         if manifest.version == "1.0.0" {
             format!("themes/{}/manifest.json", manifest.id)
@@ -386,6 +408,20 @@ where
     let payload_root = payload_root
         .canonicalize()
         .context("resolve package payload root")?;
+    let state_path = root
+        .join(PACKAGE_STATE)
+        .join(format!("{}.json", manifest.id));
+    if fs::symlink_metadata(&state_path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        bail!("current activation record is a symlink")
+    }
+    if state_path.exists() {
+        let current: ActivationRecord =
+            serde_json::from_slice(&fs::read(&state_path)?).context("read current activation")?;
+        validate_activation_record(&current, &manifest.id)?;
+    }
     let private_root = root.join(PACKAGE_ROOT);
     let version_root = private_root.join(&manifest.id).join(&manifest.version);
     if version_root.exists() {
@@ -493,6 +529,17 @@ where
     result
 }
 
+pub fn upgrade(
+    root: &Path,
+    manifest_path: &Path,
+    payload_root: &Path,
+    target: &VerifiedTarget,
+    context: TrustContext,
+    options: TransactionOptions,
+) -> Result<ActivationRecord> {
+    install(root, manifest_path, payload_root, target, context, options)
+}
+
 pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<()> {
     if !identifier(id) {
         bail!("invalid package id")
@@ -503,18 +550,7 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     }
     let record: ActivationRecord =
         serde_json::from_slice(&fs::read(&state_path)?).context("read activation record")?;
-    if record.format != "brickpro-package-activation"
-        || record.schema_version != 1
-        || record.id != id
-        || !version(&record.version)
-        || record.target_sku != "TG4040"
-        || record.preserve != PRESERVED
-        || record.immutable_root != format!("{PACKAGE_ROOT}/{}/{}/immutable", id, record.version)
-        || record.runtime_root != format!("{PACKAGE_ROOT}/{}/{}/runtime", id, record.version)
-        || record.cache_root != format!("{PACKAGE_ROOT}/{}/{}/cache", id, record.version)
-    {
-        bail!("invalid activation record; no package data removed")
-    }
+    validate_activation_record(&record, id)?;
     let canonical_root = root.canonicalize()?;
     let package_root = root.join(PACKAGE_ROOT).join(id);
     reject_symlink_path(&package_root, "package root")?;
@@ -547,6 +583,40 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     }
     fs::remove_file(state_path)?;
     Ok(())
+}
+
+fn validate_activation_record(record: &ActivationRecord, id: &str) -> Result<()> {
+    if record.format != "brickpro-package-activation"
+        || record.schema_version != 1
+        || record.id != id
+        || !version(&record.version)
+        || record.target_sku != "TG4040"
+        || record.preserve != PRESERVED
+        || record.immutable_root != format!("{PACKAGE_ROOT}/{}/{}/immutable", id, record.version)
+        || record.runtime_root != format!("{PACKAGE_ROOT}/{}/{}/runtime", id, record.version)
+        || record.cache_root != format!("{PACKAGE_ROOT}/{}/{}/cache", id, record.version)
+    {
+        bail!("invalid activation record; no package data removed")
+    }
+    Ok(())
+}
+
+fn reject_core_pack(manifest: &PackageManifest) -> Result<()> {
+    if manifest.package_type != PackageType::Core {
+        if manifest.core_pack.is_some() {
+            bail!("core-pack metadata is only valid for core packages")
+        }
+        return Ok(());
+    }
+    match &manifest.core_pack {
+        Some(core_pack)
+            if core_pack.status == CorePackStatus::Blocked
+                && !core_pack.blocked_reason.is_empty() =>
+        {
+            bail!("blocked core-pack cannot be installed or activated")
+        }
+        _ => bail!("core package must have an explicit blocked state"),
+    }
 }
 
 fn verify_target(target: &VerifiedTarget, bytes: &[u8], manifest: &PackageManifest) -> Result<()> {

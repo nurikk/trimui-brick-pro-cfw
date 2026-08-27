@@ -1,0 +1,24 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
+  "format": "brickpro-package",
+  "schemaVersion": 1,
+  "id": "tg4040-stable-core-pack",
+  "version": "1.0.0",
+  "targetSku": "TG4040",
+  "tier": "verified",
+  "type": "core",
+  "corePack": {
+    "status": "blocked",
+    "blockedReason": "Synthetic blocked contract fixture; no installable core-pack payload exists."
+  },
+  "files": [
+    {"path": "immutable/placeholder.json", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "length": 0, "class": "immutable"}
+  ],
+  "entrypoints": [],
+  "runtime": {"path": "runtime", "dependencies": []},
+  "capabilities": {"network": [], "input": [], "audio": [], "display": [], "save": []},
+  "uninstall": {"preserve": ["/roms", "/data/saves", "/data/states"], "remove": ["immutable", "runtime", "cache", "staging"]},
+  "license": {"spdx": "MIT", "source": "https://example.invalid/synthetic-blocked-core-pack"},
+  "provenance": {"sbom": "provenance/brickpro-cfw.spdx.json", "source": "synthetic blocked fixture"},
+  "developer": {"enabled": false, "localKeyTrusted": false, "nonRoot": true}
+}

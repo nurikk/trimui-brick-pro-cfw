@@ -198,6 +198,15 @@
         "source"
       ]
     },
+    "corePack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {"const": "blocked"},
+        "blockedReason": {"type": "string", "minLength": 1, "maxLength": 512}
+      },
+      "required": ["status", "blockedReason"]
+    },
     "developer": {
       "type": "object",
       "additionalProperties": false,

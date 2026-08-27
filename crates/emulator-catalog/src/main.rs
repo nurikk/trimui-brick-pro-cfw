@@ -1,5 +1,6 @@
 use emulator_catalog::{
-    fixture_journey, json, load_fixture, schema_validation_journey, Catalog, ChannelName,
+    core_pack_journey, fixture_journey, json, load_fixture, schema_validation_journey, Catalog,
+    ChannelName,
 };
 use std::{env, path::PathBuf, process};
 
@@ -11,7 +12,8 @@ fn main() {
         Some("audit" | "bios-audit") => audit(),
         Some("journey") => fixture_journey(),
         Some("schema-validation-journey") => schema_validation_journey(),
-        _ => Err(emulator_catalog::CatalogError::new("usage", "usage: emulator-catalog validate|resolve|bios-audit|schema-validation-journey|journey ...")),
+        Some("core-pack-journey") => core_pack_journey(),
+        _ => Err(emulator_catalog::CatalogError::new("usage", "usage: emulator-catalog validate|resolve|bios-audit|schema-validation-journey|journey|core-pack-journey ...")),
     };
     match result {
         Ok(output) => {

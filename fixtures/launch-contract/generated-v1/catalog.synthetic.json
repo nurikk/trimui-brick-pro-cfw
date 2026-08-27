@@ -7,19 +7,22 @@
       "id": "generated-libretro",
       "version": "1.0.0",
       "kinds": ["libretro"],
-      "capabilities": ["display-basic", "input-standard", "rumble", "suspend", "battery-saver"]
+      "capabilities": ["display-basic", "input-standard", "rumble", "suspend", "battery-saver"],
+      "status": "approved"
     },
     {
       "id": "generated-portmaster",
       "version": "1.0.0",
       "kinds": ["portmaster"],
-      "capabilities": ["display-basic", "input-standard", "suspend", "battery-saver"]
+      "capabilities": ["display-basic", "input-standard", "suspend", "battery-saver"],
+      "status": "approved"
     },
     {
       "id": "generated-standalone",
       "version": "1.0.0",
       "kinds": ["standalone"],
-      "capabilities": ["display-basic", "input-standard", "suspend", "battery-saver"]
+      "capabilities": ["display-basic", "input-standard", "suspend", "battery-saver"],
+      "status": "approved"
     }
   ],
   "cores": [
@@ -28,7 +31,8 @@
       "version": "1.0.0",
       "runnerId": "generated-libretro",
       "runnerVersion": "1.0.0",
-      "kind": "libretro"
+      "kind": "libretro",
+      "status": "approved"
     }
   ],
   "profiles": [

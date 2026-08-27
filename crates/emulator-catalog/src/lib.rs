@@ -1532,3 +1532,511 @@ fn parse_channel(value: &str) -> Result<ChannelName> {
         )),
     }
 }
+
+pub const CORE_PACK_SCHEMA: &str = "https://example.invalid/trimui-tg4040-core-pack-v1.schema.json";
+const CORE_PACK_JOURNEY_SCHEMA: &str =
+    "https://example.invalid/trimui-tg4040-core-pack-journey-v1.schema.json";
+const CORE_PACK_FORMAT: &str = "trimui-tg4040-core-pack";
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CorePackStatus {
+    Approved,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackHashState {
+    pub id: String,
+    pub sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackIdentity {
+    pub id: String,
+    pub version: String,
+    #[serde(rename = "targetArchitecture")]
+    pub target_architecture: String,
+    pub manifest: CorePackHashState,
+    pub artifact: CorePackHashState,
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackBiosRequirement {
+    pub id: String,
+    pub required: bool,
+    #[serde(rename = "expectedSha256")]
+    pub expected_sha256: Option<String>,
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackSystem {
+    pub id: String,
+    pub extensions: Vec<String>,
+    pub core: CorePackIdentity,
+    #[serde(rename = "packageId")]
+    pub package_id: String,
+    #[serde(rename = "packageVersion")]
+    pub package_version: String,
+    #[serde(rename = "biosRequirements")]
+    pub bios_requirements: Vec<CorePackBiosRequirement>,
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CorePackRoutingMode {
+    ExplicitSystemSelection,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackRouting {
+    pub mode: CorePackRoutingMode,
+    #[serde(rename = "sharedExtensions")]
+    pub shared_extensions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackDisplayDefaults {
+    pub width: u16,
+    pub height: u16,
+    pub scaling: DisplayMode,
+    pub shader: Option<String>,
+    pub overlay: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackDefaults {
+    pub display: CorePackDisplayDefaults,
+    #[serde(rename = "frameSkip")]
+    pub frame_skip: u8,
+    pub rumble: bool,
+    #[serde(rename = "audioLatencyMs")]
+    pub audio_latency_ms: u16,
+    #[serde(rename = "inputProfileId")]
+    pub input_profile_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayPrecedence {
+    System,
+    Profile,
+    Game,
+    Reset,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum InputPrecedence {
+    #[serde(rename = "built-in")]
+    BuiltIn,
+    System,
+    Game,
+    Session,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackProvenance {
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CorePackCatalog {
+    #[serde(rename = "$schema")]
+    pub schema: String,
+    pub format: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: u8,
+    pub kind: String,
+    pub id: String,
+    pub version: String,
+    #[serde(rename = "targetSku")]
+    pub target_sku: String,
+    pub channel: ChannelName,
+    pub status: CorePackStatus,
+    #[serde(rename = "blockedReason")]
+    pub blocked_reason: String,
+    pub package: CorePackIdentity,
+    pub runner: CorePackIdentity,
+    pub systems: Vec<CorePackSystem>,
+    pub routing: CorePackRouting,
+    pub defaults: CorePackDefaults,
+    #[serde(rename = "displayPrecedence")]
+    pub display_precedence: Vec<DisplayPrecedence>,
+    #[serde(rename = "inputPrecedence")]
+    pub input_precedence: Vec<InputPrecedence>,
+    pub provenance: CorePackProvenance,
+}
+
+impl CorePackCatalog {
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != CORE_PACK_SCHEMA
+            || self.format != CORE_PACK_FORMAT
+            || self.schema_version != 1
+            || self.kind != "core-pack"
+            || self.target_sku != "TG4040"
+            || self.channel != ChannelName::Stable
+            || self.status != CorePackStatus::Blocked
+            || self.blocked_reason.is_empty()
+        {
+            return Err(CatalogError::new(
+                "core_pack_schema",
+                "core-pack identity or blocked state is invalid",
+            ));
+        }
+        validate_id(&self.id, "core-pack")?;
+        validate_version(&self.version, "core-pack")?;
+        validate_identity(&self.package, "package")?;
+        validate_identity(&self.runner, "runner")?;
+        if self.package.id != self.id || self.package.version != self.version {
+            return Err(CatalogError::new(
+                "core_pack_reference",
+                "package identity does not match core-pack",
+            ));
+        }
+        if self.systems.len() != 10
+            || self.routing.mode != CorePackRoutingMode::ExplicitSystemSelection
+            || self.routing.shared_extensions != vec!["zip".to_string()]
+        {
+            return Err(CatalogError::new(
+                "core_pack_routing",
+                "core-pack routing policy is invalid",
+            ));
+        }
+        let mut extensions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for system in &self.systems {
+            for extension in &system.extensions {
+                extensions
+                    .entry(normalize_extension(extension)?)
+                    .or_default()
+                    .insert(system.id.clone());
+            }
+        }
+        for (extension, system_ids) in &extensions {
+            if system_ids.len() > 1 && !self.routing.shared_extensions.contains(extension) {
+                return Err(CatalogError::new(
+                    "extension_collision",
+                    "ambiguous extension route requires explicit system selection",
+                ));
+            }
+        }
+        let mut systems = BTreeSet::new();
+        for system in &self.systems {
+            validate_id(&system.id, "system")?;
+            if !systems.insert(&system.id) {
+                return Err(CatalogError::new(
+                    "duplicate_id",
+                    "core-pack system is duplicated",
+                ));
+            }
+            validate_extensions(&system.extensions)?;
+            let (expected_core, expected_extensions) = expected_core_pack_system(&system.id)
+                .ok_or_else(|| {
+                    CatalogError::new("core_pack_scope", "unsupported core-pack system")
+                })?;
+            if system.extensions != expected_extensions
+                || system.core.id != expected_core
+                || system.package_id != self.package.id
+                || system.package_version != self.package.version
+                || system.status != CorePackStatus::Blocked
+                || system.blocked_reason.is_empty()
+            {
+                return Err(CatalogError::new(
+                    "core_pack_scope",
+                    "core-pack system projection is invalid",
+                ));
+            }
+            validate_identity(&system.core, "core")?;
+            let mut bios = BTreeSet::new();
+            for requirement in &system.bios_requirements {
+                validate_id(&requirement.id, "BIOS requirement")?;
+                if !bios.insert(&requirement.id)
+                    || !requirement.required
+                    || requirement.expected_sha256.is_some()
+                    || requirement.status != CorePackStatus::Blocked
+                    || requirement.blocked_reason.is_empty()
+                {
+                    return Err(CatalogError::new(
+                        "bios_unresolved",
+                        "BIOS requirement is not explicitly blocked",
+                    ));
+                }
+            }
+        }
+        if systems
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<BTreeSet<_>>()
+            != expected_core_pack_system_ids()
+        {
+            return Err(CatalogError::new(
+                "core_pack_scope",
+                "stable core-pack scope is incomplete",
+            ));
+        }
+        if self.defaults.display.width != 1024
+            || self.defaults.display.height != 768
+            || self.defaults.display.scaling != DisplayMode::Integer
+            || self.defaults.display.shader.is_some()
+            || self.defaults.display.overlay.is_some()
+            || self.defaults.frame_skip != 0
+            || self.defaults.rumble
+            || self.defaults.audio_latency_ms != 64
+            || self.defaults.input_profile_id != "default"
+        {
+            return Err(CatalogError::new(
+                "core_pack_defaults",
+                "core-pack safe defaults are invalid",
+            ));
+        }
+        if self.display_precedence
+            != vec![
+                DisplayPrecedence::System,
+                DisplayPrecedence::Profile,
+                DisplayPrecedence::Game,
+                DisplayPrecedence::Reset,
+            ]
+            || self.input_precedence
+                != vec![
+                    InputPrecedence::BuiltIn,
+                    InputPrecedence::System,
+                    InputPrecedence::Game,
+                    InputPrecedence::Session,
+                ]
+        {
+            return Err(CatalogError::new(
+                "core_pack_precedence",
+                "core-pack precedence is invalid",
+            ));
+        }
+        if self.provenance.status != CorePackStatus::Blocked
+            || self.provenance.blocked_reason.is_empty()
+        {
+            return Err(CatalogError::new(
+                "core_pack_provenance",
+                "core-pack provenance is not blocked",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn ensure_installable(&self) -> Result<()> {
+        self.validate()?;
+        Err(CatalogError::new(
+            "core_pack_blocked",
+            "blocked core-pack cannot be installed or activated",
+        ))
+    }
+
+    pub fn select(&self, system_id: &str, extension: &str, bios_ready: bool) -> Result<()> {
+        self.validate()?;
+        let extension = normalize_extension(extension)?;
+        let system = self
+            .systems
+            .iter()
+            .find(|system| system.id == system_id)
+            .ok_or_else(|| CatalogError::new("core_pack_scope", "system is not in core-pack"))?;
+        if !system
+            .extensions
+            .iter()
+            .any(|candidate| candidate == &extension)
+        {
+            return Err(CatalogError::new(
+                "extension_unavailable",
+                "extension is not supported by selected system",
+            ));
+        }
+        if !bios_ready && !system.bios_requirements.is_empty() {
+            return Err(CatalogError::new(
+                "bios_missing",
+                "required BIOS is missing or mismatched",
+            ));
+        }
+        self.ensure_installable()
+    }
+}
+
+fn validate_identity(identity: &CorePackIdentity, label: &str) -> Result<()> {
+    validate_id(&identity.id, label)?;
+    validate_version(&identity.version, label)?;
+    if identity.target_architecture != "aarch64-unknown-linux-musl"
+        || identity.status != CorePackStatus::Blocked
+        || identity.blocked_reason.is_empty()
+    {
+        return Err(CatalogError::new(
+            "core_pack_identity",
+            format!("{label} identity is not blocked and target-pinned"),
+        ));
+    }
+    validate_hash_state(&identity.manifest, "manifest")?;
+    validate_hash_state(&identity.artifact, "artifact")
+}
+
+fn validate_hash_state(state: &CorePackHashState, label: &str) -> Result<()> {
+    validate_id(&state.id, label)?;
+    if state.sha256.is_some() {
+        return Err(CatalogError::new(
+            "core_pack_hash",
+            "blocked core-pack identity must not invent a SHA-256 pin",
+        ));
+    }
+    Ok(())
+}
+
+fn expected_core_pack_system(system_id: &str) -> Option<(&'static str, Vec<String>)> {
+    Some(match system_id {
+        "gb" => ("core-gambatte", vec!["gb".to_string()]),
+        "gbc" => ("core-gambatte", vec!["gbc".to_string()]),
+        "gba" => ("core-mgba", vec!["gba".to_string()]),
+        "mega-drive" => (
+            "core-genesis-plus-gx",
+            vec!["md".to_string(), "gen".to_string()],
+        ),
+        "nes" => ("core-mesen", vec!["nes".to_string()]),
+        "snes" => ("core-snes9x", vec!["sfc".to_string(), "smc".to_string()]),
+        "pc-engine" => ("core-beetle-pce-fast", vec!["pce".to_string()]),
+        "neo-geo" => ("core-fbneo", vec!["zip".to_string()]),
+        "arcade" => ("core-fbneo", vec!["zip".to_string()]),
+        "ps1" => (
+            "core-pcsx-rearmed",
+            vec![
+                "cue".to_string(),
+                "chd".to_string(),
+                "iso".to_string(),
+                "pbp".to_string(),
+                "m3u".to_string(),
+            ],
+        ),
+        _ => return None,
+    })
+}
+
+fn expected_core_pack_system_ids() -> BTreeSet<String> {
+    [
+        "gb",
+        "gbc",
+        "gba",
+        "mega-drive",
+        "nes",
+        "snes",
+        "pc-engine",
+        "neo-geo",
+        "arcade",
+        "ps1",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+pub fn load_core_pack(path: impl AsRef<Path>) -> Result<CorePackCatalog> {
+    parse(
+        &fs::read(path)
+            .map_err(|e| CatalogError::new("fixture_io", format!("read core-pack: {e}")))?,
+        "core-pack",
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorePackJourney {
+    #[serde(rename = "$schema")]
+    schema: String,
+    format: String,
+    #[serde(rename = "schemaVersion")]
+    schema_version: u8,
+    #[serde(rename = "fixtureKind")]
+    fixture_kind: String,
+    catalog: String,
+    cases: Vec<CorePackJourneyCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorePackJourneyCase {
+    #[serde(rename = "systemId")]
+    system_id: String,
+    extension: String,
+    #[serde(rename = "biosReady")]
+    bios_ready: bool,
+    #[serde(rename = "expectedCode")]
+    expected_code: String,
+}
+
+pub fn core_pack_journey() -> Result<String> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture: CorePackJourney = parse(
+        &fs::read(root.join("fixtures/core-pack/journey.json"))
+            .map_err(|e| CatalogError::new("fixture_io", e.to_string()))?,
+        "core-pack journey",
+    )?;
+    if fixture.schema != CORE_PACK_JOURNEY_SCHEMA
+        || fixture.format != "trimui-tg4040-core-pack-journey"
+        || fixture.schema_version != 1
+        || fixture.fixture_kind != "generated-synthetic-core-pack-journey"
+        || fixture.catalog != "catalog/core-packs/stable.json"
+        || fixture.cases.len() != 6
+    {
+        return Err(CatalogError::new(
+            "journey",
+            "core-pack fixture identity is invalid",
+        ));
+    }
+    let catalog = load_core_pack(root.join(&fixture.catalog))?;
+    catalog.validate()?;
+    let mut ambiguous = catalog.clone();
+    ambiguous
+        .systems
+        .iter_mut()
+        .find(|system| system.id == "gbc")
+        .ok_or_else(|| CatalogError::new("journey", "synthetic GBC route is missing"))?
+        .extensions
+        .push("gb".to_string());
+    let ambiguity = ambiguous
+        .validate()
+        .err()
+        .ok_or_else(|| CatalogError::new("journey", "ambiguous extension route was accepted"))?;
+    if ambiguity.code() != "extension_collision" {
+        return Err(CatalogError::new(
+            "journey",
+            format!("ambiguous extension route returned {}", ambiguity.code()),
+        ));
+    }
+    for case in fixture.cases {
+        let error = catalog
+            .select(&case.system_id, &case.extension, case.bios_ready)
+            .err()
+            .ok_or_else(|| CatalogError::new("journey", "blocked core-pack was selectable"))?;
+        if error.code() != case.expected_code {
+            return Err(CatalogError::new(
+                "journey",
+                format!(
+                    "core-pack case returned {}, expected {}",
+                    error.code(),
+                    case.expected_code
+                ),
+            ));
+        }
+    }
+    Ok("core-pack fixture journey: synthetic metadata accepted; BIOS and blocked activation rejected".to_string())
+}

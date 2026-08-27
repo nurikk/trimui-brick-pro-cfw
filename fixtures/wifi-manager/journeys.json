@@ -1,0 +1,109 @@
+{
+  "access_points": [
+    {
+      "connected": false,
+      "hidden": false,
+      "known": true,
+      "network_id": "net-home-weak",
+      "security": "wpa2-psk",
+      "signal_quality": 52,
+      "ssid": "Home Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-home-strong",
+      "security": "wpa2-psk",
+      "signal_quality": 91,
+      "ssid": "Home Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": true,
+      "network_id": "net-known",
+      "security": "wpa3-sae",
+      "signal_quality": 38,
+      "ssid": "Known Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-guest",
+      "security": "open",
+      "signal_quality": 70,
+      "ssid": "Guest Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": true,
+      "known": false,
+      "network_id": "net-hidden",
+      "security": "wpa2-psk",
+      "signal_quality": 44,
+      "ssid": "Hidden network"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-bad",
+      "security": "wpa2-psk",
+      "signal_quality": 30,
+      "ssid": "Bad Login Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-timeout",
+      "security": "wpa2-psk",
+      "signal_quality": 29,
+      "ssid": "Timeout Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-radio",
+      "security": "wpa2-psk",
+      "signal_quality": 25,
+      "ssid": "Radio Failure Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-unsupported",
+      "security": "unsupported",
+      "signal_quality": 20,
+      "ssid": "Unsupported Synthetic"
+    }
+  ],
+  "connect_outcomes": {
+    "net-bad": "bad-password",
+    "net-radio": "radio-unavailable",
+    "net-timeout": "timeout"
+  },
+  "fixture_version": 1,
+  "format": "generated-wifi-fixture",
+  "journeys": [
+    "successful-scan-select-connect",
+    "refresh",
+    "strongest-radio-collapse",
+    "hidden-ssid",
+    "bad-password",
+    "timeout",
+    "radio-unavailable",
+    "cancellation",
+    "reconnect",
+    "disconnect",
+    "forget",
+    "retry",
+    "restart",
+    "negative-validation"
+  ],
+  "radio_available": true
+}

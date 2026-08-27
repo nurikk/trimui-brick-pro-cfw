@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-wifi-fixture.schema.json",
+  "title": "Generated Wi-Fi manager fixture v1",
+  "description": "Offline generated access-point data only; it has no radio, device, host-path, or secret integration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["access_points", "connect_outcomes", "fixture_version", "format", "journeys", "radio_available"],
+  "properties": {
+    "access_points": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/accessPoint"}},
+    "connect_outcomes": {
+      "type": "object",
+      "propertyNames": {"pattern": "^net-[a-z0-9][a-z0-9._-]{0,59}$"},
+      "additionalProperties": {"enum": ["bad-password", "radio-unavailable", "success", "timeout", "unsupported"]}
+    },
+    "fixture_version": {"const": 1},
+    "format": {"const": "generated-wifi-fixture"},
+    "journeys": {"type": "array", "minItems": 13, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"}},
+    "radio_available": {"type": "boolean"}
+  },
+  "$defs": {
+    "accessPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connected", "hidden", "known", "network_id", "security", "signal_quality", "ssid"],
+      "properties": {
+        "connected": {"type": "boolean"},
+        "hidden": {"type": "boolean"},
+        "known": {"type": "boolean"},
+        "network_id": {"type": "string", "pattern": "^net-[a-z0-9][a-z0-9._-]{0,59}$"},
+        "security": {"enum": ["open", "unsupported", "wpa2-psk", "wpa3-sae"]},
+        "signal_quality": {"type": "integer", "minimum": 0, "maximum": 100},
+        "ssid": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[^\\u0000-\\u001F\\u007F]*$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"hidden": {"const": true}}},
+          "then": {"properties": {"ssid": {"const": "Hidden network"}}}
+        }
+      ]
+    }
+  }
+}

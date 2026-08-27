@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trimui-brickpro-support-report-v1",
+  "title": "TrimUI Brick Pro support report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "mode", "activating", "targetSku", "firmware", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "policy"],
+  "properties": {
+    "schema": {"const": "brickpro-support-report/v1"},
+    "status": {"const": "recovery"},
+    "mode": {"const": "safe-mode"},
+    "activating": {"const": false},
+    "targetSku": {"$ref": "#/$defs/verifiedTarget"},
+    "firmware": {"$ref": "#/$defs/firmware"},
+    "ram": {"$ref": "#/$defs/ram"},
+    "battery": {"$ref": "#/$defs/battery"},
+    "temperature": {"$ref": "#/$defs/temperature"},
+    "storage": {"$ref": "#/$defs/storage"},
+    "slots": {"$ref": "#/$defs/slots"},
+    "activeCore": {"$ref": "#/$defs/core"},
+    "lastCrash": {"$ref": "#/$defs/lastCrash"},
+    "policy": {"$ref": "#/$defs/policy"}
+  },
+  "$defs": {
+    "reason": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9 .:_-]+$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9 .:_-]+$"},
+    "unavailable": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {"status": {"const": "unavailable"}, "reason": {"$ref": "#/$defs/reason"}}
+    },
+    "verifiedTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {"status": {"const": "verified"}, "value": {"const": "TG4040"}}
+    },
+    "firmware": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "version", "build"], "properties": {"status": {"const": "available"}, "version": {"$ref": "#/$defs/text"}, "build": {"$ref": "#/$defs/text"}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "ram": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "totalBytes", "availableBytes"], "properties": {"status": {"const": "available"}, "totalBytes": {"type": "integer", "minimum": 1, "maximum": 4294967296}, "availableBytes": {"type": "integer", "minimum": 0, "maximum": 4294967296}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "battery": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "percent", "charging"], "properties": {"status": {"const": "available"}, "percent": {"type": "integer", "minimum": 0, "maximum": 100}, "charging": {"type": "boolean"}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "temperature": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "celsius"], "properties": {"status": {"const": "available"}, "celsius": {"type": "integer", "minimum": -100, "maximum": 150}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "storage": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "capacityBytes", "freeBytes"], "properties": {"status": {"const": "available"}, "capacityBytes": {"type": "integer", "minimum": 1, "maximum": 1099511627776}, "freeBytes": {"type": "integer", "minimum": 0, "maximum": 1099511627776}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "slots": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "active", "previous"], "properties": {"status": {"const": "available"}, "active": {"enum": ["A", "B"]}, "previous": {"enum": ["A", "B"]}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "core": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "id", "version"], "properties": {"status": {"const": "available"}, "id": {"$ref": "#/$defs/text"}, "version": {"$ref": "#/$defs/text"}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "lastCrash": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "record"], "properties": {"status": {"const": "available"}, "record": {"$ref": "#/$defs/crash"}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
+    },
+    "crash": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "atMs", "component", "reason"],
+      "properties": {"id": {"$ref": "#/$defs/text"}, "atMs": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}, "component": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"}}
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["theme", "display", "input", "network", "thirdPartyThemes", "backgroundIndexing", "automaticGameLaunch", "firmwareMutation", "romMutation", "saveMutation", "updaterRecordMutation", "rawStorageMutation", "emmcMutation"],
+      "properties": {
+        "theme": {"const": "built-in"}, "display": {"const": "conservative"}, "input": {"const": "conservative"}, "network": {"const": "disabled"}, "thirdPartyThemes": {"const": "disabled"}, "backgroundIndexing": {"const": "disabled"}, "automaticGameLaunch": {"const": "disabled"},
+        "firmwareMutation": {"const": "not-permitted"}, "romMutation": {"const": "not-permitted"}, "saveMutation": {"const": "not-permitted"}, "updaterRecordMutation": {"const": "not-permitted"}, "rawStorageMutation": {"const": "not-permitted"}, "emmcMutation": {"const": "not-permitted"}
+      }
+    }
+  }
+}

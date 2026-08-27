@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trimui-brickpro-support-bundle-metadata-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "bundleVersion", "source", "targetSku", "redactions"],
+  "properties": {
+    "schema": {"const": "brickpro-support-bundle-metadata/v1"},
+    "bundleVersion": {"const": "1"},
+    "source": {"const": "synthetic-fixture"},
+    "targetSku": {"const": "TG4040"},
+    "redactions": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"enum": ["secrets", "environment", "private-content"]}, "uniqueItems": true}
+  }
+}

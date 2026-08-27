@@ -89,10 +89,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "brick-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "bootstrap-probe",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "brick-recovery"
 version = "0.1.0"
 dependencies = [
  "bootstrap-probe",
+ "brick-diagnostics",
  "serde",
  "serde_json",
 ]

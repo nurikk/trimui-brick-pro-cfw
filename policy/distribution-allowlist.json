@@ -122,6 +122,30 @@
     },
     {
       "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "byteSize": 973744,
+      "candidateId": "project-authored-baseline-payload",
+      "candidateRedistributionStatus": "permitted",
+      "candidateStatus": "approved",
+      "destinationPath": "usr/bin/brickpro-diagnostics",
+      "id": "artifact-baseline-usr-bin-brickpro-diagnostics",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": [
+            "THIRD_PARTY_NOTICES.md"
+          ],
+          "required": true
+        }
+      ],
+      "sha256": "243df11a257a7ed5992f8fd4f3b913c8919504724cccfdf2729cee460d790c09",
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
       "byteSize": 757080,
       "candidateId": "project-authored-baseline-payload",
       "candidateRedistributionStatus": "permitted",

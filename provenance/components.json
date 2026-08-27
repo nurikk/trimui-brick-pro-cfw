@@ -4334,6 +4334,35 @@
       "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
       "status": "approved",
       "version": "0.1.0"
+    },
+    {
+      "componentClass": "project-authored-code",
+      "copyrightAttribution": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "id": "project-authored-brick-diagnostics",
+      "intendedUse": "Clean-room project-authored diagnostics candidate source; not a target release payload.",
+      "licenseEvidenceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw/blob/0dc94c07fafdfec6cd8dfae26384dfccf8669e1b/Cargo.toml",
+      "licenseExpression": "MIT",
+      "lockfilePackage": {
+        "checksum": null,
+        "name": "brick-diagnostics",
+        "source": null,
+        "version": "0.1.0"
+      },
+      "name": "TrimUI Brick Pro CFW brick-diagnostics crate",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "required": true
+        }
+      ],
+      "rationale": "Current repository-authored or lockfile-resolved source; its exact revision/version is pinned here, but no target artifact is approved in this inventory.",
+      "redistributionStatus": "permitted",
+      "sourceRelationship": "authored repository source",
+      "sourceUrl": "https://github.com/nurikk/trimui-brick-pro-cfw",
+      "status": "approved",
+      "version": null,
+      "versionReason": "Current checkout contains uncommitted bootstrap work; parent delivery revision is pending."
     }
   ],
   "distributedArtifacts": [
@@ -4468,6 +4497,28 @@
       "sha256": "251cadcffe486c03833f273e0859ad6881c0d7cb24e10e1f4f1676fb26da78df",
       "status": "approved",
       "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "byteSize": 973744,
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/bin/brickpro-diagnostics",
+      "id": "artifact-baseline-usr-bin-brickpro-diagnostics",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": [
+            "THIRD_PARTY_NOTICES.md"
+          ],
+          "required": true
+        }
+      ],
+      "sha256": "243df11a257a7ed5992f8fd4f3b913c8919504724cccfdf2729cee460d790c09",
+      "status": "approved",
+      "type": "regular"
     }
   ],
   "lockfile": {
@@ -4535,6 +4586,12 @@
       {
         "checksum": null,
         "name": "bootstrap-probe",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
+        "checksum": null,
+        "name": "brick-diagnostics",
         "source": null,
         "version": "0.1.0"
       },
@@ -5212,7 +5269,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "66472da6394cea0ad69f594b92f71feae8c41db8db63d490b3cd905da12e71ab"
+    "sha256": "8c44f00e9d01aa25c8c5f3d38fc90854b7a7bf84badb2fc46952909e9295a996"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

@@ -1,14 +1,15 @@
 [package]
-name = "brick-recovery"
+name = "brick-diagnostics"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "brick-recovery"
+name = "brickpro-diagnostics"
 path = "src/main.rs"
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+libc.workspace = true
 bootstrap-probe = { path = "../bootstrap-probe" }
-brick-diagnostics = { path = "../brick-diagnostics" }

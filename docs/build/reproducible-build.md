@@ -53,8 +53,8 @@ audit. It produces exactly:
 - `THIRD_PARTY_NOTICES.md`
 - `build-info.json`
 
-The archive contains only static AArch64 `bootstrap-probe` and
-`brick-recovery`, the existing POSIX bootstrap/recovery scripts, the TG4040
+The archive contains only static AArch64 `bootstrap-probe`, `brick-recovery`,
+and `brickpro-diagnostics`, the existing POSIX bootstrap/recovery scripts, the TG4040
 compatibility JSON, and the generated license notice. It contains no manifest;
 `manifest.json` is an external sidecar so it cannot hash itself.
 
@@ -68,8 +68,10 @@ find "$OUT/extracted" -type f -print | sort
 python3 -m json.tool "$OUT/manifest.json" >/dev/null
 python3 -m json.tool "$OUT/build-info.json" >/dev/null
 file "$OUT/extracted/usr/bin/brickpro-bootstrap-probe" \
-     "$OUT/extracted/usr/bin/brickpro-recovery"
+     "$OUT/extracted/usr/bin/brickpro-recovery" \
+     "$OUT/extracted/usr/bin/brickpro-diagnostics"
 readelf -h "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
+readelf -h "$OUT/extracted/usr/bin/brickpro-diagnostics"
 readelf -l "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
 readelf -d "$OUT/extracted/usr/bin/brickpro-bootstrap-probe"
 ```

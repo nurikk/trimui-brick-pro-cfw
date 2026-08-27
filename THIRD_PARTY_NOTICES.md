@@ -13,4 +13,5 @@ Generated from approved distributed artifacts by `scripts/provenance.py`.
   - `bootstrap/recovery.sh`
   - `config/platform/tg4040/compatibility.json`
   - `usr/bin/brickpro-bootstrap-probe`
+  - `usr/bin/brickpro-diagnostics`
   - `usr/bin/brickpro-recovery`

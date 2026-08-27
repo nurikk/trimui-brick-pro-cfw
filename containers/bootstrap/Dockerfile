@@ -12,8 +12,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY .cargo ./.cargo
 COPY crates ./crates
 RUN cargo fmt --check \
-    && cargo build --locked --release -p bootstrap-probe -p brick-recovery \
-    && cargo build --locked --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery \
-    && cargo clippy --locked --release -p bootstrap-probe -p brick-recovery -- -D warnings \
-    && { rustc --version; cargo --version; rustup target list --installed; file target/release/bootstrap-probe target/release/brick-recovery target/aarch64-unknown-linux-musl/release/bootstrap-probe target/aarch64-unknown-linux-musl/release/brick-recovery; } \
+    && cargo build --locked --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics \
+    && cargo build --locked --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery -p brick-diagnostics \
+    && cargo clippy --locked --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -- -D warnings \
+    && { rustc --version; cargo --version; rustup target list --installed; file target/release/bootstrap-probe target/release/brick-recovery target/aarch64-unknown-linux-musl/release/bootstrap-probe target/aarch64-unknown-linux-musl/release/brick-recovery target/release/brickpro-diagnostics target/aarch64-unknown-linux-musl/release/brickpro-diagnostics; } \
        > /usr/share/trimui-bootstrap-build-versions.txt

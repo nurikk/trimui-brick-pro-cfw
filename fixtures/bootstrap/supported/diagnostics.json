@@ -1,0 +1,47 @@
+{
+  "activeCore": {
+    "id": "mainline",
+    "status": "available",
+    "version": "0.1.0"
+  },
+  "battery": {
+    "charging": false,
+    "percent": 78,
+    "status": "available"
+  },
+  "firmware": {
+    "build": "synthetic-build-20260717",
+    "status": "available",
+    "version": "synthetic-firmware-1.0"
+  },
+  "lastCrash": {
+    "record": {
+      "atMs": 1700000000,
+      "component": "launcher",
+      "id": "crash-001",
+      "reason": "watchdog-timeout",
+      "schema": "brickpro-synthetic-crash/v1"
+    },
+    "status": "available"
+  },
+  "ram": {
+    "availableBytes": 402653184,
+    "status": "available",
+    "totalBytes": 536870912
+  },
+  "schema": "brickpro-synthetic-diagnostics-fixture/v1",
+  "slots": {
+    "active": "A",
+    "previous": "B",
+    "status": "available"
+  },
+  "storage": {
+    "capacityBytes": 64000000000,
+    "freeBytes": 32000000000,
+    "status": "available"
+  },
+  "temperature": {
+    "celsius": 38,
+    "status": "available"
+  }
+}

@@ -1,6 +1,7 @@
 use std::{env, fs, path::PathBuf, process};
 
 use bootstrap_probe::probe_simulation;
+use brick_diagnostics::{safe_mode_report, SupportReport};
 use serde::Serialize;
 
 const CHOICES: [&str; 3] = [
@@ -19,13 +20,15 @@ struct RecoveryResult {
     selected: Option<&'static str>,
     selection_source: Option<&'static str>,
     activating: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    safe_mode_presentation: Option<SupportReport>,
 }
 
 fn main() {
     let outcome = match parse_args() {
-        Ok(Args::RealDeviceDenied) => recovery("real-fingerprint-not-approved", None, None),
+        Ok(Args::RealDeviceDenied) => recovery("real-fingerprint-not-approved", None, None, None),
         Ok(Args::Simulation { root, selection }) => simulation(&root, selection),
-        Err(_) => recovery("simulation-interface-rejected", None, None),
+        Err(_) => recovery("simulation-interface-rejected", None, None, None),
     };
     let selected = outcome.selected.is_some();
     println!(
@@ -81,29 +84,35 @@ fn simulation(root: &std::path::Path, explicit: Option<&'static str>) -> Recover
                 | "model-identity-missing"
                 | "target-sku-mismatch"
         ) {
-            return recovery(probe.reason, None, None);
+            return recovery(probe.reason, None, None, None);
         }
         let (selected, source) = match explicit {
             Some(choice) => (Some(choice), Some("command-line")),
             None => match read_marker(root, ".brickpro/data/recovery-next-boot") {
                 Some(Ok(choice)) => (Some(choice), Some("next-boot-marker")),
-                Some(Err(())) => return recovery("recovery-marker-invalid", None, None),
+                Some(Err(())) => return recovery("recovery-marker-invalid", None, None, None),
                 None => match read_marker(root, ".brickpro/data/recovery-button-chord") {
                     Some(Ok(choice)) => (Some(choice), Some("button-chord-marker")),
-                    Some(Err(())) => return recovery("recovery-marker-invalid", None, None),
+                    Some(Err(())) => return recovery("recovery-marker-invalid", None, None, None),
                     None => (None, None),
                 },
             },
         };
-        return recovery(probe.reason, selected, source);
+        return recovery(probe.reason, selected, source, presentation(root, selected));
     }
-    recovery("recovery-not-required", explicit, Some("command-line"))
+    recovery(
+        "recovery-not-required",
+        explicit,
+        Some("command-line"),
+        presentation(root, explicit),
+    )
 }
 
 fn recovery(
     reason: &'static str,
     selected: Option<&'static str>,
     selection_source: Option<&'static str>,
+    safe_mode_presentation: Option<SupportReport>,
 ) -> RecoveryResult {
     RecoveryResult {
         schema: "brickpro-recovery/v1",
@@ -113,7 +122,13 @@ fn recovery(
         selected,
         selection_source,
         activating: false,
+        safe_mode_presentation,
     }
+}
+
+fn presentation(root: &std::path::Path, selected: Option<&'static str>) -> Option<SupportReport> {
+    (selected == Some("safe-mode"))
+        .then(|| safe_mode_report(root).unwrap_or_else(|_| SupportReport::unavailable()))
 }
 
 fn read_marker(root: &std::path::Path, relative: &str) -> Option<Result<&'static str, ()>> {

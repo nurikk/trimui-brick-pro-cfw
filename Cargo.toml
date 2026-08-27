@@ -7,6 +7,7 @@ members = [
     "crates/storage-layout",
     "crates/bootstrap-probe",
     "crates/brick-recovery",
+    "crates/brick-diagnostics",
     "crates/launch-contract",
     "crates/metadata-scraper",
     "crates/launcher-theme",

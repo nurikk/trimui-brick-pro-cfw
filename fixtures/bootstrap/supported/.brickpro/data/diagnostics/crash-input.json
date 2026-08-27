@@ -1,0 +1,7 @@
+{
+  "atMs": 1700000123,
+  "component": "launcher",
+  "id": "crash-002",
+  "reason": "safe-mode-requested",
+  "schema": "brickpro-synthetic-crash/v1"
+}

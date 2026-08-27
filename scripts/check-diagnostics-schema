@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Static, dependency-free contract gate for the synthetic diagnostics schemas."""
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "schemas/support-report-v1.schema.json"
+METADATA = ROOT / "schemas/support-bundle-metadata-v1.schema.json"
+FIXTURE = ROOT / "fixtures/bootstrap/supported/diagnostics.json"
+
+
+def load(path):
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def walk(value):
+    if isinstance(value, dict):
+        if value.get("type") == "object" and value.get("additionalProperties") is not False:
+            raise ValueError(f"{value}: object is not closed")
+        for child in value.values():
+            walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            walk(child)
+
+
+def main():
+    report = load(REPORT)
+    metadata = load(METADATA)
+    fixture = load(FIXTURE)
+    walk(report)
+    walk(metadata)
+    if report["properties"]["schema"]["const"] != "brickpro-support-report/v1":
+        raise ValueError("report schema version is not pinned")
+    required = set(report["required"])
+    expected = {"firmware", "targetSku", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash"}
+    if not expected <= required:
+        raise ValueError("required diagnostic fields are incomplete")
+    if fixture["schema"] != "brickpro-synthetic-diagnostics-fixture/v1":
+        raise ValueError("fixture schema version is not pinned")
+    print("diagnostics schema check: PASS")
+
+
+try:
+    main()
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    print(f"diagnostics schema check: FAIL: {error}", file=sys.stderr)
+    raise SystemExit(1)

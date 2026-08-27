@@ -37,7 +37,9 @@ A successful synthetic probe is the only case that writes `boot-context.json` be
 
 Selection is deterministic from `--select`, then the generated `.brickpro/data/recovery-next-boot` marker, then the generated `.brickpro/data/recovery-button-chord` marker. The markers are fixture files, not physical controls or a stock-resume chain. Stock passthrough is reported as a non-activating simulated outcome and never invokes a guessed stock binary.
 
-Safe mode is a logical policy only: read-only logical system, normal logical data saves, disposable cache ignored, radios disabled, fallback theme, and no migration/update. No physical semantics are claimed.
+Safe mode is a logical, non-activating policy only. Its deterministic presentation includes firmware/build, verified SKU, RAM, battery, temperature, storage, active/previous slots, active core, and last crash; unavailable values carry an explicit reason. It uses the built-in theme, conservative display/input, disabled network and third-party themes, no background indexing or automatic game launch, and no firmware, ROM, save, updater-record, raw-storage, or eMMC mutation. No physical semantics are claimed.
+
+`brickpro-diagnostics --simulation-fixture-root <root> --export-support-bundle <sd-dir>` writes `trimui-support-bundle-v1/` below the selected, existing synthetic SD directory. The archive and checksum sidecar are fsynced in a staging directory, then published together by one directory rename; an existing bundle directory is never overwritten.
 
 ## Evidence boundary
 

@@ -93,6 +93,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-diagnostics",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "243df11a257a7ed5992f8fd4f3b913c8919504724cccfdf2729cee460d790c09"
+        }
+      ],
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-diagnostics\",\"byteSize\":973744,\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-diagnostics",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
       "checksums": [
         {
@@ -145,6 +161,11 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-bootstrap-probe",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-diagnostics",
       "relationshipType": "CONTAINS",
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
     },

@@ -7,13 +7,18 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, Context, Result};
+use launch_contract::{
+    validate as validate_launch_request, Catalog as LaunchCatalog, DisplaySettings, InputLayout,
+    InputSettings, LaunchKind, LaunchRequest, LogicalPath, PathRoot, PowerSettings, ResumeMode,
+    Scaling, SuspendMode, VersionedId,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use sim_domain::{Catalog, LaunchRequest, Route, SessionState};
+use sim_domain::{Catalog as UiCatalog, Route, SessionState};
 use sim_platform_contract::{
     Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, Screen,
     StorageMode, SuspendResult, SuspendState,
@@ -21,6 +26,11 @@ use sim_platform_contract::{
 
 const LANE: &str = "host-native userspace simulator";
 const SESSION_ID: &str = "run-local";
+const LAUNCH_CATALOG_BYTES: &[u8] =
+    include_bytes!("../../../fixtures/launch-contract/generated-v1/catalog.synthetic.json");
+const GENERATED_CONTENT_SHA256: &str =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const MAX_GENERATED_ENTRIES: usize = 32;
 const FAULTS: &[&str] = &[
     "adapter-fail",
     "adapter-crash",
@@ -238,20 +248,39 @@ fn run_session<P: Platform>(
     keep_alive: bool,
     stop: &AtomicBool,
 ) -> Result<()> {
+    let startup_started = Instant::now();
     let identity = platform.identity();
-    let catalog: Catalog =
+    let catalog_started = Instant::now();
+    let launch_catalog: LaunchCatalog = launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES)
+        .map_err(|error| anyhow!(error.to_string()))?;
+    launch_contract::validate_catalog_projection(&launch_catalog)
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let catalog: UiCatalog =
         serde_json::from_slice(&fs::read(catalog_path)?).context("read generated catalog")?;
     if catalog.catalog_version != "1"
         || catalog.entries.is_empty()
-        || catalog
-            .entries
-            .iter()
-            .any(|entry| entry.system != "synthetic" || !entry.id.starts_with("generated-"))
+        || catalog.entries.len() > MAX_GENERATED_ENTRIES
+        || catalog.entries.iter().any(|entry| {
+            entry.id.is_empty()
+                || entry.id.len() > 64
+                || entry.title.is_empty()
+                || entry.title.len() > 128
+                || entry.system != "synthetic"
+                || !entry.id.starts_with("generated-")
+        })
     {
         return Err(anyhow!("invalid generated catalog"));
     }
+    log.emit(
+        "catalog_list",
+        platform.logical_time_ms(),
+        json_map([
+            ("entryCount", json!(catalog.entries.len())),
+            ("latencyUs", json!(catalog_started.elapsed().as_micros())),
+        ]),
+    )?;
     let mut state = AppState {
-        route: Route::Catalog,
+        route: Route::Library,
         selected_index: 0,
         active_fake_session: None,
         modal: None,
@@ -261,6 +290,7 @@ fn run_session<P: Platform>(
     let screen = make_screen(&state.route, &catalog, state.selected_index);
 
     present(&mut platform, &screen)?;
+    let first_frame_us = startup_started.elapsed().as_micros();
     log.emit("ready", platform.logical_time_ms(), Map::new())?;
     write_json(
         evidence.root.join("readiness.json"),
@@ -281,6 +311,7 @@ fn run_session<P: Platform>(
         json_map([
             ("logicalWidth", json!(1024)),
             ("logicalHeight", json!(768)),
+            ("hostElapsedUs", json!(first_frame_us)),
             ("batteryLevelPercent", json!(snapshot.battery_level_percent)),
             ("charging", json!(snapshot.charging)),
             ("ledOn", json!(snapshot.led_on)),
@@ -300,16 +331,13 @@ fn run_session<P: Platform>(
         "screenshot",
     )
     .map_err(|error| anyhow!(error))?;
-    write_route(
-        &evidence.root,
-        &state.route,
-        &catalog.entries[state.selected_index],
-    )?;
+    let initial_selection = route_selection(&state.route, &catalog, state.selected_index);
+    write_route(&evidence.root, &state.route, initial_selection)?;
     emit_route_selection(
         log,
         platform.logical_time_ms(),
         &state.route,
-        &catalog.entries[state.selected_index],
+        initial_selection,
     )?;
 
     let mut fixture_done = false;
@@ -328,6 +356,7 @@ fn run_session<P: Platform>(
                     evidence,
                     log,
                     &catalog,
+                    &launch_catalog,
                     &mut state,
                     event,
                     &identity.target_sku,
@@ -343,6 +372,7 @@ fn run_session<P: Platform>(
                 evidence,
                 log,
                 &catalog,
+                &launch_catalog,
                 &mut state,
                 incoming,
                 &identity.target_sku,
@@ -375,11 +405,13 @@ fn run_session<P: Platform>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_request<P: Platform>(
     platform: &mut P,
     evidence: &Evidence,
     log: &mut EventLog,
-    catalog: &Catalog,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
     state: &mut AppState,
     incoming: control::Incoming,
     target_sku: &str,
@@ -418,9 +450,18 @@ fn handle_request<P: Platform>(
                 button: args.button,
                 action: args.action,
             };
-            handle_button(platform, evidence, log, catalog, state, event, target_sku)
-                .map_err(|error| error.to_string())
-                .and_then(|_| state_json(platform, evidence, log, catalog, state))
+            handle_button(
+                platform,
+                evidence,
+                log,
+                catalog,
+                launch_catalog,
+                state,
+                event,
+                target_sku,
+            )
+            .map_err(|error| error.to_string())
+            .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
             apply_hardware(platform, log, args)?;
@@ -629,11 +670,13 @@ fn adapter_result(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_button<P: Platform>(
     platform: &mut P,
     evidence: &Evidence,
     log: &mut EventLog,
-    catalog: &Catalog,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
     state: &mut AppState,
     event: ButtonEvent,
     target_sku: &str,
@@ -646,62 +689,84 @@ fn handle_button<P: Platform>(
             ("action", json!(action_name(event.action))),
         ]),
     )?;
-    if event.action == ButtonAction::Press
-        && !state.faults.iter().any(|fault| fault == "input-drop")
+    if event.action != ButtonAction::Press || state.faults.iter().any(|fault| fault == "input-drop")
     {
-        let mut selection_changed = false;
-        match event.button {
-            Button::Up if route_matches_catalog(&state.route) => {
-                state.selected_index = state
-                    .selected_index
-                    .checked_sub(1)
-                    .unwrap_or(catalog.entries.len() - 1);
-                selection_changed = true;
-            }
-            Button::Down if route_matches_catalog(&state.route) => {
-                state.selected_index = (state.selected_index + 1) % catalog.entries.len();
-                selection_changed = true;
-            }
-            Button::Start => state.route = Route::Catalog,
-            Button::Primary if route_matches_catalog(&state.route) => {
-                let _request = LaunchRequest {
-                    selection: catalog.entries[state.selected_index].clone(),
-                };
-                state.route = Route::Session;
-                state.modal = Some("fake-session-started".to_string());
-                state.active_fake_session = Some(FakeSession {
-                    id: SESSION_ID.to_string(),
-                    content_id: catalog.entries[state.selected_index].id.clone(),
-                    status: "started".to_string(),
-                    exit_status: None,
-                    value: None,
-                });
-                write_json(
-                    evidence.root.join("launch.json"),
-                    &json!({
-                        "kind": "launch", "lane": LANE, "targetSku": target_sku, "sessionId": SESSION_ID,
-                    }),
-                )?;
-                write_session(&evidence.root, SessionState::Started)?;
-            }
-            _ => {}
-        }
-        if selection_changed {
-            emit_route_selection(
-                log,
-                event.at_ms,
-                &state.route,
-                &catalog.entries[state.selected_index],
-            )?;
-        }
-        let screen = make_screen(&state.route, catalog, state.selected_index);
-        present(platform, &screen)?;
-        write_route(
-            &evidence.root,
-            &state.route,
-            &catalog.entries[state.selected_index],
-        )?;
+        return Ok(());
     }
+
+    let input_started = Instant::now();
+    let mut route_changed = false;
+    let mut selection_changed = false;
+    match (state.route.clone(), event.button) {
+        (Route::Library, Button::Start) => {
+            state.route = Route::Systems;
+            route_changed = true;
+        }
+        (Route::Systems, Button::Down) => {
+            state.route = Route::Games;
+            route_changed = true;
+        }
+        (Route::Games, Button::Up) => {
+            state.selected_index = state
+                .selected_index
+                .checked_sub(1)
+                .unwrap_or(catalog.entries.len() - 1);
+            selection_changed = true;
+        }
+        (Route::Games, Button::Down) => {
+            state.selected_index = (state.selected_index + 1) % catalog.entries.len();
+            selection_changed = true;
+        }
+        (Route::Games, Button::Start) => {
+            state.route = Route::Library;
+            route_changed = true;
+        }
+        (Route::Games, Button::Primary) => {
+            let request = launch_request(&catalog.entries[state.selected_index]);
+            let bytes = launch_contract::request_json(&request)
+                .map_err(|error| anyhow!(error.to_string()))?
+                .into_bytes();
+            let parsed = launch_contract::parse_request_json(&bytes)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            validate_launch_request(&parsed, launch_catalog)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
+            state.route = Route::Session;
+            state.modal = Some("fake-session-started".to_string());
+            state.active_fake_session = Some(FakeSession {
+                id: SESSION_ID.to_string(),
+                content_id: catalog.entries[state.selected_index].id.clone(),
+                status: "started".to_string(),
+                exit_status: None,
+                value: None,
+            });
+            write_json(
+                evidence.root.join("launch.json"),
+                &json!({
+                    "kind": "launch", "lane": LANE, "targetSku": target_sku, "sessionId": SESSION_ID,
+                }),
+            )?;
+            write_session(&evidence.root, SessionState::Started)?;
+            route_changed = true;
+        }
+        _ => {}
+    }
+    if route_changed || selection_changed {
+        let selection = route_selection(&state.route, catalog, state.selected_index);
+        emit_route_selection(log, event.at_ms, &state.route, selection)?;
+    }
+    let screen = make_screen(&state.route, catalog, state.selected_index);
+    present(platform, &screen)?;
+    log.emit(
+        "input_to_frame",
+        event.at_ms,
+        json_map([("latencyUs", json!(input_started.elapsed().as_micros()))]),
+    )?;
+    write_route(
+        &evidence.root,
+        &state.route,
+        route_selection(&state.route, catalog, state.selected_index),
+    )?;
     Ok(())
 }
 
@@ -711,7 +776,7 @@ fn capture_artifact<P: Platform>(
     evidence: &Evidence,
     log: &mut EventLog,
     state: &AppState,
-    catalog: &Catalog,
+    catalog: &UiCatalog,
     directory: &str,
     name: &str,
     event_name: &str,
@@ -755,7 +820,7 @@ fn state_json<P: Platform>(
     platform: &P,
     evidence: &Evidence,
     log: &EventLog,
-    catalog: &Catalog,
+    catalog: &UiCatalog,
     state: &AppState,
 ) -> Result<Value, String> {
     let _ = evidence;
@@ -813,20 +878,71 @@ fn emit_route_selection(
     log: &mut EventLog,
     at_ms: u64,
     route: &Route,
-    selection: &sim_domain::CatalogEntry,
+    selection: &str,
 ) -> Result<()> {
     log.emit(
         "route_selection",
         at_ms,
         json_map([
             ("route", json!(route.as_str())),
-            ("selection", json!(selection.id)),
+            ("selection", json!(selection)),
         ]),
     )?;
     Ok(())
 }
 
-fn make_screen(route: &Route, catalog: &Catalog, selected_index: usize) -> Screen {
+fn launch_request(entry: &sim_domain::CatalogEntry) -> LaunchRequest {
+    LaunchRequest {
+        schema: launch_contract::REQUEST_SCHEMA.to_string(),
+        format: "brickpro-launch-request".to_string(),
+        schema_version: 1,
+        request_id: format!(
+            "generated-request-{}",
+            entry.id.trim_start_matches("generated-")
+        ),
+        kind: LaunchKind::Libretro,
+        content_id: entry.id.clone(),
+        content_sha256: GENERATED_CONTENT_SHA256.to_string(),
+        content_path: LogicalPath {
+            root: PathRoot::Roms,
+            relative: "generated/content.bin".to_string(),
+        },
+        save_path: LogicalPath {
+            root: PathRoot::DataSaves,
+            relative: "generated/content.sav".to_string(),
+        },
+        state_path: LogicalPath {
+            root: PathRoot::DataStates,
+            relative: "generated/content.state".to_string(),
+        },
+        runner: VersionedId {
+            id: "generated-libretro".to_string(),
+            version: "1.0.0".to_string(),
+        },
+        core: Some(VersionedId {
+            id: "generated-core".to_string(),
+            version: "1.0.0".to_string(),
+        }),
+        profile_id: "generated-default".to_string(),
+        resume_mode: ResumeMode::Fresh,
+        display: DisplaySettings {
+            width: 1024,
+            height: 768,
+            refresh_hz: 60,
+            scaling: Scaling::Fit,
+        },
+        input: InputSettings {
+            layout: InputLayout::Standard,
+            rumble: false,
+        },
+        power: PowerSettings {
+            suspend: SuspendMode::Allowed,
+            battery_saver: false,
+        },
+    }
+}
+
+fn make_screen(route: &Route, catalog: &UiCatalog, selected_index: usize) -> Screen {
     Screen {
         route: route.clone(),
         selection: catalog.entries[selected_index].clone(),
@@ -839,15 +955,20 @@ fn present<P: Platform>(platform: &mut P, screen: &Screen) -> Result<()> {
     platform.present(screen).map_err(|error| anyhow!("{error}"))
 }
 
-fn route_matches_catalog(route: &Route) -> bool {
-    matches!(route, Route::Catalog)
+fn route_selection<'a>(route: &Route, catalog: &'a UiCatalog, selected_index: usize) -> &'a str {
+    match route {
+        Route::Library => "library",
+        Route::Systems => "synthetic",
+        Route::Games | Route::Session => catalog.entries[selected_index].id.as_str(),
+        Route::Catalog => "library",
+    }
 }
 
-fn write_route(root: &Path, route: &Route, selection: &sim_domain::CatalogEntry) -> Result<()> {
+fn write_route(root: &Path, route: &Route, selection: &str) -> Result<()> {
     write_json(
         root.join("route-selection.json"),
         &json!({
-            "kind": "route-selection", "lane": LANE, "route": route.as_str(), "selection": selection.id,
+            "kind": "route-selection", "lane": LANE, "route": route.as_str(), "selection": selection,
         }),
     )
 }
@@ -862,7 +983,10 @@ fn write_session(root: &Path, state: SessionState) -> Result<()> {
 }
 
 fn write_json<T: Serialize>(path: PathBuf, value: &T) -> Result<()> {
-    let data = serde_json::to_vec(value)?;
+    write_bytes(path, &serde_json::to_vec(value)?)
+}
+
+fn write_bytes(path: PathBuf, data: &[u8]) -> Result<()> {
     let file_name = path
         .file_name()
         .ok_or_else(|| anyhow!("evidence path has no file name"))?
@@ -874,7 +998,7 @@ fn write_json<T: Serialize>(path: PathBuf, value: &T) -> Result<()> {
             .create_new(true)
             .write(true)
             .open(&temporary)?;
-        file.write_all(&data)?;
+        file.write_all(data)?;
         file.sync_all()?;
         drop(file);
         fs::rename(&temporary, &path)?;

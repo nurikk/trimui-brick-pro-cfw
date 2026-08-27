@@ -40,11 +40,21 @@
       },
       {
         "atMs": 96,
-        "control": "primary",
+        "control": "down",
         "action": "press"
       },
       {
         "atMs": 112,
+        "control": "down",
+        "action": "release"
+      },
+      {
+        "atMs": 128,
+        "control": "primary",
+        "action": "press"
+      },
+      {
+        "atMs": 144,
         "control": "primary",
         "action": "release"
       }

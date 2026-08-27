@@ -3,11 +3,16 @@ name = "sim-launcher"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["host"]
+host = ["dep:signal-hook", "dep:sim-host-platform"]
+
 [dependencies]
 anyhow.workspace = true
-signal-hook.workspace = true
+launch-contract = { path = "../launch-contract" }
+signal-hook = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sim-domain = { path = "../domain" }
-sim-host-platform = { path = "../host-platform" }
+sim-host-platform = { path = "../host-platform", optional = true }
 sim-platform-contract = { path = "../platform-contract" }

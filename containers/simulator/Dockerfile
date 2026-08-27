@@ -14,6 +14,8 @@ RUN rustup component add rustfmt clippy \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY fixtures ./fixtures
+COPY schemas ./schemas
 COPY sim ./sim
 RUN cargo build --release --locked \
     && install -Dm755 target/release/sim-launcher /usr/local/bin/sim-launcher \

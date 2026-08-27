@@ -16,6 +16,7 @@ permissions.
 ```sh
 scripts/simctl --socket "$RUN/control.sock" wait-ready --timeout 30
 scripts/simctl --socket "$RUN/control.sock" state
+scripts/simctl --socket "$RUN/control.sock" button --button start --action press
 scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
 scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
@@ -45,19 +46,21 @@ path-bearing or shell-like fields. With the repository's available validator,
 `jsonschema -i accepted.json sim/contracts/control.schema.json` succeeds while
 an `exec` or path-bearing request fails.
 
-`state` returns `sim-state/v1` semantic state: current route, selected generated
-content ID, active fake session and result, modal/status, readiness generation,
+`state` returns `sim-state/v1` semantic state: current `library`, `systems`,
+or `games` route, selected generated content ID, active fake session and result, modal/status, readiness generation,
 typed virtual hardware, and enabled named faults. The state object is also
 written beside each requested artifact. Validate it with the `state` definition
 in `control.schema.json`; no pixels are inspected.
 
 ## Current supported flow and limits
 
-Only the shipped `catalog` and `session` routes exist today. The catalog is
-synthetic-only and contains exactly `generated-demo-1`, `generated-demo-2`, and
-`generated-demo-3`; selecting and launching these entries starts the fake
-adapter/session. Adapter completion or failure is reflected in `state`,
-`session.json`, and JSONL events. Resume, Systems, Games, Settings, search,
+The shipped synthetic launcher flow is `Library → Systems → Games`. It contains
+exactly `generated-demo-1`, `generated-demo-2`, and `generated-demo-3`; `start`
+advances Library to Systems, `down` advances Systems to Games, further `down`
+presses select a generated game, and `primary` strictly validates and emits a
+typed `launch-contract::LaunchRequest` before starting the fake session. The
+request is written to `launch-request.json`; adapter completion or failure is
+reflected in `state`, `session.json`, and JSONL events. Settings, search,
 favorites, themes, updater behavior, VNC/noVNC, real emulation, and real
 hardware are not implemented or claimed.
 
@@ -75,6 +78,8 @@ private corpus references, vendor/firmware assets, or secrets.
 RUN=$(mktemp -d)
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30 --detach
 ./scripts/simctl --socket "$RUN/control.sock" wait-ready --timeout 30
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
 ./scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 7

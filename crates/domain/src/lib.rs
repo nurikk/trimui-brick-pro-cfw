@@ -19,6 +19,9 @@ pub struct CatalogEntry {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Route {
+    Library,
+    Systems,
+    Games,
     Catalog,
     Session,
 }
@@ -26,6 +29,9 @@ pub enum Route {
 impl Route {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Library => "library",
+            Self::Systems => "systems",
+            Self::Games => "games",
             Self::Catalog => "catalog",
             Self::Session => "session",
         }

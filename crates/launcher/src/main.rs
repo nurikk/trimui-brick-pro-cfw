@@ -1,3 +1,5 @@
+#![cfg(feature = "host")]
+
 use std::{
     path::PathBuf,
     process,

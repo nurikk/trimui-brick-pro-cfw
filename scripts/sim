@@ -38,8 +38,8 @@ container_name() {
 
 reject_stale_evidence() {
     for artifact in \
-        readiness.json route-selection.json launch.json session.json exit-status.json control.sock \
-        .readiness.json.tmp .route-selection.json.tmp .launch.json.tmp \
+        readiness.json route-selection.json launch.json launch-request.json session.json exit-status.json control.sock \
+        .readiness.json.tmp .route-selection.json.tmp .launch.json.tmp .launch-request.json.tmp \
         .session.json.tmp .exit-status.json.tmp logs/launcher.jsonl; do
         [ ! -e "$RUN_REAL/$artifact" ] || fail "--run-dir contains existing simulator evidence: $artifact"
     done
@@ -273,9 +273,9 @@ clean_run() {
     fi
     rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" "$RUN_REAL/checkpoints" \
         "$RUN_REAL/readiness.json" "$RUN_REAL/route-selection.json" \
-        "$RUN_REAL/launch.json" "$RUN_REAL/session.json" "$RUN_REAL/exit-status.json" \
+        "$RUN_REAL/launch.json" "$RUN_REAL/launch-request.json" "$RUN_REAL/session.json" "$RUN_REAL/exit-status.json" \
         "$RUN_REAL/.readiness.json.tmp" "$RUN_REAL/.route-selection.json.tmp" \
-        "$RUN_REAL/.launch.json.tmp" "$RUN_REAL/.session.json.tmp" \
+        "$RUN_REAL/.launch.json.tmp" "$RUN_REAL/.launch-request.json.tmp" "$RUN_REAL/.session.json.tmp" \
         "$RUN_REAL/.exit-status.json.tmp" \
         "$RUN_REAL/control.sock"
     run_sim "$@"

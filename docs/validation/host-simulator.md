@@ -12,7 +12,7 @@ RUN=$(mktemp -d)
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30
 ```
 
-The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, the readiness, route/selection, launch, session, and exit-status records, and logical PNG screenshots. The configured semantic events browse `generated-demo-1`, `generated-demo-2`, and `generated-demo-3`, then launch the third generated entry. A persistent run can be started with `--detach` and stopped with:
+The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, semantic route/selection, launch metadata, a strict `launch-request.json`, session and exit-status records, and logical PNG screenshots. The deterministic fixture traverses `library → systems → games`, selects generated content, validates a typed `LaunchRequest`, and never starts an emulator. A persistent run can be started with `--detach` and stopped with:
 
 ```sh
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30 --detach
@@ -23,7 +23,7 @@ Use `--backend=x11` to exercise SDL through Xvfb inside the container; no host d
 
 ## Contract and boundaries
 
-- Catalog data is limited to `sim/fixtures/catalog.json`; every entry is generated and has zero content.
+- Catalog data is limited to `sim/fixtures/catalog.json`; every entry is generated and has zero content. The embedded strict launch catalog is `fixtures/launch-contract/generated-v1/catalog.synthetic.json`; its logical request paths are not host paths.
 - The approved state-only profile is `sim/device/tg4040-host.json`. Its controls are semantic injected button events, and its battery, LED, audio, radio, suspend, and fault fields are fixture state.
 - The platform trait is in `crates/platform-contract`; the host-independent catalog/session flow is in `crates/launcher/src/lib.rs`; `crates/host-platform` is the replaceable SDL/Xvfb or SDL/dummy backend. Shared route, catalog, launch, and session types are in `crates/domain` and have no simulator dependency.
 - Runtime source is mounted read-only at `/src`, the process runs as UID/GID `10001:10001`, runtime state uses a `/tmp` tmpfs, networking is disabled, and `$RUN` is the only caller-owned writable host mount. The image is read-only and drops capabilities.
@@ -41,9 +41,10 @@ RUN=$(mktemp -d)
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30
 grep -q '"event":"ready"' "$RUN/logs/launcher.jsonl"
 grep -q '"event":"first_frame"' "$RUN/logs/launcher.jsonl"
-grep -q '"event":"route_selection".*"selection":"generated-demo-1"' "$RUN/logs/launcher.jsonl"
-grep -q '"event":"route_selection".*"selection":"generated-demo-2"' "$RUN/logs/launcher.jsonl"
-grep -q '"event":"route_selection".*"selection":"generated-demo-3"' "$RUN/logs/launcher.jsonl"
+grep -q '"event":"route_selection".*"route":"library"' "$RUN/logs/launcher.jsonl"
+grep -q '"event":"route_selection".*"route":"systems"' "$RUN/logs/launcher.jsonl"
+grep -q '"event":"route_selection".*"route":"games"' "$RUN/logs/launcher.jsonl"
+jsonschema -i "$RUN/launch-request.json" schemas/launch-request-v1.schema.json
 test -s "$RUN"/screenshots/screen-*.png
 ./scripts/sim stop --run-dir "$RUN"
 grep -q '"event":"clean_shutdown"' "$RUN/logs/launcher.jsonl"
@@ -84,6 +85,9 @@ docker run --rm --network none \
   clippy --workspace -- -D warnings
 
 git diff --check
+
+# The executable journey is the bounded, non-test fixture check. It writes evidence under /tmp.
+cargo run --release --locked -p sim-launcher --bin launcher-fixture-journey
 
 RUN_INSPECT=$(mktemp -d)
 ./scripts/sim run --backend=dummy --run-dir "$RUN_INSPECT" --wait-ready 30 --detach

@@ -371,6 +371,9 @@ impl Platform for HostPlatform {
                 .map_err(backend_error)?;
         }
         self.canvas.set_draw_color(match screen.route {
+            sim_domain::Route::Library => sdl2::pixels::Color::RGB(96, 210, 130),
+            sim_domain::Route::Systems => sdl2::pixels::Color::RGB(100, 170, 230),
+            sim_domain::Route::Games => sdl2::pixels::Color::RGB(140, 120, 230),
             sim_domain::Route::Catalog => sdl2::pixels::Color::RGB(96, 210, 130),
             sim_domain::Route::Session => sdl2::pixels::Color::RGB(240, 180, 75),
         });

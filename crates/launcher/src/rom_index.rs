@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -6,8 +7,9 @@ use std::{
     thread,
 };
 
-use serde::{Deserialize, Serialize};
-use sim_domain::Catalog;
+use sim_domain::{Catalog, CatalogEntry};
+use unicode_normalization::UnicodeNormalization;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub const MAX_ENTRIES: usize = 4096;
 pub const MAX_TITLE_BYTES: usize = 256;
@@ -18,7 +20,7 @@ pub const MAX_QUEUE_DEPTH: usize = 32;
 const INDEX_SCHEMA: &str = "launcher-rom-index/v1";
 const MAX_INDEX_BYTES: u64 = 4 * 1024 * 1024;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Entry {
     pub content_id: String,
@@ -26,7 +28,7 @@ pub struct Entry {
     pub path: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     pub schema: String,
@@ -37,9 +39,134 @@ pub struct Report {
     pub queue_depth: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupBoundary {
+    pub group: String,
+    pub first_index: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupIndex {
+    pub boundaries: Vec<GroupBoundary>,
+}
+
+impl GroupIndex {
+    pub fn from_entries(entries: &[Entry]) -> Self {
+        let mut boundaries = Vec::new();
+        for (index, entry) in entries.iter().enumerate() {
+            let group = title_group(&entry.title);
+            if boundaries
+                .last()
+                .is_none_or(|last: &GroupBoundary| last.group != group)
+            {
+                boundaries.push(GroupBoundary {
+                    group,
+                    first_index: index,
+                });
+            }
+        }
+        Self { boundaries }
+    }
+
+    pub fn from_catalog(catalog: &Catalog) -> Self {
+        let mut boundaries = Vec::new();
+        for (index, entry) in catalog.entries.iter().enumerate() {
+            let group = title_group(&entry.title);
+            if boundaries
+                .last()
+                .is_none_or(|last: &GroupBoundary| last.group != group)
+            {
+                boundaries.push(GroupBoundary {
+                    group,
+                    first_index: index,
+                });
+            }
+        }
+        Self { boundaries }
+    }
+
+    pub fn jump_index(&self, selected_index: usize, next: bool) -> Option<&GroupBoundary> {
+        if self.boundaries.len() < 2 {
+            return None;
+        }
+        let current = self
+            .boundaries
+            .partition_point(|boundary| boundary.first_index <= selected_index);
+        let current = current.saturating_sub(1);
+        let target = if next {
+            current + 1
+        } else {
+            current.checked_sub(1)?
+        };
+        self.boundaries.get(target)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Result {
     pub report: Report,
+}
+
+pub fn normalized_title_sort_key(title: &str) -> String {
+    title.trim().nfd().filter_map(latin_base).collect()
+}
+
+pub fn title_group(title: &str) -> String {
+    let normalized = normalized_title_sort_key(title);
+    let Some(grapheme) = normalized.graphemes(true).next() else {
+        return "…".into();
+    };
+    let Some(character) = grapheme.chars().next() else {
+        return "…".into();
+    };
+    if character.is_ascii_digit() {
+        "#".into()
+    } else if character.is_ascii_alphabetic() {
+        character.to_ascii_uppercase().to_string()
+    } else if character.is_alphanumeric() {
+        grapheme.to_string()
+    } else {
+        "…".into()
+    }
+}
+
+pub fn sort_catalog(catalog: &mut Catalog) {
+    catalog.entries.sort_by(compare_titles);
+}
+
+fn compare_titles(left: &CatalogEntry, right: &CatalogEntry) -> Ordering {
+    normalized_title_sort_key(&left.title)
+        .cmp(&normalized_title_sort_key(&right.title))
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+fn latin_base(character: char) -> Option<char> {
+    if matches!(character, '\u{0300}'..='\u{036f}' | '\u{1ab0}'..='\u{1aff}' | '\u{1dc0}'..='\u{1dff}' | '\u{20d0}'..='\u{20ff}' | '\u{fe20}'..='\u{fe2f}')
+    {
+        return None;
+    }
+    if character.is_ascii() {
+        return Some(character.to_ascii_uppercase());
+    }
+    let base = match character {
+        'À'..='Å' | 'à'..='å' => 'A',
+        'Ç' | 'ç' => 'C',
+        'È'..='Ë' | 'è'..='ë' => 'E',
+        'Ì'..='Ï' | 'ì'..='ï' => 'I',
+        'Ñ' | 'ñ' => 'N',
+        'Ò'..='Ö' | 'ò'..='ö' => 'O',
+        'Ù'..='Ü' | 'ù'..='ü' => 'U',
+        'Ý' | 'ý' | 'ÿ' => 'Y',
+        'Æ' | 'æ' => 'A',
+        'Œ' | 'œ' => 'O',
+        'Ð' | 'ð' => 'Ð',
+        'Þ' | 'þ' => 'Þ',
+        'Ł' | 'ł' => 'Ł',
+        _ => character,
+    };
+    Some(base.to_uppercase().next().unwrap_or(base))
 }
 
 pub fn spawn(catalog_path: PathBuf, state_root: PathBuf) -> Receiver<Result> {
@@ -57,7 +184,7 @@ fn build(catalog_path: &Path, state_root: &Path) -> Result {
         return result("ready", entries);
     }
     let recovering = path.exists();
-    let entries = fs::read(catalog_path)
+    let mut entries = fs::read(catalog_path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Catalog>(&bytes).ok())
         .map(|catalog| {
@@ -81,15 +208,14 @@ fn build(catalog_path: &Path, state_root: &Path) -> Result {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let mut entries = entries;
     entries.sort_by(|left, right| {
-        left.title
-            .to_ascii_lowercase()
-            .cmp(&right.title.to_ascii_lowercase())
+        normalized_title_sort_key(&left.title)
+            .cmp(&normalized_title_sort_key(&right.title))
             .then_with(|| left.content_id.cmp(&right.content_id))
     });
     entries.dedup_by(|right, left| {
-        left.title.eq_ignore_ascii_case(&right.title) && left.path.eq_ignore_ascii_case(&right.path)
+        normalized_title_sort_key(&left.title) == normalized_title_sort_key(&right.title)
+            && left.path.eq_ignore_ascii_case(&right.path)
     });
     let status = if entries.is_empty() {
         "partial"
@@ -128,7 +254,7 @@ fn read_index(path: &Path) -> Option<Vec<Entry>> {
         return None;
     }
     let entries = value.get("entries")?.clone();
-    let entries: Vec<Entry> = serde_json::from_value(entries).ok()?;
+    let mut entries: Vec<Entry> = serde_json::from_value(entries).ok()?;
     if entries.len() > MAX_ENTRIES
         || entries.iter().any(|entry| {
             entry.content_id.is_empty()
@@ -143,6 +269,11 @@ fn read_index(path: &Path) -> Option<Vec<Entry>> {
     {
         return None;
     }
+    entries.sort_by(|left, right| {
+        normalized_title_sort_key(&left.title)
+            .cmp(&normalized_title_sort_key(&right.title))
+            .then_with(|| left.content_id.cmp(&right.content_id))
+    });
     Some(entries)
 }
 
@@ -152,7 +283,8 @@ fn write_index(path: &Path, entries: &[Entry]) -> std::io::Result<()> {
     }
     let temporary = path.with_file_name(".rom-index.json.tmp");
     let _ = fs::remove_file(&temporary);
-    let value = serde_json::json!({ "schema": INDEX_SCHEMA, "entries": entries });
+    let groups = GroupIndex::from_entries(entries);
+    let value = serde_json::json!({ "schema": INDEX_SCHEMA, "entries": entries, "groups": groups });
     let bytes = serde_json::to_vec_pretty(&value).map_err(std::io::Error::other)?;
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -163,5 +295,5 @@ fn write_index(path: &Path, entries: &[Entry]) -> std::io::Result<()> {
     file.sync_all()?;
     drop(file);
     fs::rename(temporary, path)?;
-    fs::File::open(path.parent().unwrap_or_else(|| std::path::Path::new(".")))?.sync_all()
+    fs::File::open(path.parent().unwrap_or_else(|| Path::new(".")))?.sync_all()
 }

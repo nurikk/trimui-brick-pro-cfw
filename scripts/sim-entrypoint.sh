@@ -3,6 +3,20 @@ set -eu
 
 xvfb_pid=
 launcher_pid=
+profile=/src/sim/device/tg4040-host.json
+forward=
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--profile" ]; then
+        [ "$#" -ge 2 ] || exit 2
+        profile=$2
+        shift 2
+    else
+        forward="$forward $1"
+        shift
+    fi
+done
+# shellcheck disable=SC2086
+set -- $forward
 
 stop_xvfb() {
     if [ -n "${xvfb_pid}" ]; then
@@ -28,8 +42,7 @@ fi
 
 trap forward_term TERM INT
 /usr/local/bin/sim-launcher \
-    --profile /src/sim/device/tg4040-host.json \
-    --catalog /src/sim/fixtures/catalog.json \
+    --profile "$profile" \
     --evidence /evidence \
     "$@" &
 launcher_pid=$!

@@ -1010,18 +1010,22 @@ fn controller_help() -> ControllerHelpStrip {
             HelpBinding {
                 button: UiButton::Primary,
                 label: "Select / edit".into(),
+                action: Some(ui_model::SemanticAction::Primary),
             },
             HelpBinding {
                 button: UiButton::Secondary,
                 label: "Back".into(),
+                action: Some(ui_model::SemanticAction::Secondary),
             },
             HelpBinding {
                 button: UiButton::Start,
                 label: "Apply".into(),
+                action: Some(ui_model::SemanticAction::Start),
             },
             HelpBinding {
                 button: UiButton::Menu,
                 label: "Cancel".into(),
+                action: Some(ui_model::SemanticAction::Select),
             },
         ],
     }

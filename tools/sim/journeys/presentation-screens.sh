@@ -8,7 +8,7 @@ OWN_RUN=0
 mkdir -p "$RUN"
 trap '[ "$OWN_RUN" -eq 1 ] && rm -rf "$RUN"' EXIT HUP INT TERM
 
-"$ROOT/scripts/sim" run --backend=dummy --run-dir "$RUN" --wait-ready 30 --detach
+"$ROOT/scripts/sim" run --backend=dummy --profile sim/device/tg4040-alphabet.json --run-dir "$RUN" --wait-ready 30 --detach
 trap '"$ROOT/scripts/sim" stop --run-dir "$RUN" >/dev/null 2>&1 || true; [ "$OWN_RUN" -eq 1 ] && rm -rf "$RUN"' EXIT HUP INT TERM
 simctl() {
     "$ROOT/scripts/simctl" --socket "$RUN/control.sock" "$@"
@@ -29,6 +29,7 @@ screenshot controller-systems
 button primary
 screenshot controller-games
 button down
+button r1
 screenshot controller-game-selection
 
 # The existing bounded controllers are exercised with buttons after safe fixture setup.

@@ -24,9 +24,9 @@ ids = {profile["id"] for profile in catalog["profiles"]}
 assert len(ids) == len(catalog["profiles"])
 assert {"default", "southpaw", "dpad-to-stick", "stick-to-dpad", "external-controller"} <= ids
 for profile in catalog["profiles"]:
-    assert len(profile["mappings"]) == 14
+    assert len(profile["mappings"]) == 16
     controls = [mapping["control"] for mapping in profile["mappings"]]
-    assert len(set(controls)) == 14
+    assert len(set(controls)) == 16
     assert profile["externalController"] is not None if profile["kind"] == "external" else profile["externalController"] is None
     assert profile["kind"] in {"built-in", "southpaw", "d-pad-to-stick", "stick-to-d-pad", "external"}
     for mapping in profile["mappings"]:

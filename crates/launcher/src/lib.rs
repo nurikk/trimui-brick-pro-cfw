@@ -59,7 +59,8 @@ const ORBIT_CONTENT_SHA256: &str =
     "667fc8a4f6a35cf1a3f31feb7df60281e619d3f5480910d6334db830651d6461";
 const SIGNAL_CONTENT_SHA256: &str =
     "15462e6b849f258655b640e8fd8434a4cbc50c763e2a5b1a1d1135926edc047c";
-const MAX_GENERATED_ENTRIES: usize = 32;
+const MAX_GENERATED_ENTRIES: usize = rom_index::MAX_ENTRIES;
+const INPUT_PROFILE_BYTES: &[u8] = include_bytes!("../../../config/input/profiles.json");
 const SETTINGS_REGISTRY_BYTES: &[u8] =
     include_bytes!("../../../fixtures/settings-schema/registry-v1.json");
 const WIFI_METADATA_BYTES: &[u8] =
@@ -128,7 +129,9 @@ struct ExitStatus<'a> {
 
 struct AppState {
     route: Route,
-    selected_index: usize,
+    selected_content_id: String,
+    groups: rom_index::GroupIndex,
+    input_profile: input_profile::Catalog,
     broker: Box<dyn SessionBrokerClient>,
     save_vault: SaveVaultUi,
     save_sync: Option<launcher_presentation::SaveSyncView>,
@@ -267,10 +270,28 @@ impl PresentationState {
 
 fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<PresentationScreen> {
     let mut screen = state.presentation.screen()?;
+    if matches!(state.route, Route::Games | Route::Session) {
+        let selected_index = selected_catalog_index(state, catalog);
+        screen.game_rows = catalog
+            .entries
+            .iter()
+            .skip(selected_index)
+            .take(rom_index::MAX_VISIBLE_ROWS)
+            .map(|entry| launcher_presentation::ScreenItem {
+                id: entry.id.clone(),
+                label: entry.title.clone(),
+                selected: entry.id == state.selected_content_id,
+                enabled: true,
+            })
+            .collect();
+        screen.selected_label = catalog.entries[selected_catalog_index(state, catalog)]
+            .title
+            .clone();
+    }
     if matches!(state.route, Route::Session)
         && matches!(state.presentation.ui.route, ui_model::Route::Games)
     {
-        let entry = &catalog.entries[state.selected_index];
+        let entry = &catalog.entries[selected_catalog_index(state, catalog)];
         screen.title = entry.title.clone();
         screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
     }
@@ -328,6 +349,14 @@ struct SaveSyncResolveArgs {
 struct ButtonArgs {
     button: Button,
     action: ButtonAction,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticActionArgs {
+    action: input_profile::Action,
+    #[serde(default)]
+    phase: Option<ButtonAction>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -628,22 +657,17 @@ fn run_session<P: Platform>(
         .map_err(|error| anyhow!(error.to_string()))?;
     launch_contract::validate_catalog_projection(&launch_catalog)
         .map_err(|error| anyhow!(error.to_string()))?;
-    let catalog: UiCatalog =
+    let mut catalog: UiCatalog =
         serde_json::from_slice(&fs::read(catalog_path)?).context("read generated catalog")?;
     if catalog.catalog_version != "1"
         || catalog.entries.is_empty()
         || catalog.entries.len() > MAX_GENERATED_ENTRIES
-        || catalog.entries.len() != 4
         || catalog.entries.iter().any(|entry| {
             entry.id.is_empty()
                 || entry.id.len() > 64
                 || entry.title.is_empty()
                 || entry.title.len() > 128
-                || !matches!(entry.system.as_str(), "nes" | "ps1" | "portmaster")
-                || !matches!(
-                    entry.id.as_str(),
-                    "nebula-nes" | "mirror-ps1" | "orbit-garden" | "signal-workshop"
-                )
+                || entry.system.len() > 64
         })
     {
         return Err(anyhow!("invalid generated catalog"));
@@ -656,6 +680,9 @@ fn run_session<P: Platform>(
             ("latencyUs", json!(catalog_started.elapsed().as_micros())),
         ]),
     )?;
+    rom_index::sort_catalog(&mut catalog);
+    let input_profile = input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
+        .map_err(|error| anyhow!(error.to_string()))?;
     let state_root = evidence.root.join("data");
     fs::create_dir_all(&state_root)?;
     // Simulator evidence is mounted from the caller; keep its state directory caller-cleanable.
@@ -719,9 +746,12 @@ fn run_session<P: Platform>(
                 ui_model::reduce(&presentation.ui, UiAction::ToggleFavorite { game_id });
         }
     }
+    let catalog_groups = rom_index::GroupIndex::from_catalog(&catalog);
     let mut state = AppState {
         route: Route::Library,
-        selected_index: 0,
+        selected_content_id: catalog.entries[0].id.clone(),
+        groups: catalog_groups,
+        input_profile,
         broker,
         save_vault: SaveVaultUi::default(),
         save_sync: None,
@@ -789,7 +819,11 @@ fn run_session<P: Platform>(
     )
     .map_err(|error| anyhow!(error))?;
     state.presentation.ui = ui_model::reduce(&state.presentation.ui, UiAction::FinishSplash);
-    let initial_selection = route_selection(&state.route, &catalog, state.selected_index);
+    let initial_selection = route_selection(
+        &state.route,
+        &catalog,
+        selected_catalog_index(&state, &catalog),
+    );
     write_route(&evidence.root, &state.route, initial_selection)?;
     emit_route_selection(
         log,
@@ -944,6 +978,24 @@ fn handle_request<P: Platform>(
                 launch_catalog,
                 state,
                 event,
+                target_sku,
+            )
+            .map_err(|error| error.to_string())
+            .and_then(|_| state_json(platform, evidence, log, catalog, state))
+        }),
+        "action" => parse::<SemanticActionArgs>(request.args).and_then(|args| {
+            let at_ms = platform.logical_time_ms().saturating_add(1);
+            handle_semantic_action(
+                platform,
+                evidence,
+                log,
+                catalog,
+                launch_catalog,
+                state,
+                args.action,
+                args.phase.unwrap_or(ButtonAction::Press),
+                None,
+                at_ms,
                 target_sku,
             )
             .map_err(|error| error.to_string())
@@ -1154,8 +1206,8 @@ fn refresh_resume_projection(
     let requests = catalog
         .entries
         .iter()
-        .map(|entry| launch_request(entry, launch_catalog))
-        .collect::<Result<Vec<_>, _>>()?;
+        .filter_map(|entry| launch_request(entry, launch_catalog).ok())
+        .collect::<Vec<_>>();
     let summaries = state
         .broker
         .resume_entries(&requests)
@@ -2068,27 +2120,73 @@ fn handle_button<P: Platform>(
     event: ButtonEvent,
     target_sku: &str,
 ) -> Result<()> {
+    let action = raw_control(event.button)
+        .and_then(|control| state.input_profile.action_for_control(control).ok())
+        .ok_or_else(|| anyhow!("input profile has no action for {:?}", event.button))?;
+    handle_semantic_action(
+        platform,
+        evidence,
+        log,
+        catalog,
+        launch_catalog,
+        state,
+        action,
+        event.action,
+        Some(event.button),
+        event.at_ms,
+        target_sku,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_semantic_action<P: Platform>(
+    platform: &mut P,
+    evidence: &Evidence,
+    log: &mut EventLog,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    state: &mut AppState,
+    action: input_profile::Action,
+    phase: ButtonAction,
+    raw_button: Option<Button>,
+    at_ms: u64,
+    target_sku: &str,
+) -> Result<()> {
     state
         .lifecycle
         .gate("input")
         .map_err(|error| anyhow!(error))?;
     log.emit(
         "control",
-        event.at_ms,
+        at_ms,
         json_map([
-            ("control", json!(button_name(event.button))),
-            ("action", json!(action_name(event.action))),
+            (
+                "control",
+                raw_button.map_or_else(|| "semantic".into(), |button| button_name(button).into()),
+            ),
+            ("action", json!(action_name(phase))),
+            ("semanticAction", json!(semantic_action_name(action))),
         ]),
     )?;
-    if event.action != ButtonAction::Press || state.faults.iter().any(|fault| fault == "input-drop")
-    {
+    if phase != ButtonAction::Press || state.faults.iter().any(|fault| fault == "input-drop") {
         return Ok(());
     }
 
+    let selection_before = state.selected_content_id.clone();
     let route_before_presentation = state.route.clone();
-    let vault_button = handle_save_vault_button(state, event.button)?;
+    let vault_button = match raw_button {
+        Some(button) => handle_save_vault_button(state, button)?,
+        None => false,
+    };
     if !vault_button {
-        handle_presentation_button(&mut state.presentation, event.button)?;
+        handle_presentation_action(&mut state.presentation, action)?;
+    }
+    if matches!(state.presentation.ui.route, ui_model::Route::Games)
+        && state.route != Route::Session
+    {
+        state.route = Route::Games;
+    } else if matches!(state.presentation.ui.route, ui_model::Route::Systems) {
+        state.route = Route::Systems;
     }
     if matches!(state.presentation.ui.route, ui_model::Route::GameSwitcher) {
         state.route = Route::GameSwitcher;
@@ -2097,8 +2195,18 @@ fn handle_button<P: Platform>(
     {
         state.route = Route::Library;
     }
+    if matches!(
+        action,
+        input_profile::Action::JumpNextGroup | input_profile::Action::JumpPreviousGroup
+    ) {
+        jump_group(
+            state,
+            catalog,
+            matches!(action, input_profile::Action::JumpNextGroup),
+        );
+    }
     if matches!(state.presentation.ui.route, ui_model::Route::GameSwitcher)
-        && matches!(event.button, Button::Primary)
+        && action == input_profile::Action::Primary
     {
         if let ui_model::SessionState::Requested(game_id) = state.presentation.ui.session.clone() {
             let _ = resume_control(
@@ -2118,38 +2226,42 @@ fn handle_button<P: Platform>(
     }
     let input_started = Instant::now();
     let mut route_changed = state.route != route_before_presentation;
-    let mut selection_changed = false;
-    match (state.route.clone(), event.button) {
-        (Route::Library, Button::Start) => {
+    let mut selection_changed = state.selected_content_id != selection_before;
+    match (state.route.clone(), action) {
+        (Route::Library, input_profile::Action::Start) => {
             state.route = Route::Systems;
             route_changed = true;
         }
-        (Route::Systems, Button::Down) => {
+        (Route::Systems, input_profile::Action::MoveDown) => {
             state.route = Route::Games;
             route_changed = true;
         }
-        (Route::Games, Button::Up) => {
-            state.selected_index = state
-                .selected_index
+        (Route::Games, input_profile::Action::MoveUp) => {
+            let index = selected_catalog_index(state, catalog)
                 .checked_sub(1)
                 .unwrap_or(catalog.entries.len() - 1);
+            state.selected_content_id = catalog.entries[index].id.clone();
             selection_changed = true;
         }
-        (Route::Games, Button::Down) => {
-            state.selected_index = (state.selected_index + 1) % catalog.entries.len();
+        (Route::Games, input_profile::Action::MoveDown) => {
+            let index = (selected_catalog_index(state, catalog) + 1) % catalog.entries.len();
+            state.selected_content_id = catalog.entries[index].id.clone();
             selection_changed = true;
         }
-        (Route::Games, Button::Start) => {
+        (Route::Games, input_profile::Action::Start)
+        | (Route::Session, input_profile::Action::Start) => {
             state.route = Route::Library;
             route_changed = true;
         }
-        (Route::Session, Button::Start) => {
-            state.route = Route::Library;
-            route_changed = true;
-        }
-        (Route::Games, Button::Primary) => {
-            let request = launch_request(&catalog.entries[state.selected_index], launch_catalog)
-                .map_err(|error| anyhow!(error))?;
+        (Route::Games, input_profile::Action::Primary)
+            if route_before_presentation == Route::Games
+                && state.presentation.ui.route == ui_model::Route::Games =>
+        {
+            let request = launch_request(
+                &catalog.entries[selected_catalog_index(state, catalog)],
+                launch_catalog,
+            )
+            .map_err(|error| anyhow!(error))?;
             let bytes = launch_contract::request_json(&request)
                 .map_err(|error| anyhow!(error.to_string()))?
                 .into_bytes();
@@ -2191,13 +2303,20 @@ fn handle_button<P: Platform>(
         );
     }
     if route_changed || selection_changed {
-        let selection = route_selection(&state.route, catalog, state.selected_index);
-        emit_route_selection(log, event.at_ms, &state.route, selection)?;
+        let selection = route_selection(
+            &state.route,
+            catalog,
+            selected_catalog_index(state, catalog),
+        );
+        emit_route_selection(log, at_ms, &state.route, selection)?;
     }
     if matches!(state.route, Route::Session)
         && matches!(
-            event.button,
-            Button::Up | Button::Down | Button::Left | Button::Right
+            action,
+            input_profile::Action::MoveUp
+                | input_profile::Action::MoveDown
+                | input_profile::Action::MoveLeft
+                | input_profile::Action::MoveRight
         )
     {
         state.session_step = state.session_step.saturating_add(1);
@@ -2206,7 +2325,7 @@ fn handle_button<P: Platform>(
     present(platform, &screen)?;
     log.emit(
         "input_to_frame",
-        event.at_ms,
+        at_ms,
         json_map([
             ("latencyUs", json!(input_started.elapsed().as_micros())),
             ("sessionStep", json!(state.session_step)),
@@ -2215,9 +2334,94 @@ fn handle_button<P: Platform>(
     write_route(
         &evidence.root,
         &state.route,
-        route_selection(&state.route, catalog, state.selected_index),
+        route_selection(
+            &state.route,
+            catalog,
+            selected_catalog_index(state, catalog),
+        ),
     )?;
     Ok(())
+}
+
+fn jump_group(state: &mut AppState, catalog: &UiCatalog, next: bool) {
+    if state.route != Route::Games || state.groups.boundaries.len() < 2 {
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::SetGroupJump(ui_model::GroupJumpState {
+                current: Some(current_group(state, catalog)),
+                target: None,
+                visible: true,
+            }),
+        );
+        state.presentation.ui =
+            ui_model::reduce(&state.presentation.ui, UiAction::SetGroupBoundaryFeedback);
+        return;
+    }
+    let current_index = selected_catalog_index(state, catalog);
+    let current = rom_index::title_group(&catalog.entries[current_index].title);
+    let Some(target) = state.groups.jump_index(current_index, next) else {
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::SetGroupJump(ui_model::GroupJumpState {
+                current: Some(current),
+                target: None,
+                visible: true,
+            }),
+        );
+        state.presentation.ui =
+            ui_model::reduce(&state.presentation.ui, UiAction::SetGroupBoundaryFeedback);
+        return;
+    };
+    state.selected_content_id = catalog.entries[target.first_index].id.clone();
+    state.presentation.ui = ui_model::reduce(
+        &state.presentation.ui,
+        UiAction::SetGroupJump(ui_model::GroupJumpState {
+            current: Some(current),
+            target: Some(target.group.clone()),
+            visible: true,
+        }),
+    );
+}
+
+fn current_group(state: &AppState, catalog: &UiCatalog) -> String {
+    rom_index::title_group(&catalog.entries[selected_catalog_index(state, catalog)].title)
+}
+
+fn raw_control(button: Button) -> Option<input_profile::RawControl> {
+    Some(match button {
+        Button::Up => input_profile::RawControl::Up,
+        Button::Down => input_profile::RawControl::Down,
+        Button::Left => input_profile::RawControl::Left,
+        Button::Right => input_profile::RawControl::Right,
+        Button::Primary => input_profile::RawControl::A,
+        Button::Secondary => input_profile::RawControl::B,
+        Button::Start => input_profile::RawControl::Start,
+        Button::Select => input_profile::RawControl::Select,
+        Button::L1 => input_profile::RawControl::L1,
+        Button::R1 => input_profile::RawControl::R1,
+        Button::Menu => input_profile::RawControl::Home,
+    })
+}
+
+fn semantic_action_name(action: input_profile::Action) -> &'static str {
+    match action {
+        input_profile::Action::MoveUp => "move-up",
+        input_profile::Action::MoveDown => "move-down",
+        input_profile::Action::MoveLeft => "move-left",
+        input_profile::Action::MoveRight => "move-right",
+        input_profile::Action::Primary => "primary",
+        input_profile::Action::Secondary => "secondary",
+        input_profile::Action::Start => "start",
+        input_profile::Action::Select => "select",
+        input_profile::Action::LeftStickClick => "left-stick-click",
+        input_profile::Action::RightStickClick => "right-stick-click",
+        input_profile::Action::JumpNextGroup => "jump-next-group",
+        input_profile::Action::JumpPreviousGroup => "jump-previous-group",
+        input_profile::Action::F1 => "f1",
+        input_profile::Action::F2 => "f2",
+        input_profile::Action::Fn => "fn",
+        input_profile::Action::Home => "home",
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2279,7 +2483,7 @@ fn state_json<P: Platform>(
         "schema": "sim-state/v1",
         "runId": log.run_id,
         "route": state.route.as_str(),
-        "selectedContentId": catalog.entries[state.selected_index].id,
+        "selectedContentId": catalog.entries[selected_catalog_index(state, catalog)].id,
         "activeSession": state.active_session,
         "lastSessionResult": state.last_session,
         "modal": state.modal,
@@ -2648,51 +2852,74 @@ fn save_vault_json(state: &AppState) -> Value {
     })
 }
 
-fn handle_presentation_button(state: &mut PresentationState, button: Button) -> Result<()> {
-    if matches!(state.ui.route, ui_model::Route::Settings) {
-        state
-            .settings
-            .press(to_keyboard_button(button))
-            .map_err(|error| anyhow!(error.to_string()))?;
-        return Ok(());
+fn handle_presentation_action(
+    state: &mut PresentationState,
+    action: input_profile::Action,
+) -> Result<()> {
+    if let Some(button) = to_keyboard_button(action) {
+        if matches!(state.ui.route, ui_model::Route::Settings) {
+            state
+                .settings
+                .press(button)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            return Ok(());
+        }
+        if matches!(state.ui.route, ui_model::Route::Wifi(_)) {
+            state
+                .wifi
+                .press(button)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            return Ok(());
+        }
     }
-    if matches!(state.ui.route, ui_model::Route::Wifi(_)) {
-        state
-            .wifi
-            .press(to_keyboard_button(button))
-            .map_err(|error| anyhow!(error.to_string()))?;
-        return Ok(());
-    }
-    let action = match button {
-        Button::Up => UiAction::MoveSelection(ui_model::Direction::Up),
-        Button::Down => UiAction::MoveSelection(ui_model::Direction::Down),
-        Button::Left => UiAction::MoveSelection(ui_model::Direction::Left),
-        Button::Right => UiAction::MoveSelection(ui_model::Direction::Right),
-        Button::Primary => UiAction::ActivateSelected,
-        Button::Secondary => UiAction::Back,
-        Button::Start => UiAction::Navigate(ui_model::Route::Home),
-        Button::Select | Button::Menu => UiAction::SetFocus(ui_model::FocusTarget::Menu),
+    let action = match action {
+        input_profile::Action::MoveUp => UiAction::MoveSelection(ui_model::Direction::Up),
+        input_profile::Action::MoveDown => UiAction::MoveSelection(ui_model::Direction::Down),
+        input_profile::Action::MoveLeft => UiAction::MoveSelection(ui_model::Direction::Left),
+        input_profile::Action::MoveRight => UiAction::MoveSelection(ui_model::Direction::Right),
+        input_profile::Action::Primary => UiAction::ActivateSelected,
+        input_profile::Action::Secondary => UiAction::Back,
+        input_profile::Action::Start => UiAction::Navigate(ui_model::Route::Home),
+        input_profile::Action::Select | input_profile::Action::Home => {
+            UiAction::SetFocus(ui_model::FocusTarget::Menu)
+        }
+        input_profile::Action::JumpNextGroup
+        | input_profile::Action::JumpPreviousGroup
+        | input_profile::Action::LeftStickClick
+        | input_profile::Action::RightStickClick
+        | input_profile::Action::F1
+        | input_profile::Action::F2
+        | input_profile::Action::Fn => return Ok(()),
     };
     state.ui = ui_model::reduce(&state.ui, action);
     Ok(())
 }
 
-fn to_keyboard_button(button: Button) -> virtual_keyboard::Button {
-    match button {
-        Button::Up => virtual_keyboard::Button::Up,
-        Button::Down => virtual_keyboard::Button::Down,
-        Button::Left => virtual_keyboard::Button::Left,
-        Button::Right => virtual_keyboard::Button::Right,
-        Button::Primary => virtual_keyboard::Button::Primary,
-        Button::Secondary => virtual_keyboard::Button::Secondary,
-        Button::Start => virtual_keyboard::Button::Start,
-        Button::Select => virtual_keyboard::Button::Select,
-        Button::Menu => virtual_keyboard::Button::Menu,
-    }
+fn to_keyboard_button(action: input_profile::Action) -> Option<virtual_keyboard::Button> {
+    Some(match action {
+        input_profile::Action::MoveUp => virtual_keyboard::Button::Up,
+        input_profile::Action::MoveDown => virtual_keyboard::Button::Down,
+        input_profile::Action::MoveLeft => virtual_keyboard::Button::Left,
+        input_profile::Action::MoveRight => virtual_keyboard::Button::Right,
+        input_profile::Action::Primary => virtual_keyboard::Button::Primary,
+        input_profile::Action::Secondary => virtual_keyboard::Button::Secondary,
+        input_profile::Action::Start => virtual_keyboard::Button::Start,
+        input_profile::Action::Select => virtual_keyboard::Button::Select,
+        input_profile::Action::Home => virtual_keyboard::Button::Menu,
+        _ => return None,
+    })
 }
 
 fn present<P: Platform>(platform: &mut P, screen: &PresentationScreen) -> Result<()> {
     platform.present(screen).map_err(|error| anyhow!("{error}"))
+}
+
+fn selected_catalog_index(state: &AppState, catalog: &UiCatalog) -> usize {
+    catalog
+        .entries
+        .iter()
+        .position(|entry| entry.id == state.selected_content_id)
+        .unwrap_or(0)
 }
 
 fn route_selection<'a>(route: &Route, catalog: &'a UiCatalog, selected_index: usize) -> &'a str {
@@ -2820,6 +3047,8 @@ fn button_name(button: Button) -> &'static str {
         Button::Secondary => "secondary",
         Button::Start => "start",
         Button::Select => "select",
+        Button::L1 => "l1",
+        Button::R1 => "r1",
         Button::Menu => "menu",
     }
 }

@@ -72,6 +72,22 @@
           }
         },
         {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
           "control": "l3",
           "action": "left-stick-click",
           "axis": {
@@ -186,6 +202,22 @@
         {
           "control": "select",
           "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
           "axis": {
             "deadzone": 0.05,
             "curve": "linear"
@@ -312,6 +344,22 @@
           }
         },
         {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
           "control": "l3",
           "action": "left-stick-click",
           "axis": {
@@ -432,6 +480,22 @@
           }
         },
         {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
           "control": "l3",
           "action": "left-stick-click",
           "axis": {
@@ -546,6 +610,22 @@
         {
           "control": "select",
           "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
           "axis": {
             "deadzone": 0.05,
             "curve": "linear"
@@ -673,6 +753,22 @@
         {
           "control": "select",
           "action": "select",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "l1",
+          "action": "jump-previous-group",
+          "axis": {
+            "deadzone": 0.05,
+            "curve": "linear"
+          }
+        },
+        {
+          "control": "r1",
+          "action": "jump-next-group",
           "axis": {
             "deadzone": 0.05,
             "curve": "linear"

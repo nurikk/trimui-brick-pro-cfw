@@ -22,6 +22,8 @@ pub enum Button {
     Secondary,
     Start,
     Select,
+    L1,
+    R1,
     Menu,
 }
 

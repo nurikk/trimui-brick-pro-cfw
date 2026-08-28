@@ -790,6 +790,18 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
             2,
         );
     }
+    if screen.group_jump.visible {
+        let current = screen.group_jump.current.as_deref().unwrap_or("…");
+        let target = screen.group_jump.target.as_deref().unwrap_or("EDGE");
+        draw_text(
+            canvas,
+            64,
+            650,
+            &format!("GROUP {current} -> {target}"),
+            screen.palette.highlight,
+            2,
+        );
+    }
 }
 
 fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
@@ -987,6 +999,8 @@ fn button_label(button: ui_model::Button) -> &'static str {
         ui_model::Button::Secondary => "B",
         ui_model::Button::Start => "START",
         ui_model::Button::Select => "SELECT",
+        ui_model::Button::L1 => "L1",
+        ui_model::Button::R1 => "R1",
         ui_model::Button::Menu => "MENU",
     }
 }
@@ -1126,6 +1140,13 @@ fn glyph(character: char) -> [&'static str; 7] {
         '9' => [
             ".###.", "#...#", "#...#", ".####", "....#", "....#", ".###.",
         ],
+        '#' => [
+            "#.#.#", "#.#.#", "#####", ".#.#.", "#####", "#.#.#", "#.#.#",
+        ],
+        '…' => [
+            ".....", ".....", "#.#.#", ".....", "#.#.#", ".....", "#.#.#",
+        ],
+
         '-' => [
             ".....", ".....", ".....", ".###.", ".....", ".....", ".....",
         ],

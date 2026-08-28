@@ -75,7 +75,11 @@ validate_version() {
 }
 
 validate_button() {
-    case "$1" in up|down|left|right|primary|secondary|start|select|menu) ;; *) usage ;; esac
+    case "$1" in up|down|left|right|primary|secondary|start|select|l1|r1|menu) ;; *) usage ;; esac
+}
+
+validate_semantic_action() {
+    case "$1" in jump-next-group|jump-previous-group) ;; *) usage ;; esac
 }
 
 validate_bool() { case "$1" in true|false) ;; *) usage ;; esac; }
@@ -107,6 +111,11 @@ validate_command() {
             [ "$#" -eq 4 ] && [ "$1" = --button ] && [ "$3" = --action ] || usage
             validate_button "$2"
             case "$4" in press|release) ;; *) usage ;; esac ;;
+        action)
+            [ "$#" -eq 2 ] || { [ "$#" -eq 4 ] && [ "$3" = --phase ] || usage; }
+            [ "$1" = --action ] || usage
+            validate_semantic_action "$2"
+            if [ "$#" -eq 4 ]; then case "$4" in press|release) ;; *) usage ;; esac; fi ;;
         hardware)
             [ "$#" -ge 2 ] && [ "$1" = set ] || usage
             shift

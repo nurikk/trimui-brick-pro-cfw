@@ -101,6 +101,7 @@ fn command_args<'a>(
             Ok(("state", json!({})))
         }
         "button" => Ok(("button", button_args(args)?)),
+        "action" => Ok(("action", semantic_action_args(args)?)),
         "hardware" => {
             if args.first().map(String::as_str) != Some("set") {
                 return Err(("usage", "hardware set is required".into()));
@@ -206,6 +207,8 @@ fn button_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         "start",
         "select",
         "menu",
+        "l1",
+        "r1",
     ]
     .contains(&args[1].as_str())
         || !["press", "release"].contains(&args[3].as_str())
@@ -213,6 +216,29 @@ fn button_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         return Err(("usage", "button or action is not allowlisted".into()));
     }
     Ok(json!({"button": args[1], "action": args[3]}))
+}
+
+fn semantic_action_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() != 2 && args.len() != 4 {
+        return Err((
+            "usage",
+            "--action ACTION [--phase press|release] is required".into(),
+        ));
+    }
+    if args[0] != "--action"
+        || !["jump-next-group", "jump-previous-group"].contains(&args[1].as_str())
+    {
+        return Err(("usage", "semantic action is not allowlisted".into()));
+    }
+    let phase = if args.len() == 4 {
+        if args[2] != "--phase" || !["press", "release"].contains(&args[3].as_str()) {
+            return Err(("usage", "phase must be press or release".into()));
+        }
+        args[3].as_str()
+    } else {
+        "press"
+    };
+    Ok(json!({"action": args[1], "phase": phase}))
 }
 
 fn hardware_args(args: &[String]) -> Result<Value, (&'static str, String)> {

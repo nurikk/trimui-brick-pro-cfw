@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 pub const SCHEMA: &str = "trimui-input-profile-catalog";
 pub const SCHEMA_VERSION: u32 = 1;
 const EXPECTED_IDENTITY: &str = "synthetic-hall-v1";
-const REQUIRED_CONTROLS: [RawControl; 14] = [
+const REQUIRED_CONTROLS: [RawControl; 16] = [
     RawControl::Up,
     RawControl::Down,
     RawControl::Left,
@@ -22,6 +22,8 @@ const REQUIRED_CONTROLS: [RawControl; 14] = [
     RawControl::B,
     RawControl::Start,
     RawControl::Select,
+    RawControl::L1,
+    RawControl::R1,
     RawControl::L3,
     RawControl::R3,
     RawControl::F1,
@@ -54,6 +56,8 @@ pub enum RawControl {
     B,
     Start,
     Select,
+    L1,
+    R1,
     L3,
     R3,
     F1,
@@ -75,6 +79,8 @@ pub enum Action {
     Select,
     LeftStickClick,
     RightStickClick,
+    JumpNextGroup,
+    JumpPreviousGroup,
     F1,
     F2,
     Fn,
@@ -218,6 +224,18 @@ fn mapping_action(profile: &Profile, control: RawControl) -> Result<Action, Prof
         .find(|mapping| mapping.control == control)
         .map(|mapping| mapping.action)
         .ok_or_else(|| ProfileError::Invalid(format!("missing mapping for {control:?}")))
+}
+
+impl Catalog {
+    pub fn action_for_control(&self, control: RawControl) -> Result<Action, ProfileError> {
+        self.validate()?;
+        let profile = self
+            .profiles
+            .iter()
+            .find(|profile| profile.id == self.selections.built_in)
+            .ok_or_else(|| ProfileError::UnknownProfile(self.selections.built_in.clone()))?;
+        mapping_action(profile, control)
+    }
 }
 
 impl Catalog {

@@ -201,6 +201,7 @@ pub struct Screen {
     pub splash: String,
     pub affordances: Affordances,
     pub controller_help: Vec<ui_model::HelpBinding>,
+    pub group_jump: ui_model::GroupJumpState,
     pub index: IndexView,
     pub boundaries: BoundaryViews,
     pub save_sync: Option<SaveSyncView>,
@@ -368,6 +369,7 @@ pub fn build_with_recent(
             charging: state.affordances.battery.charging,
         },
         controller_help: state.controller_help.bindings.clone(),
+        group_jump: state.group_jump.clone(),
         index: index.clone(),
         boundaries: BoundaryViews {
             metadata_scraper: BoundaryStatus {

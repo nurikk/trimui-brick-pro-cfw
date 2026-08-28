@@ -1,0 +1,54 @@
+{
+  "contractVersion": "1.0.0",
+  "targetSku": "TG4040",
+  "display": {
+    "logicalWidth": 1024,
+    "logicalHeight": 768
+  },
+  "controls": {
+    "initialPressed": [],
+    "events": []
+  },
+  "battery": {
+    "levelPercent": 73,
+    "charging": false,
+    "externalPower": false
+  },
+  "led": {
+    "state": "off",
+    "brightnessPercent": 0
+  },
+  "audio": {
+    "enabled": true,
+    "volumePercent": 42,
+    "active": false
+  },
+  "radio": {
+    "enabled": false,
+    "connected": false,
+    "rxPackets": 0,
+    "txPackets": 0
+  },
+  "suspend": {
+    "state": "active",
+    "wakeReason": "cold-start"
+  },
+  "virtualStorage": {
+    "readOnly": true,
+    "files": [
+      {
+        "logicalKey": "state",
+        "content": "generated-state-v1"
+      },
+      {
+        "logicalKey": "save-slot-1",
+        "content": "generated-save-v1"
+      }
+    ]
+  },
+  "clock": {
+    "startMs": 0,
+    "stepMs": 16
+  },
+  "faults": []
+}

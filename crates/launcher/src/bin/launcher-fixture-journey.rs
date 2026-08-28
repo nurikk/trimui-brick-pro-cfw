@@ -38,7 +38,7 @@ fn main() {
         "journey is not deterministic"
     );
     assert!(first.route_progression == ["library", "systems", "games"]);
-    assert_eq!(first.catalog_entries, 3);
+    assert_eq!(first.catalog_entries, 4);
     assert!(first.binary_bytes <= MAX_BINARY_BYTES);
     assert!(first.cold_start_us <= MAX_COLD_START_US);
     assert!(first.first_frame_us <= MAX_FIRST_FRAME_US);
@@ -172,7 +172,7 @@ fn run_once(number: u8) -> Journey {
     Journey {
         deterministic,
         route_progression: ["library", "systems", "games"],
-        catalog_entries: 3,
+        catalog_entries: 4,
         binary_bytes,
         cold_start_us,
         first_frame_us,

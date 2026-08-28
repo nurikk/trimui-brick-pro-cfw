@@ -61,15 +61,16 @@
     },
     "state": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema", "runId", "route", "selectedContentId", "activeFakeSession", "modal", "readinessGeneration", "hardware", "faults", "presentation"],
+      "required": ["schema", "runId", "route", "selectedContentId", "activeFakeSession", "modal", "readinessGeneration", "sessionStep", "hardware", "faults", "presentation"],
       "properties": {
         "schema": { "const": "sim-state/v1" },
         "runId": { "type": "string", "pattern": "^run-[0-9]+$" },
         "route": { "enum": ["library", "systems", "games", "catalog", "session"] },
-        "selectedContentId": { "pattern": "^generated-[a-z0-9-]+$" },
+        "selectedContentId": { "enum": ["nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"] },
         "activeFakeSession": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["id", "contentId", "status", "exitStatus", "value"], "properties": { "id": { "type": "string" }, "contentId": { "type": "string" }, "status": { "enum": ["started", "completed", "failed", "crashed"] }, "exitStatus": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0, "maximum": 255 }] }, "value": { "oneOf": [{ "type": "null" }, { "type": "integer" }] } } }] },
         "modal": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
         "readinessGeneration": { "type": "integer", "minimum": 1 },
+        "sessionStep": { "type": "integer", "minimum": 0 },
         "hardware": { "$ref": "#/$defs/hardwareState" },
         "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] } },
         "presentation": { "type": "object", "additionalProperties": false, "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp"], "properties": { "schema": { "const": "launcher-presentation/v1" }, "identity": { "const": "Artbook" }, "route": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "focus": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "title": { "type": "string" }, "selectedLabel": { "type": "string" }, "menu": { "type": "array" }, "gameRows": { "type": "array" }, "selectedGame": {}, "regions": { "type": "array", "minItems": 9 }, "palette": { "type": "object" }, "theme": { "type": "object" }, "themeFallback": {}, "generatedAssets": { "type": "array" }, "settings": {}, "wifi": {}, "scraper": { "type": "object" }, "modal": {}, "splash": { "type": "string" }, "affordances": { "type": "object" }, "controllerHelp": { "type": "array" } } }

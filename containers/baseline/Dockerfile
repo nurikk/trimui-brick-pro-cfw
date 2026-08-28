@@ -6,12 +6,20 @@ LABEL org.trimui.brick-pro-cfw.base-image="rust:1.85.1-bookworm@sha256:bf7d87666
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    HOME=/tmp
+    HOME=/tmp \
+    CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc \
+    CXX_aarch64_unknown_linux_musl=aarch64-linux-gnu-g++ \
+    AR_aarch64_unknown_linux_musl=aarch64-linux-gnu-ar \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld
 
 RUN rustup component add rustfmt clippy \
     && rustup target add aarch64-unknown-linux-musl \
     && apt-get update \
-    && apt-get install -y --no-install-recommends busybox-static=1:1.35.0-4+deb12u1+b1 \
+    && apt-get install -y --no-install-recommends \
+        busybox-static=1:1.35.0-4+deb12u1+b1 \
+        gcc-aarch64-linux-gnu=4:12.2.0-3 \
+        g++-aarch64-linux-gnu=4:12.2.0-3 \
+        binutils-aarch64-linux-gnu=2.40-2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /source-cache

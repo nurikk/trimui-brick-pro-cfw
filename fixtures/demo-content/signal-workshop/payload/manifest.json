@@ -1,0 +1,83 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
+  "format": "brickpro-package",
+  "schemaVersion": 1,
+  "id": "signal-workshop",
+  "version": "1.0.0",
+  "targetSku": "TG4040",
+  "tier": "verified",
+  "type": "portmaster",
+  "files": [
+    {
+      "path": "immutable/port/launch.sh",
+      "sha256": "0228fe5690a905fe3a54d4691665f6338ecfdd61dbd45c9c78b73af9857e45db",
+      "length": 1052,
+      "class": "immutable"
+    },
+    {
+      "path": "immutable/port/metadata.json",
+      "sha256": "9ce2ef4589637b858a7d35fe35f8b94844ab9ee7b15efee68391e228c87ce909",
+      "length": 81,
+      "class": "immutable"
+    },
+    {
+      "path": "runtime/lib/README.txt",
+      "sha256": "74e3829b85700c3da30ee8e5d35504abe54f828b7b6fdb972125684abaae53b1",
+      "length": 24,
+      "class": "runtime"
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "launch",
+      "path": "immutable/port/launch.sh",
+      "mode": "0755"
+    }
+  ],
+  "runtime": {
+    "path": "runtime",
+    "dependencies": []
+  },
+  "capabilities": {
+    "network": [],
+    "input": [
+      "buttons"
+    ],
+    "audio": [
+      "playback"
+    ],
+    "display": [
+      "read"
+    ],
+    "save": [
+      "read",
+      "write"
+    ]
+  },
+  "uninstall": {
+    "preserve": [
+      "/roms",
+      "/data/saves",
+      "/data/states"
+    ],
+    "remove": [
+      "immutable",
+      "runtime",
+      "cache",
+      "staging"
+    ]
+  },
+  "license": {
+    "spdx": "MIT",
+    "source": "https://example.invalid/signal-workshop"
+  },
+  "provenance": {
+    "sbom": "provenance/brickpro-cfw.spdx.json",
+    "source": "generated synthetic platform demo"
+  },
+  "developer": {
+    "enabled": false,
+    "localKeyTrusted": false,
+    "nonRoot": true
+  }
+}

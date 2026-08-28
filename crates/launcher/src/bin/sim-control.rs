@@ -123,6 +123,7 @@ fn command_args<'a>(
         "checkpoint" => Ok(("checkpoint", artifact_args(args)?)),
         "autosave" => Ok(("autosave", autosave_args(args)?)),
         "resume" => Ok(("resume", resume_args(args)?)),
+        "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
     }
 }
@@ -203,21 +204,6 @@ fn hardware_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             ("storage", "mode") => {
                 if !["available", "full"].contains(&value) {
                     return Err(("usage", "storage.mode must be available or full".into()));
-                }
-                json!(value)
-            }
-            ("suspend", "state") => {
-                if !["active", "suspended"].contains(&value) {
-                    return Err(("usage", "suspend.state must be active or suspended".into()));
-                }
-                json!(value)
-            }
-            ("suspend", "result") => {
-                if !["none", "success", "failed"].contains(&value) {
-                    return Err((
-                        "usage",
-                        "suspend.result must be none, success, or failed".into(),
-                    ));
                 }
                 json!(value)
             }
@@ -342,6 +328,28 @@ fn autosave_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         value["fault"] = json!(args[3]);
     }
     Ok(value)
+}
+
+fn lifecycle_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() != 3
+        || !["suspend", "resume"].contains(&args[0].as_str())
+        || args[1] != "--timeout"
+    {
+        return Err((
+            "usage",
+            "lifecycle suspend|resume --timeout SECONDS is required".into(),
+        ));
+    }
+    let seconds = args[2]
+        .parse::<u64>()
+        .map_err(|_| ("usage", "lifecycle timeout must be an integer".into()))?;
+    if seconds == 0 || seconds > 30 {
+        return Err((
+            "usage",
+            "lifecycle timeout must be between 1 and 30 seconds".into(),
+        ));
+    }
+    Ok(json!({"operation": args[0], "timeoutMs": seconds * 1000}))
 }
 
 fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {

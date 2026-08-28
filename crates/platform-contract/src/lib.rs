@@ -6,6 +6,8 @@
 
 use std::{fmt, path::Path};
 
+pub mod lifecycle;
+
 pub use launcher_presentation::Screen;
 use serde::{Deserialize, Serialize};
 
@@ -389,6 +391,13 @@ pub trait Platform {
         ))
     }
 
+    fn set_input(&mut self, _state: InputState) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Input,
+            "set state",
+        ))
+    }
+
     fn hall_calibration_state(&self) -> PlatformResult<HallCalibrationState> {
         Err(PlatformError::unsupported(
             HardwareDomain::HallCalibration,
@@ -582,6 +591,10 @@ impl Platform for UnavailableTg4040Platform {
 
     fn input_state(&self) -> PlatformResult<InputState> {
         Self::unavailable(HardwareDomain::Input, "read state")
+    }
+
+    fn set_input(&mut self, _state: InputState) -> PlatformResult<()> {
+        Self::unavailable(HardwareDomain::Input, "set state")
     }
 
     fn hall_calibration_state(&self) -> PlatformResult<HallCalibrationState> {

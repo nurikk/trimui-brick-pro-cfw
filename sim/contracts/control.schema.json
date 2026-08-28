@@ -16,7 +16,7 @@
       "properties": {
         "version": { "const": "sim-control/v1" },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
-        "command": { "enum": ["wait-ready", "state", "button", "hardware.set", "fault.set", "adapter", "presentation", "screenshot", "checkpoint", "autosave", "resume"] },
+        "command": { "enum": ["wait-ready", "state", "button", "hardware.set", "fault.set", "adapter", "presentation", "screenshot", "checkpoint", "autosave", "resume", "lifecycle"] },
         "args": { "type": "object" }
       },
       "allOf": [
@@ -29,7 +29,8 @@
         { "if": { "properties": { "command": { "const": "presentation" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/presentationArgs" } } } },
         { "if": { "properties": { "command": { "enum": ["screenshot", "checkpoint"] } } }, "then": { "properties": { "args": { "$ref": "#/$defs/artifactArgs" } } } },
         { "if": { "properties": { "command": { "const": "autosave" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/autosaveArgs" } } } },
-        { "if": { "properties": { "command": { "const": "resume" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/resumeArgs" } } } }
+        { "if": { "properties": { "command": { "const": "resume" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/resumeArgs" } } } },
+        { "if": { "properties": { "command": { "const": "lifecycle" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/lifecycleArgs" } } } }
       ]
     },
     "response": {
@@ -57,13 +58,12 @@
       "properties": {
         "battery": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" } } },
         "storage": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "mode": { "enum": ["available", "full"] } } },
-        "radio": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } },
-        "suspend": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "state": { "enum": ["active", "suspended"] }, "result": { "enum": ["none", "success", "failed"] } } }
+        "radio": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } }
       }
     },
     "state": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema", "runId", "route", "selectedContentId", "activeSession", "lastSessionResult", "modal", "readinessGeneration", "sessionStep", "hardware", "faults", "presentation"],
+      "required": ["schema", "runId", "route", "selectedContentId", "activeSession", "lastSessionResult", "modal", "readinessGeneration", "sessionStep", "hardware", "platformState", "faults", "lifecycle", "presentation"],
       "properties": {
         "schema": { "const": "sim-state/v1" },
         "runId": { "type": "string", "pattern": "^run-[0-9]+$" },
@@ -76,18 +76,22 @@
         "readinessGeneration": { "type": "integer", "minimum": 1 },
         "sessionStep": { "type": "integer", "minimum": 0 },
         "hardware": { "$ref": "#/$defs/hardwareState" },
-        "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] } },
+        "platformState": { "type": "object" },
+        "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail", "checkpoint-fail", "quiesce-audio-fail", "quiesce-input-fail", "quiesce-radios-fail", "resume-radios-fail", "resume-input-fail", "resume-audio-fail", "hal-loss", "deadline"] } },
+        "lifecycle": { "$ref": "#/$defs/lifecycleState" },
         "presentation": { "type": "object", "additionalProperties": false, "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "resume", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp", "index", "boundaries"], "properties": { "schema": { "const": "launcher-presentation/v1" }, "identity": { "const": "Artbook" }, "route": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "focus": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "title": { "type": "string" }, "selectedLabel": { "type": "string" }, "menu": { "type": "array" }, "gameRows": { "type": "array" }, "resume": { "type": "array" }, "selectedGame": {}, "regions": { "type": "array", "minItems": 9 }, "palette": { "type": "object" }, "theme": { "type": "object" }, "themeFallback": {}, "generatedAssets": { "type": "array" }, "settings": {}, "wifi": {}, "scraper": { "type": "object" }, "modal": {}, "splash": { "type": "string" }, "affordances": { "type": "object" }, "controllerHelp": { "type": "array" }, "index": { "type": "object", "additionalProperties": false, "required": ["status", "entryCount", "visibleRows", "searchResults", "queueDepth"], "properties": { "status": { "type": "string" }, "entryCount": { "type": "integer" }, "visibleRows": { "type": "integer" }, "searchResults": { "type": "integer" }, "queueDepth": { "type": "integer" } } }, "boundaries": { "type": "object", "additionalProperties": false, "required": ["metadataScraper", "mediaCache", "wifiController", "themeGarden", "updateAgent"], "properties": { "metadataScraper": { "$ref": "#/$defs/boundary" }, "mediaCache": { "$ref": "#/$defs/boundary" }, "wifiController": { "$ref": "#/$defs/boundary" }, "themeGarden": { "$ref": "#/$defs/boundary" }, "updateAgent": { "$ref": "#/$defs/boundary" } } } } }
       }
     },
     "boundary": { "type": "object", "additionalProperties": false, "required": ["available", "state"], "properties": { "available": { "type": "boolean" }, "state": { "type": "string" } } },
     "sessionHandle": {"type": "object", "additionalProperties": false, "required": ["schema", "sessionId", "contentId", "phase"], "properties": {"schema": {"const": "trimui-session-broker-handle/v1"}, "sessionId": {"type": "string"}, "contentId": {"type": "string"}, "phase": {"const": "active"} }},
     "sessionResult": {"type": "object", "additionalProperties": false, "required": ["type", "journey", "accepted", "runner", "core", "reason", "durationMs", "restored", "safeDefault", "persistenceStatus", "resumePublished"], "properties": {"type": {"const": "SessionResult"}, "journey": {"type": "string"}, "accepted": {"type": "boolean"}, "runner": {"oneOf": [{"type": "null"}, {"type": "string"}]}, "core": {"oneOf": [{"type": "null"}, {"type": "string"}]}, "reason": {"type": "string"}, "durationMs": {"type": "integer", "minimum": 0}, "restored": {"type": "boolean"}, "safeDefault": {"type": "boolean"}, "persistenceStatus": {"type": "string"}, "resumePublished": {"type": "boolean"}, "exitCode": {"type": "integer"}, "signal": {"type": "integer"} } },
+    "lifecycleState": { "type": "object", "additionalProperties": false, "required": ["phase", "marker", "savedState", "journal", "launchesAllowed", "backgroundAllowed"], "properties": { "phase": { "enum": ["awake", "preparing", "suspended", "resuming", "recovery"] }, "marker": { "oneOf": [{ "type": "null" }, { "type": "object" }] }, "savedState": { "oneOf": [{ "type": "null" }, { "type": "object" }] }, "journal": { "type": "array" }, "launchesAllowed": { "type": "boolean" }, "backgroundAllowed": { "type": "boolean" } } },
     "hardwareState": { "type": "object", "additionalProperties": false, "required": ["battery", "storage", "radio", "suspend"], "properties": { "battery": { "type": "object", "additionalProperties": false, "required": ["percent", "charging"], "properties": { "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" } } }, "storage": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "enum": ["available", "full"] } } }, "radio": { "type": "object", "additionalProperties": false, "required": ["enabled", "connected"], "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } }, "suspend": { "type": "object", "additionalProperties": false, "required": ["state", "result"], "properties": { "state": { "enum": ["active", "suspended"] }, "result": { "enum": ["none", "success", "failed"] } } } } },
-    "faultArgs": { "type": "object", "additionalProperties": false, "required": ["name", "enabled"], "properties": { "name": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] }, "enabled": { "type": "boolean" } } },
+    "faultArgs": { "type": "object", "additionalProperties": false, "required": ["name", "enabled"], "properties": { "name": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail", "checkpoint-fail", "quiesce-audio-fail", "quiesce-input-fail", "quiesce-radios-fail", "resume-radios-fail", "resume-input-fail", "resume-audio-fail", "hal-loss", "deadline"] }, "enabled": { "type": "boolean" } } },
     "adapterArgs": { "type": "object", "additionalProperties": false, "required": ["action", "status", "value"], "properties": { "action": { "enum": ["complete", "fail", "exit", "crash"] }, "status": { "type": "integer", "minimum": 0, "maximum": 255 }, "value": { "type": "integer", "minimum": -1000000, "maximum": 1000000 } } },
     "artifactArgs": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$" } } },
     "autosaveArgs": { "type": "object", "additionalProperties": false, "required": ["reason"], "properties": { "reason": { "enum": ["normal-exit", "pre-suspend", "low-battery", "periodic"] }, "fault": { "enum": ["none", "artifact", "metadata", "promotion", "pointer"] } } },
+    "lifecycleArgs": { "type": "object", "additionalProperties": false, "required": ["operation", "timeoutMs"], "properties": { "operation": { "enum": ["suspend", "resume"] }, "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 30000 } } },
     "resumeArgs": { "type": "object", "additionalProperties": false, "required": ["contentId", "decision"], "properties": { "contentId": { "enum": ["nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"] }, "decision": { "enum": ["resume", "retained-matching-core", "cold-start-sram", "cancel"] }, "runnerId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,48}$" }, "runnerVersion": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,48}$" }, "coreId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,48}$" }, "coreVersion": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,48}$" } } },
     "presentationArgs": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["home", "systems", "games", "favorites", "recent", "resume", "favorite", "media-details", "theme-garden", "update", "unavailable", "search", "settings", "settings-form", "recovery", "modal", "scraper-settings", "scraper-game", "scraper-queue", "scraper-progress", "scraper-paused", "scraper-resumed", "scraper-ambiguity", "scraper-complete", "scraper-cancel", "wifi-scan", "wifi-access-points", "wifi-password", "wifi-hidden", "wifi-manual", "wifi-progress", "wifi-error", "fallback"] } } }
   }

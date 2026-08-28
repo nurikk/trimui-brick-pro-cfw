@@ -156,12 +156,19 @@ struct ResumeSecurityResult {
     visible_generations: usize,
 }
 
-fn install_portmaster_fixture(root: &Path) -> Result<(), String> {
-    let manifest_path = root.join("portmaster-payload/manifest.json");
+fn install_portmaster_fixture(root: &Path, package_id: &str) -> Result<(), String> {
+    let payload_name = if package_id == "generated-portmaster" {
+        "portmaster-payload"
+    } else if package_id == "generated-portmaster-success" {
+        "portmaster-success-payload"
+    } else {
+        return Err("PortMaster fixture package is not catalog-owned".to_string());
+    };
+    let manifest_path = root.join(payload_name).join("manifest.json");
     let manifest_bytes = fs::read(&manifest_path)
         .map_err(|_| "PortMaster fixture manifest unavailable".to_string())?;
     let target = VerifiedTarget {
-        path: "packages/generated-portmaster/manifest.json".to_string(),
+        path: format!("packages/{package_id}/manifest.json"),
         length: manifest_bytes.len() as u64,
         sha256: format!("{:x}", Sha256::digest(&manifest_bytes)),
         delegated_role: "packages".to_string(),
@@ -170,7 +177,7 @@ fn install_portmaster_fixture(root: &Path) -> Result<(), String> {
     package_manager::install(
         &install_root,
         &manifest_path,
-        &root.join("portmaster-payload"),
+        &root.join(payload_name),
         &target,
         TrustContext {
             signed: true,
@@ -383,11 +390,11 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         | "resume-production-mode"
         | "resume-concurrent" => "standalone.synthetic.json",
         "portmaster"
-        | "portmaster-success"
         | "portmaster-rejection"
         | "portmaster-mismatch"
         | "portmaster-symlink"
         | "portmaster-nonzero" => "portmaster.synthetic.json",
+        "portmaster-success" => "portmaster-success.synthetic.json",
         "command-shaped" | "portmaster-injection" => "command-shaped.synthetic.json",
         _ => "libretro.synthetic.json",
     };
@@ -424,7 +431,15 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
             request.content_id = "generated-undeclared-1".to_string();
         }
         "portmaster-mismatch" => {
-            install_portmaster_fixture(&root)?;
+            install_portmaster_fixture(
+                &root,
+                request
+                    .package
+                    .as_ref()
+                    .ok_or_else(|| "PortMaster package fixture is invalid".to_string())?
+                    .id
+                    .as_str(),
+            )?;
             let package = request
                 .package
                 .as_mut()
@@ -432,10 +447,26 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
             package.version = "9.9.9".to_string();
         }
         "portmaster" | "portmaster-success" | "portmaster-nonzero" => {
-            install_portmaster_fixture(&root)?;
+            install_portmaster_fixture(
+                &root,
+                request
+                    .package
+                    .as_ref()
+                    .ok_or_else(|| "PortMaster package fixture is invalid".to_string())?
+                    .id
+                    .as_str(),
+            )?;
         }
         "portmaster-symlink" => {
-            install_portmaster_fixture(&root)?;
+            install_portmaster_fixture(
+                &root,
+                request
+                    .package
+                    .as_ref()
+                    .ok_or_else(|| "PortMaster package fixture is invalid".to_string())?
+                    .id
+                    .as_str(),
+            )?;
             seed_portmaster_symlink(&root)?;
         }
         _ => {}
@@ -458,6 +489,15 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         let _ = fs::remove_dir_all(root);
         return Ok(Output::Security(result));
     }
+    let protected_before = if matches!(
+        journey,
+        "portmaster" | "portmaster-success" | "portmaster-nonzero"
+    ) {
+        Some(portmaster_protected_bytes(&root.join("host-root"))?)
+    } else {
+        None
+    };
+    let package_id = request.package.as_ref().map(|package| package.id.clone());
     let output = match journey {
         "restart" | "marker-mismatch" | "start-time-mismatch" => {
             broker.seed_recovery_fixture(journey)?;
@@ -560,6 +600,30 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         }
         _ => return Err("unsupported journey".to_string()),
     };
+    if let Some(package_id) = package_id {
+        if matches!(
+            journey,
+            "portmaster" | "portmaster-success" | "portmaster-nonzero"
+        ) {
+            package_manager::uninstall(
+                &root.join("host-root"),
+                &package_id,
+                package_manager::TransactionOptions::default(),
+            )
+            .map_err(|error| format!("PortMaster fixture removal failed: {error}"))?;
+            let host_root = root.join("host-root");
+            if host_root
+                .join(format!(".brickpro/package-state/{}.json", package_id))
+                .exists()
+                || host_root
+                    .join(format!(".brickpro/packages/{}", package_id))
+                    .exists()
+                || protected_before.as_ref() != Some(&portmaster_protected_bytes(&host_root)?)
+            {
+                return Err("PortMaster removal crossed a protected boundary".to_string());
+            }
+        }
+    }
     if journey == "standalone-sram-only" {
         let record_path = root.join("host-root/data/resume/generations/generation-1/record.json");
         let record: serde_json::Value =
@@ -1693,6 +1757,19 @@ fn resolve_path_unchecked(root: &Path, logical: &LogicalPath) -> PathBuf {
         PathRoot::DataStates => root.join("data/states"),
     };
     base.join(&logical.relative)
+}
+
+fn portmaster_protected_bytes(root: &Path) -> Result<Vec<Vec<u8>>, String> {
+    [
+        "roms/generated/content.bin",
+        "data/saves/generated/.keep",
+        "data/states/generated/.keep",
+        "data/settings.json",
+        ".brickpro/save-vault/keep.record",
+    ]
+    .into_iter()
+    .map(|path| fs::read(root.join(path)).map_err(|_| "protected fixture unavailable".to_string()))
+    .collect()
 }
 
 fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {

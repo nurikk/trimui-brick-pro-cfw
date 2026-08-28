@@ -1,8 +1,8 @@
 # Synthetic demo-content journey
 
-The clean-room journey exercises four distinct project-authored identities: two stable-platform catalog demos (`Nebula Notes` on `nes` and `Mirror Museum` on `ps1`) and two separately signed PortMaster demos (`Orbit Garden` and `Signal Workshop`). Platform content is inert synthetic text and uses only simulator-owned `generated-libretro`/`generated-core` adapter metadata; it makes no ROM, BIOS, core, or hardware compatibility claim.
+The clean-room demo-content fixture exercises four distinct project-authored identities: two stable-platform catalog demos (`Nebula Notes` on `nes` and `Mirror Museum` on `ps1`) and two separately signed synthetic PortMaster package demos (`Orbit Garden` and `Signal Workshop`). Platform content is inert synthetic text and uses only simulator-owned `generated-libretro`/`generated-core` adapter metadata; it makes no ROM, BIOS, core, or hardware compatibility claim.
 
-The PortMaster entries are browsed as separate `portmaster` catalog items, installed from signed repository metadata, launched through their private runtimes and immutable entrypoints, resumed, and independently identified. The journey uninstalls `orbit-garden` and verifies that synthetic saves, state, settings, and all four content files remain protected.
+The session-broker package journeys are separate deterministic evidence: `portmaster` uses `generated-portmaster`, while `portmaster-success` uses the distinct `generated-portmaster-success`. Each resolves a signed activation, launches through its private runtime and immutable entrypoint, and removes only its package-owned data. Settings and Save Vault are protected boundaries, not package content. See [`docs/architecture/portmaster.md`](../architecture/portmaster.md) for the contract and evidence limits.
 
 Run the broker package journeys with:
 
@@ -10,7 +10,7 @@ Run the broker package journeys with:
 cargo run --locked --release -p session-broker -- simulate --journeys portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero
 ```
 
-The bounded output validates typed requests, package trust and private entrypoint handling, session completion, persistence, and fail-closed rejection cases without exposing paths or payloads.
+The bounded output validates typed requests, package trust, private entrypoint/runtime handling, install/update/remove lifecycle, session completion, persistence, and fail-closed rejection cases without exposing paths or payloads.
 
 For headed 1024x768 X11 evidence, run:
 

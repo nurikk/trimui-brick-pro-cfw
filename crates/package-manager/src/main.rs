@@ -9,12 +9,14 @@ use std::os::unix::fs::symlink;
 
 use anyhow::{bail, Result};
 use package_manager::{
-    install, load_manifest, uninstall, validate_manifest, TransactionOptions, TrustContext,
+    install, load_manifest, uninstall, upgrade, validate_manifest, TransactionOptions, TrustContext,
 };
 use package_trust::{
     RecoveryStatus, RepositoryMetadata, TrustStore, TrustedMetadataState, VerificationTime,
+    VerifiedTarget,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 fn main() {
     if let Err(error) = run() {
@@ -51,6 +53,7 @@ fn demo(fixtures: &Path) -> Result<()> {
     fs::create_dir_all(root.join("data/saves"))?;
     fs::create_dir_all(root.join("data/states"))?;
     fs::create_dir_all(root.join("data/resume"))?;
+    fs::create_dir_all(root.join(".brickpro/save-vault"))?;
     fs::write(root.join("roms/keep.txt"), b"generated-rom-boundary")?;
     fs::write(root.join("data/saves/keep.sav"), b"generated-save-boundary")?;
     fs::write(
@@ -60,6 +63,14 @@ fn demo(fixtures: &Path) -> Result<()> {
     fs::write(
         root.join("data/resume/keep.record"),
         b"generated-resume-boundary",
+    )?;
+    fs::write(
+        root.join("data/settings.json"),
+        b"generated-settings-boundary",
+    )?;
+    fs::write(
+        root.join(".brickpro/save-vault/keep.record"),
+        b"generated-save-vault-boundary",
     )?;
     let protected_before = protected_bytes(&root)?;
     let state = root.join(".brickpro/trust-state.json");
@@ -106,6 +117,50 @@ fn demo(fixtures: &Path) -> Result<()> {
     if protected_before != protected_bytes(&root)? {
         bail!("install changed protected data")
     }
+    let prior_activation = fs::read(root.join(".brickpro/package-state/demo-theme.json"))?;
+    let mut update = manifest.clone();
+    update.version = "1.1.0".to_string();
+    let update_path = root.join("demo-theme-update.json");
+    let update_bytes = serde_json::to_vec_pretty(&update)?;
+    fs::write(&update_path, &update_bytes)?;
+    let update_target = VerifiedTarget {
+        path: target_path.to_string(),
+        length: update_bytes.len() as u64,
+        sha256: hex::encode(Sha256::digest(&update_bytes)),
+        delegated_role: "packages".to_string(),
+    };
+    if upgrade(
+        &root,
+        &update_path,
+        &payload_root,
+        &update_target,
+        TrustContext::community_signed(),
+        TransactionOptions {
+            interrupt_after_files: Some(1),
+            interrupt_after_removals: None,
+        },
+    )
+    .is_ok()
+        || fs::read(root.join(".brickpro/package-state/demo-theme.json"))? != prior_activation
+        || protected_before != protected_bytes(&root)?
+    {
+        bail!("interrupted update did not retain the prior activation")
+    }
+    let upgraded = upgrade(
+        &root,
+        &update_path,
+        &payload_root,
+        &update_target,
+        TrustContext::community_signed(),
+        TransactionOptions::default(),
+    )?;
+    if upgraded.version != "1.1.0"
+        || root.join(".brickpro/packages/demo-theme/1.0.0").exists()
+        || protected_before != protected_bytes(&root)?
+    {
+        bail!("update did not promote exactly one active version")
+    }
+    println!("PASS interrupted update retains prior activation; update promotes 1.1.0");
     uninstall(&root, "demo-theme", TransactionOptions::default())?;
     if root
         .join(".brickpro/package-state/demo-theme.json")
@@ -117,7 +172,7 @@ fn demo(fixtures: &Path) -> Result<()> {
     if protected_before != protected_bytes(&root)? {
         bail!("uninstall changed protected data")
     }
-    println!("PASS uninstall preserves ROM/save/state/resume bytes");
+    println!("PASS uninstall preserves ROM/save/state/resume/settings/Save Vault bytes");
 
     let interrupted = install(
         &root,
@@ -528,6 +583,8 @@ fn protected_bytes(root: &Path) -> Result<Vec<Vec<u8>>> {
         "data/saves/keep.sav",
         "data/states/keep.state",
         "data/resume/keep.record",
+        "data/settings.json",
+        ".brickpro/save-vault/keep.record",
     ]
     .into_iter()
     .map(|path| fs::read(root.join(path)))

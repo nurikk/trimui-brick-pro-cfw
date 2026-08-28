@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -406,25 +407,30 @@ where
     }
     verify_target(target, &manifest_bytes, &manifest)?;
     verify_tier(&manifest, context)?;
+    let root = root.canonicalize().context("resolve package root")?;
+    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
     let payload_root = payload_root
         .canonicalize()
         .context("resolve package payload root")?;
-    let state_path = root
-        .join(PACKAGE_STATE)
-        .join(format!("{}.json", manifest.id));
-    if fs::symlink_metadata(&state_path)
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        bail!("current activation record is a symlink")
-    }
+    reject_symlink_path(&payload_root, "package payload root")?;
+    let state_root = root.join(PACKAGE_STATE);
+    let private_root = root.join(PACKAGE_ROOT);
+    reject_symlink_if_present(&state_root, "package state root")?;
+    reject_symlink_if_present(&private_root, "package private root")?;
+    let state_path = state_root.join(format!("{}.json", manifest.id));
+    reject_symlink_if_present(&state_path, "current activation record")?;
     if state_path.exists() {
         let current: ActivationRecord =
             serde_json::from_slice(&fs::read(&state_path)?).context("read current activation")?;
         validate_activation_record(&current, &manifest.id)?;
+        if current.package_type != manifest.package_type {
+            bail!("package type cannot change during update")
+        }
     }
-    let private_root = root.join(PACKAGE_ROOT);
-    let version_root = private_root.join(&manifest.id).join(&manifest.version);
+    let identity_root = private_root.join(&manifest.id);
+    reject_symlink_if_present(&identity_root, "package identity root")?;
+    let version_root = identity_root.join(&manifest.version);
+    reject_symlink_if_present(&version_root, "package version root")?;
     if version_root.exists() {
         bail!("package version is already installed")
     }
@@ -432,10 +438,11 @@ where
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let staging = private_root
-        .join(".staging")
-        .join(format!("{}-{}-{stamp}", manifest.id, manifest.version));
-    fs::create_dir_all(&staging)?;
+    let staging_root = private_root.join(".staging");
+    reject_symlink_if_present(&staging_root, "package staging root")?;
+    fs::create_dir_all(&staging_root)?;
+    let staging = staging_root.join(format!("{}-{}-{stamp}", manifest.id, manifest.version));
+    fs::create_dir(&staging)?;
     let result = (|| {
         let mut copied = 0usize;
         for file in &manifest.files {
@@ -518,9 +525,7 @@ where
         let state_root = root.join(PACKAGE_STATE);
         fs::create_dir_all(&state_root)?;
         let state_path = state_root.join(format!("{}.json", manifest.id));
-        let temporary = state_path.with_extension("tmp");
-        fs::write(&temporary, serde_json::to_vec_pretty(&record)?)?;
-        fs::rename(temporary, state_path)?;
+        write_atomic(&state_path, &serde_json::to_vec_pretty(&record)?)?;
         Ok(record)
     })();
     if result.is_err() {
@@ -538,14 +543,58 @@ pub fn upgrade(
     context: TrustContext,
     options: TransactionOptions,
 ) -> Result<ActivationRecord> {
-    install(root, manifest_path, payload_root, target, context, options)
+    let root = root.canonicalize().context("resolve package root")?;
+    let manifest = load_manifest(manifest_path)?.0;
+    let state_path = root
+        .join(PACKAGE_STATE)
+        .join(format!("{}.json", manifest.id));
+    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
+    reject_symlink_if_present(&root.join(PACKAGE_STATE), "package state root")?;
+    reject_symlink_if_present(&state_path, "activation record")?;
+    let previous = if state_path.is_file() {
+        let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
+        validate_activation_record(&record, &manifest.id)?;
+        Some(record)
+    } else {
+        None
+    };
+    let installed = install(&root, manifest_path, payload_root, target, context, options)?;
+    let Some(previous) = previous else {
+        return Ok(installed);
+    };
+    if previous.version == installed.version {
+        return Ok(installed);
+    }
+    let previous_root = root
+        .join(PACKAGE_ROOT)
+        .join(&previous.id)
+        .join(&previous.version);
+    let removal = reject_symlink_path(&previous_root, "previous package version root")
+        .and_then(|_| fs::remove_dir_all(&previous_root).map_err(Into::into));
+    if let Err(removal_error) = removal {
+        return Err(anyhow::anyhow!(
+            "verified successor remains active; previous-version cleanup failed: {removal_error}"
+        ));
+    }
+    Ok(installed)
 }
 
 pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<()> {
     if !identifier(id) {
         bail!("invalid package id")
     }
-    let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
+    let root = root.canonicalize().context("resolve package root")?;
+    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
+    let state_root = root.join(PACKAGE_STATE);
+    let private_root = root.join(PACKAGE_ROOT);
+    let package_root = private_root.join(id);
+    let staging_root = private_root.join(".staging");
+    reject_symlink_if_present(&state_root, "package state root")?;
+    reject_symlink_if_present(&private_root, "package private root")?;
+    reject_symlink_if_present(&package_root, "package root")?;
+    reject_symlink_if_present(&staging_root, "package staging root")?;
+    let state_path = state_root.join(format!("{id}.json"));
+    reject_symlink_if_present(&state_path, "activation record")?;
     if !state_path.is_file() {
         return Ok(());
     }
@@ -553,8 +602,6 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
         serde_json::from_slice(&fs::read(&state_path)?).context("read activation record")?;
     validate_activation_record(&record, id)?;
     let canonical_root = root.canonicalize()?;
-    let package_root = root.join(PACKAGE_ROOT).join(id);
-    reject_symlink_path(&package_root, "package root")?;
     let version_root = package_root.join(&record.version);
     reject_symlink_path(&version_root, "package version root")?;
     if !version_root.canonicalize()?.starts_with(&canonical_root) {
@@ -569,7 +616,9 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
                 .to_string_lossy()
                 .starts_with(&format!("{id}-"))
             {
-                fs::remove_dir_all(entry.path())?;
+                let path = entry.path();
+                reject_symlink_path(&path, "package staging entry")?;
+                fs::remove_dir_all(path)?;
             }
         }
     }
@@ -595,6 +644,43 @@ fn valid_preserve(values: &[String]) -> bool {
             .iter()
             .map(String::as_str)
             .eq(LEGACY_PRESERVED.iter().copied())
+}
+
+fn reject_symlink_if_present(path: &Path, label: &str) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => bail!("{label} is a symlink"),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_file_name(format!(
+        ".{}.tmp-{stamp}",
+        path.file_name()
+            .context("activation path has no file name")?
+            .to_string_lossy()
+    ));
+    reject_symlink_if_present(&temporary, "activation temporary")?;
+    let result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn validate_activation_record(record: &ActivationRecord, id: &str) -> Result<()> {
@@ -800,13 +886,12 @@ pub fn resolve_portmaster(
     if !identifier(id) || !version(package_version) {
         bail!("invalid PortMaster package identity")
     }
+    let root = root.canonicalize().context("resolve package root")?;
+    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
+    reject_symlink_if_present(&root.join(PACKAGE_STATE), "package state root")?;
+    reject_symlink_if_present(&root.join(PACKAGE_ROOT), "package private root")?;
     let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
-    if fs::symlink_metadata(&state_path)
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        bail!("PortMaster activation is a symlink")
-    }
+    reject_symlink_path(&state_path, "PortMaster activation")?;
     let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
     if record.format != "brickpro-package-activation"
         || record.schema_version != 1
@@ -839,7 +924,9 @@ pub fn resolve_portmaster(
         bail!("PortMaster activation state escapes private root")
     }
     let packages = root.join(PACKAGE_ROOT);
-    let version_root = packages.join(id).join(package_version);
+    let identity_root = packages.join(id);
+    reject_symlink_path(&identity_root, "PortMaster package identity root")?;
+    let version_root = identity_root.join(package_version);
     reject_symlink_path(&version_root, "PortMaster package root")?;
     let canonical_version_root = version_root.canonicalize()?;
     if !canonical_version_root.starts_with(&canonical_root) {

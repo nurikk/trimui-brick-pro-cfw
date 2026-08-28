@@ -7,7 +7,7 @@ docker build --network=default -f containers/package-trust/Dockerfile -t brickpr
 docker run --rm --network=none brickpro-package-trust
 ```
 
-The fixture harness prints `PASS` for signed delegated progression, target length/hash failure and retry, typed capability/traversal/case-collision/symlink failure, unsigned/expired/rollback/freeze/clock-uncertainty/corrupt trusted-state failure, blocked core-pack rejection before installation, install/uninstall, interrupted install/uninstall/publication, PortMaster private entrypoint projection, and protected ROM/save/state byte preservation. The build also checks `file`, rejects an ELF interpreter, and rejects `DT_NEEDED` entries for the AArch64 artifact.
+The fixture harness prints `PASS` for signed delegated progression, target length/hash failure and retry, typed capability/traversal/case-collision/symlink failure, unsigned/expired/rollback/freeze/clock-uncertainty/corrupt trusted-state failure, blocked core-pack rejection before installation, install/update/uninstall, interrupted install/update/uninstall/publication, PortMaster private entrypoint projection, and protected ROM/save/state/settings/Save Vault byte preservation. The build also checks `file`, rejects an ELF interpreter, and rejects `DT_NEEDED` entries for the AArch64 artifact.
 
 Repository checks:
 
@@ -20,4 +20,4 @@ scripts/test-provenance
 git diff --check
 ```
 
-No Rust/unit-test suite is used. The harness is a real binary running generated synthetic metadata and inert text payloads. It does not access device paths, external CFW source/assets, ROM/BIOS/PortMaster data, or private signing material.
+No Rust/unit-test suite is used. The harness is a real binary running generated synthetic metadata and inert text payloads. In this repository, settings means the CFW-owned `/data/settings.json` fixture boundary and Save Vault means the compatibility-owned `.brickpro/save-vault/` boundary; neither is a package destination or removal target. It does not access device paths, external CFW source/assets, ROM/BIOS/PortMaster data, or private signing material.

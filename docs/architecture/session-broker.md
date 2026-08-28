@@ -8,7 +8,7 @@ The broker accepts only a catalog member and rooted fixture content. It revalida
 
 - RetroArch: fixed synthetic runtime, `--config`, `-L`, and content arguments.
 - Standalone: fixed synthetic runtime with typed content/save/state substitutions.
-- PortMaster: fixed package-manager-resolved private runtime and verified package entrypoint; no script text.
+- PortMaster: fixed package-manager-resolved private runtime and verified package entrypoint; no script text. The catalog-owned runner is `generated-portmaster` `1.0.0`; package identity/version is resolved from the signed activation record.
 
 The child receives a cleared environment, one 256-bit CSPRNG ownership marker, a launch-barrier descriptor, null standard streams, and a fixed fixture working directory. `pre_exec` creates a new session/process group and sets a parent-death signal; the workspace-built helper waits on the parent-owned barrier before doing session work. The helper used by journeys is never a host utility.
 
@@ -28,4 +28,4 @@ Run the complete deterministic journey set with:
 cargo run --locked -p session-broker --release -- simulate --journeys success,standalone,standalone-sram-only,standalone-undeclared,resume-production-mode,resume-symlink,resume-mode,resume-concurrent,portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero,nonzero,signal,timeout,cancel,grandchild,restart,marker-mismatch,start-time-mismatch,publication-failure,crash-before-publish,crash-after-publish,crash-after-release,result-fsync-failure
 ```
 
-Each JSON line is one typed result and exposes `restored: true`. The generated fixture is synthetic and is copied to a temporary root before execution. No hardware, private corpus, live service, or real `/data` path is used.
+Each JSON line is one typed result and exposes `restored: true`. The generated fixture is synthetic and is copied to a temporary root before execution. The `portmaster` and `portmaster-success` journeys use distinct package identities and each completes install → private launch → remove. No hardware, private corpus, live service, or real `/data` path is used. Official upstream/device compatibility remains unavailable; see [`portmaster.md`](portmaster.md).

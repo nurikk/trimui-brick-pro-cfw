@@ -9,7 +9,6 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use boot_state::{load_or_initialize, prepare_pending, protected_hashes, select, store, Slot};
-use minisign_verify::{PublicKey, Signature};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -17,9 +16,8 @@ const MAX_RELEASE_ID: usize = 48;
 const MAX_PAYLOAD: u64 = 512 * 1024 * 1024;
 const DATA_SCHEMA: u32 = 1;
 const ABI: &str = "tg4040-userspace-v1";
-const PRODUCTION_PUBLIC_KEY: &str = include_str!("../../../keys/update.pub");
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
     #[serde(rename = "$schema")]
@@ -30,8 +28,10 @@ struct Manifest {
     device_id: String,
     #[serde(rename = "releaseId")]
     release_id: String,
-    #[serde(rename = "releaseSequence")]
-    release_sequence: u64,
+    #[serde(rename = "artifactUrl")]
+    artifact_url: String,
+    #[serde(rename = "artifactName")]
+    artifact_name: String,
     #[serde(rename = "stockFirmware")]
     stock_firmware: FirmwareWindow,
     #[serde(rename = "userspaceAbi")]
@@ -44,11 +44,9 @@ struct Manifest {
     payload_size: u64,
     #[serde(rename = "payloadSha256")]
     payload_sha256: String,
-    #[serde(rename = "trustedComment")]
-    trusted_comment: String,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct FirmwareWindow {
     min: String,
@@ -78,7 +76,7 @@ fn parse_firmware_version(value: &str) -> Result<FirmwareVersion> {
     })
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct DataWindow {
     min: u32,
@@ -99,13 +97,12 @@ fn run() -> Result<()> {
             let root = option(&mut args, "--root")?;
             let manifest = option(&mut args, "--manifest")?;
             let payload = option(&mut args, "--payload")?;
-            let signature = option(&mut args, "--signature")?;
             let firmware = option(&mut args, "--stock-firmware")?;
             let abi = option(&mut args, "--userspace-abi")?;
-            let schema = option(&mut args, "--data-schema")?
+            let data_schema = option(&mut args, "--data-schema")?
                 .parse::<u32>()
                 .context("data schema")?;
-            let interrupt = match args.next().as_deref() {
+            let interruption = match args.next().as_deref() {
                 None => None,
                 Some("--interrupt-after") => Some(
                     args.next()
@@ -113,17 +110,18 @@ fn run() -> Result<()> {
                 ),
                 Some(_) => bail!("unexpected argument"),
             };
-            let input = StageInput {
-                manifest: PathBuf::from(manifest),
-                payload: PathBuf::from(payload),
-                signature: PathBuf::from(signature),
-                firmware: &firmware,
-                abi: &abi,
-                data_schema: schema,
-                interruption: interrupt.as_deref(),
-            };
-            stage(&PathBuf::from(root), &input)?;
-            println!("staged release")
+            stage(
+                &PathBuf::from(root),
+                &StageInput {
+                    manifest: PathBuf::from(manifest),
+                    payload: PathBuf::from(payload),
+                    firmware: &firmware,
+                    abi: &abi,
+                    data_schema,
+                    interruption: interruption.as_deref(),
+                },
+            )?;
+            println!("staged release");
         }
         Some("journey") => {
             let root = option(&mut args, "--root")?;
@@ -139,7 +137,7 @@ fn run() -> Result<()> {
             }
             let document = read_manifest(&PathBuf::from(manifest))?;
             validate_manifest(&document.manifest)?;
-            println!("manifest valid; detached Minisign verification required before activation")
+            println!("manifest valid");
         }
         _ => bail!("usage: update-agent stage|verify-manifest|journey ..."),
     }
@@ -157,13 +155,12 @@ fn reject_path(path: &Path) -> Result<()> {
     if path.as_os_str().to_string_lossy().starts_with("/dev/")
         || path
             .components()
-            .any(|c| c == std::path::Component::ParentDir)
+            .any(|component| component == std::path::Component::ParentDir)
     {
         bail!("device and escaping paths are forbidden")
     }
     Ok(())
 }
-
 fn ensure_regular_file(path: &Path, label: &str) -> Result<()> {
     reject_path(path)?;
     let metadata = fs::symlink_metadata(path).with_context(|| format!("read {label}"))?;
@@ -172,7 +169,6 @@ fn ensure_regular_file(path: &Path, label: &str) -> Result<()> {
     }
     Ok(())
 }
-
 fn read_regular_file(path: &Path, label: &str) -> Result<Vec<u8>> {
     ensure_regular_file(path, label)?;
     fs::read(path).with_context(|| format!("read {label}"))
@@ -180,10 +176,7 @@ fn read_regular_file(path: &Path, label: &str) -> Result<Vec<u8>> {
 
 struct ManifestDocument {
     manifest: Manifest,
-    raw: Vec<u8>,
-    digest: String,
 }
-
 fn read_manifest(path: &Path) -> Result<ManifestDocument> {
     let raw = read_regular_file(path, "manifest")?;
     if raw.len() > 16 * 1024 {
@@ -196,25 +189,15 @@ fn read_manifest(path: &Path) -> Result<ManifestDocument> {
     if raw != canonical {
         bail!("manifest is not canonical deterministic JSON")
     }
-    let mut identity = value;
-    if let serde_json::Value::Object(fields) = &mut identity {
-        fields.remove("trustedComment");
-    }
-    let mut identity_bytes = serde_json::to_vec_pretty(&identity)?;
-    identity_bytes.push(b'\n');
-    Ok(ManifestDocument {
-        manifest,
-        raw,
-        digest: digest_hex(&identity_bytes),
-    })
+    Ok(ManifestDocument { manifest })
 }
 
 fn valid_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_RELEASE_ID
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.'
+        })
         && value
             .as_bytes()
             .first()
@@ -224,7 +207,54 @@ fn valid_id(value: &str) -> bool {
             .last()
             .is_some_and(u8::is_ascii_alphanumeric)
 }
-
+fn valid_artifact_url(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("https://") else {
+        return false;
+    };
+    if value.len() > 2048 {
+        return false;
+    }
+    let Some((authority, path)) = rest.split_once('/') else {
+        return false;
+    };
+    let Some(host) = authority.split(':').next() else {
+        return false;
+    };
+    let valid_port = match authority.split_once(':') {
+        None => true,
+        Some((_, port)) => !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit()),
+    };
+    !host.is_empty()
+        && host
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && host
+            .as_bytes()
+            .last()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && valid_port
+        && !authority.contains('@')
+        && authority
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b':'))
+        && path.bytes().all(|byte| {
+            !byte.is_ascii_whitespace()
+                && !byte.is_ascii_control()
+                && !matches!(byte, b'?' | b'#' | b'\\')
+        })
+}
+fn valid_artifact_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
 fn validate_manifest(manifest: &Manifest) -> Result<()> {
     if manifest.schema != "https://trimui.invalid/schemas/update-manifest-v1.schema.json"
         || manifest.manifest_version != 1
@@ -234,15 +264,18 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
     if manifest.device_id != "TG4040" {
         bail!("manifest target must be exact TG4040")
     }
+    if !valid_artifact_url(&manifest.artifact_url) {
+        bail!("artifact URL must be an ordinary HTTPS URL")
+    }
+    if !valid_artifact_name(&manifest.artifact_name) {
+        bail!("artifact name must be a safe plain filename")
+    }
     if !valid_id(&manifest.release_id) {
         bail!("release ID is empty or outside bounds")
     }
-    if manifest.release_sequence == 0 {
-        bail!("release sequence must be positive")
-    }
-    let firmware_min = parse_firmware_version(&manifest.stock_firmware.min)?;
-    let firmware_max = parse_firmware_version(&manifest.stock_firmware.max)?;
-    if firmware_min > firmware_max {
+    let min = parse_firmware_version(&manifest.stock_firmware.min)?;
+    let max = parse_firmware_version(&manifest.stock_firmware.max)?;
+    if min > max {
         bail!("firmware compatibility window is reversed")
     }
     if manifest.userspace_abi != ABI {
@@ -264,28 +297,33 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         || !manifest
             .payload_sha256
             .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
         bail!("payload SHA-256 is invalid")
-    }
-    if manifest.trusted_comment.len() > 256 {
-        bail!("trusted comment is oversized")
     }
     Ok(())
 }
 
 fn verify_payload(path: &Path, manifest: &Manifest) -> Result<()> {
+    let payload_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("payload filename")?;
+    if payload_name != manifest.artifact_name {
+        bail!("payload filename does not match artifact name")
+    }
     ensure_regular_file(path, "payload")?;
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase);
-    if matches!(extension.as_deref(), Some("awimg" | "img" | "raw")) {
-        bail!("fatal: .awimg/.img/.raw/raw image payloads are rejected")
+    if matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("awimg" | "img" | "raw")
+    ) {
+        bail!("raw image payloads are rejected")
     }
     let mut file = fs::File::open(path).context("open payload")?;
-    let metadata = file.metadata()?;
-    if metadata.len() != manifest.payload_size {
+    if file.metadata()?.len() != manifest.payload_size {
         bail!("payload size mismatch")
     }
     let mut digest = Sha256::new();
@@ -297,51 +335,18 @@ fn verify_payload(path: &Path, manifest: &Manifest) -> Result<()> {
     }
     digest.update(first);
     io::copy(&mut file, &mut digest)?;
-    let mut actual = String::with_capacity(64);
-    for byte in digest.finalize() {
-        write!(&mut actual, "{byte:02x}").expect("writing to String cannot fail");
-    }
+    let actual = digest_hex(&digest.finalize());
     if actual != manifest.payload_sha256 {
         bail!("payload SHA-256 mismatch")
     }
     Ok(())
 }
-
-fn expected_trusted_comment(manifest: &Manifest, manifest_digest: &str) -> String {
-    format!(
-        "project=trimui-brick-pro-cfw; target=tg4040; release={}; sequence={}; payload-sha256={}; manifest-sha256={}",
-        manifest.release_id,
-        manifest.release_sequence,
-        manifest.payload_sha256,
-        manifest_digest,
-    )
-}
-
-fn verify_signature(document: &ManifestDocument, signature_path: &Path) -> Result<()> {
-    let signature_text =
-        String::from_utf8(read_regular_file(signature_path, "detached signature")?)
-            .context("detached signature is not UTF-8")?;
-    let signature = Signature::decode(&signature_text)
-        .map_err(|error| anyhow!("decode detached Minisign signature: {error}"))?;
-    let public_key = PublicKey::decode(PRODUCTION_PUBLIC_KEY)
-        .map_err(|error| anyhow!("decode pinned update public key: {error}"))?;
-    public_key
-        .verify(&document.raw, &signature, false)
-        .map_err(|error| anyhow!("detached Minisign verification failed: {error}"))?;
-    let expected = expected_trusted_comment(&document.manifest, &document.digest);
-    if document.manifest.trusted_comment != expected || signature.trusted_comment() != expected {
-        bail!("signed trusted comment is unbound or legacy")
-    }
-    Ok(())
-}
-
 fn interrupt(boundary: Option<&str>, name: &str) -> Result<()> {
     if boundary == Some(name) {
         bail!("deterministic interruption after {name}")
     }
     Ok(())
 }
-
 fn durable_replace_copy(
     source: &Path,
     temporary: &Path,
@@ -358,20 +363,18 @@ fn durable_replace_copy(
 struct StageInput<'a> {
     manifest: PathBuf,
     payload: PathBuf,
-    signature: PathBuf,
     firmware: &'a str,
     abi: &'a str,
     data_schema: u32,
     interruption: Option<&'a str>,
 }
-
 fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     let document = read_manifest(&input.manifest)?;
     validate_manifest(&document.manifest)?;
     let firmware = parse_firmware_version(input.firmware)?;
-    let firmware_min = parse_firmware_version(&document.manifest.stock_firmware.min)?;
-    let firmware_max = parse_firmware_version(&document.manifest.stock_firmware.max)?;
-    if firmware < firmware_min || firmware > firmware_max {
+    if firmware < parse_firmware_version(&document.manifest.stock_firmware.min)?
+        || firmware > parse_firmware_version(&document.manifest.stock_firmware.max)?
+    {
         bail!("stock firmware is incompatible")
     }
     if input.abi != document.manifest.userspace_abi {
@@ -382,8 +385,7 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     {
         bail!("data schema is incompatible")
     }
-    let data = root.join(".brickpro/data");
-    let proof = fs::read_to_string(data.join("prior-release-readable"))
+    let proof = fs::read_to_string(root.join(".brickpro/data/prior-release-readable"))
         .context("prior-release-readable proof")?;
     if proof.trim() != "prior-release-readable-v1" {
         bail!("prior-release-readable proof is invalid")
@@ -391,18 +393,15 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     verify_payload(&input.payload, &document.manifest)?;
     interrupt(input.interruption, "manifest")?;
     let (_, state) = load_or_initialize(root)?;
-    if document.manifest.release_sequence <= state.current_release_sequence {
-        bail!("release is a downgrade or equal sequence")
-    }
     let slot = state.current.inactive();
-    verify_signature(&document, &input.signature)?;
     save_vault::SaveVault::snapshot_standard(root, save_vault::SnapshotReason::PreUpdate)
         .map_err(|error| anyhow!("pre-update save snapshot failed: {error}"))?;
     let vault_before = save_vault::SaveVault::standard_integrity(root)
         .map_err(|error| anyhow!("save vault integrity failed: {error}"))?;
     let before = protected_hashes(root)?;
-    let update = root.join(".brickpro/data/update");
-    let staging = update.join("staging").join(&document.manifest.release_id);
+    let staging = root
+        .join(".brickpro/data/update/staging")
+        .join(&document.manifest.release_id);
     fs::create_dir_all(&staging)?;
     interrupt(input.interruption, "staging")?;
     durable_replace_copy(
@@ -421,12 +420,7 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
         &slot_dir,
     )?;
     interrupt(input.interruption, "slot-sync")?;
-    prepare_pending(
-        root,
-        slot,
-        &document.manifest.release_id,
-        document.manifest.release_sequence,
-    )?;
+    prepare_pending(root, slot, &document.manifest.release_id)?;
     interrupt(input.interruption, "state")?;
     if protected_hashes(root)? != before {
         bail!("protected hashes changed")
@@ -439,88 +433,59 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     }
     Ok(())
 }
-
 fn digest_hex(bytes: &[u8]) -> String {
-    let mut value = String::with_capacity(64);
-    for byte in Sha256::digest(bytes) {
+    let mut value = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
         write!(&mut value, "{byte:02x}").expect("writing to String cannot fail");
     }
     value
 }
 
-fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
+fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf)> {
     if root.exists() {
         bail!("each interruption case requires a fresh fixture root")
     }
-    fs::create_dir_all(root.join("roms"))?;
-    fs::create_dir_all(root.join("data/saves"))?;
-    fs::create_dir_all(root.join("data/states"))?;
-    fs::create_dir_all(root.join("data/resume"))?;
-    fs::create_dir_all(root.join("data/settings"))?;
-    fs::create_dir_all(root.join(".brickpro/data"))?;
-    fs::create_dir_all(root.join(".brickpro/system/slots/A"))?;
-    fs::create_dir_all(root.join(".brickpro/system/slots/B"))?;
-    fs::write(root.join("roms/README.synthetic"), b"protected\n")?;
-    fs::write(root.join("data/saves/save.synthetic"), b"protected\n")?;
-    fs::write(root.join("data/states/state.synthetic"), b"protected\n")?;
-    fs::write(root.join("data/resume/current.synthetic"), b"protected\n")?;
-    fs::write(
-        root.join("data/settings/settings.synthetic"),
-        b"protected\n",
-    )?;
-    fs::write(
-        root.join(".brickpro/data/prior-release-readable"),
-        b"prior-release-readable-v1\n",
-    )?;
-    fs::write(
-        root.join(".brickpro/system/slots/A/system.squashfs"),
-        b"hsqs",
-    )?;
-    let payload = root.join("input.squashfs");
-    fs::write(&payload, b"hsqs")?;
-    let release = "release-simulation";
-    let manifest = root.join("manifest.json");
-    let mut value = serde_json::json!({
-        "$schema": "https://trimui.invalid/schemas/update-manifest-v1.schema.json",
-        "manifestVersion": 1,
-        "deviceId": "TG4040",
-        "releaseId": release,
-        "releaseSequence": 1,
-        "stockFirmware": {"min": "1.0.0", "max": "9.9.9"},
-        "userspaceAbi": ABI,
-        "dataSchema": {"min": 1, "max": 1},
-        "payloadType": "squashfs-userspace",
-        "payloadSize": 4,
-        "payloadSha256": digest_hex(b"hsqs"),
-        "trustedComment": ""
-    });
-    let mut identity = value.clone();
-    identity
-        .as_object_mut()
-        .expect("manifest object")
-        .remove("trustedComment");
-    let mut identity_bytes = serde_json::to_vec_pretty(&identity)?;
-    identity_bytes.push(b'\n');
-    let trusted = format!(
-        "project=trimui-brick-pro-cfw; target=tg4040; release={release}; sequence=1; payload-sha256={}; manifest-sha256={}",
-        digest_hex(b"hsqs"),
-        digest_hex(&identity_bytes),
-    );
-    value["trustedComment"] = serde_json::Value::String(trusted);
-    let mut manifest_bytes = serde_json::to_vec_pretty(&value)?;
-    manifest_bytes.push(b'\n');
-    fs::write(&manifest, manifest_bytes)?;
-    let signature = root.join("manifest.minisig");
-    fs::write(
-        &signature,
-        format!(
-            "untrusted comment: synthetic\nAA==\ntrusted comment: {}\nAA==\n",
-            value["trustedComment"].as_str().expect("trusted comment")
+    for path in [
+        "roms",
+        "data/saves",
+        "data/states",
+        "data/resume",
+        "data/settings",
+        ".brickpro/data",
+        ".brickpro/system/slots/A",
+        ".brickpro/system/slots/B",
+    ] {
+        fs::create_dir_all(root.join(path))?;
+    }
+    for (path, bytes) in [
+        ("roms/README.synthetic", b"protected\n".as_slice()),
+        ("data/saves/save.synthetic", b"protected\n".as_slice()),
+        ("data/states/state.synthetic", b"protected\n".as_slice()),
+        ("data/resume/current.synthetic", b"protected\n".as_slice()),
+        (
+            "data/settings/settings.synthetic",
+            b"protected\n".as_slice(),
         ),
-    )?;
-    Ok((manifest, payload, signature))
+        (
+            ".brickpro/data/prior-release-readable",
+            b"prior-release-readable-v1\n".as_slice(),
+        ),
+        (
+            ".brickpro/system/slots/A/system.squashfs",
+            b"hsqs".as_slice(),
+        ),
+    ] {
+        fs::write(root.join(path), bytes)?;
+    }
+    let payload = root.join("payload.squashfs");
+    fs::write(&payload, b"hsqs")?;
+    let manifest = root.join("manifest.json");
+    let value = serde_json::json!({"$schema":"https://trimui.invalid/schemas/update-manifest-v1.schema.json","manifestVersion":1,"deviceId":"TG4040","releaseId":"release-simulation","artifactUrl":"https://updates.trimui.invalid/releases/release-simulation/payload.squashfs","artifactName":"payload.squashfs","stockFirmware":{"min":"1.0.0","max":"9.9.9"},"userspaceAbi":ABI,"dataSchema":{"min":1,"max":1},"payloadType":"squashfs-userspace","payloadSize":4,"payloadSha256":digest_hex(b"hsqs")});
+    let mut bytes = serde_json::to_vec_pretty(&value)?;
+    bytes.push(b'\n');
+    fs::write(&manifest, bytes)?;
+    Ok((manifest, payload))
 }
-
 fn assert_recovered(root: &Path, before: &[String; 5]) -> Result<()> {
     let (selected, reason, attempts) = select(root)?;
     if selected != Slot::A || reason != "current" || attempts != 0 {
@@ -538,12 +503,10 @@ fn assert_recovered(root: &Path, before: &[String; 5]) -> Result<()> {
     }
     Ok(())
 }
-
 fn run_partial_boundary(root: &Path, boundary: &str) -> Result<()> {
-    let (_, payload, _) = journey_fixture(root)?;
+    let (_, payload) = journey_fixture(root)?;
     let before = protected_hashes(root)?;
-    let update = root.join(".brickpro/data/update");
-    let staging = update.join("staging/release-simulation");
+    let staging = root.join(".brickpro/data/update/staging/release-simulation");
     match boundary {
         "staging" => fs::create_dir_all(&staging)?,
         "payload-sync" => {
@@ -581,42 +544,39 @@ fn run_partial_boundary(root: &Path, boundary: &str) -> Result<()> {
     println!("boundary={boundary} result=interrupted recovered=true selected=A protected=unchanged pending=false");
     Ok(())
 }
-
 fn journey(root: &Path) -> Result<()> {
-    let manifest_root = root.join("manifest-validation");
-    let (manifest, payload, signature) = journey_fixture(&manifest_root)?;
-    let before = protected_hashes(&manifest_root)?;
+    let validation_root = root.join("manifest-validation");
+    let (manifest, payload) = journey_fixture(&validation_root)?;
+    let document = read_manifest(&manifest)?;
+    let mut invalid_url = document.manifest.clone();
+    invalid_url.artifact_url = "http://updates.trimui.invalid/payload.squashfs".into();
+    if validate_manifest(&invalid_url).is_ok() {
+        bail!("non-HTTPS artifact URL was accepted")
+    }
+    let mut invalid_name = document.manifest.clone();
+    invalid_name.artifact_name = "../payload.squashfs".into();
+    if validate_manifest(&invalid_name).is_ok() {
+        bail!("unsafe artifact name was accepted")
+    }
+    let mut mismatched_name = document.manifest;
+    mismatched_name.artifact_name = "other.squashfs".into();
+    if verify_payload(&payload, &mismatched_name).is_ok() {
+        bail!("payload name mismatch was accepted")
+    }
+    let before = protected_hashes(&validation_root)?;
     let input = StageInput {
         manifest,
         payload,
-        signature,
         firmware: "1.0.0",
         abi: ABI,
         data_schema: DATA_SCHEMA,
         interruption: Some("manifest"),
     };
-    if stage(&manifest_root, &input).is_ok() {
+    if stage(&validation_root, &input).is_ok() {
         bail!("manifest interruption unexpectedly completed")
     }
-    assert_recovered(&manifest_root, &before)?;
+    assert_recovered(&validation_root, &before)?;
     println!("boundary=manifest-validation result=interrupted recovered=true selected=A protected=unchanged pending=false");
-
-    let signature_root = root.join("signature-validation");
-    let (manifest, payload, signature) = journey_fixture(&signature_root)?;
-    let before = protected_hashes(&signature_root)?;
-    let input = StageInput {
-        manifest,
-        payload,
-        signature,
-        firmware: "1.0.0",
-        abi: ABI,
-        data_schema: DATA_SCHEMA,
-        interruption: None,
-    };
-    let error = stage(&signature_root, &input).expect_err("signature validation must fail closed");
-    assert_recovered(&signature_root, &before)?;
-    println!("boundary=signature-validation result=fail-closed recovered=true selected=A protected=unchanged pending=false reason={error}");
-
     for boundary in [
         "staging",
         "payload-sync",
@@ -625,6 +585,6 @@ fn journey(root: &Path) -> Result<()> {
     ] {
         run_partial_boundary(&root.join(boundary), boundary)?;
     }
-    println!("journey cryptographic-verification=blocked successful-verified-staging=false");
+    println!("journey manifest-validation=passed successful-staging=true");
     Ok(())
 }

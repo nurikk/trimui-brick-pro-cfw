@@ -1,3 +1,73 @@
-#!/bin/sh
-set -eu
-exec "$(dirname "$0")/provenance.py" audit "$@"
+#!/usr/bin/env python3
+"""Check the small, reproducible release boundary."""
+import hashlib
+import json
+import sys
+import tarfile
+from pathlib import Path
+
+EXPECTED = {
+    "usr/bin/brickpro-bootstrap-probe",
+    "usr/bin/brickpro-recovery",
+    "usr/bin/brickpro-diagnostics",
+    "usr/bin/brickpro-boot-state",
+    "usr/bin/brickpro-update-agent",
+    "usr/bin/brickpro-userspace-supervisor",
+    "usr/bin/session-broker",
+    "usr/bin/session-broker-helper",
+    "usr/bin/package-manager",
+    "usr/bin/brickpro-launcher-aarch64-journey",
+    "bootstrap/boot.sh",
+    "bootstrap/recovery.sh",
+    "THIRD_PARTY_NOTICES.md",
+}
+FORBIDDEN = ("/roms/", "/bios/", "private-corpus", "private_corpus", "roms/", "bios/")
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"release audit: {message}")
+
+
+def main() -> int:
+    if len(sys.argv) != 4:
+        fail("usage: audit-dist STAGED_ROOT MANIFEST SHA256SUMS")
+    stage, manifest_path, checksums_path = map(Path, sys.argv[1:])
+    if not stage.is_dir() or not manifest_path.is_file() or not checksums_path.is_file():
+        fail("staged root, manifest, and SHA256SUMS are required")
+    if not (stage / "THIRD_PARTY_NOTICES.md").is_file():
+        fail("THIRD_PARTY_NOTICES.md is missing")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        fail(f"manifest is invalid: {error}")
+    payload = {item["path"]: item for item in manifest.get("payload", [])}
+    if not EXPECTED <= payload.keys():
+        fail("expected executable or notice is absent")
+    for path in payload:
+        if any(token in f"/{path.lower()}/" for token in FORBIDDEN):
+            fail(f"forbidden private corpus path is packaged: {path}")
+        actual = stage / path
+        if not actual.is_file() or actual.is_symlink():
+            fail(f"manifest path is not a regular file: {path}")
+        data = actual.read_bytes()
+        if len(data) != payload[path]["size"] or hashlib.sha256(data).hexdigest() != payload[path]["sha256"]:
+            fail(f"manifest checksum mismatch: {path}")
+    checksums = {}
+    for line in checksums_path.read_text(encoding="utf-8").splitlines():
+        digest, name = line.split("  ", 1)
+        checksums[name] = digest
+    archive = checksums_path.parent / "trimui-brick-pro-cfw-baseline.tar"
+    if checksums.get(archive.name) != hashlib.sha256(archive.read_bytes()).hexdigest():
+        fail("SHA256SUMS does not verify the emitted artifact")
+    try:
+        with tarfile.open(archive) as handle:
+            names = {member.name for member in handle.getmembers()}
+    except (OSError, tarfile.TarError) as error:
+        fail(f"release archive is invalid: {error}")
+    if not EXPECTED <= names:
+        fail("release archive is missing an expected file")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

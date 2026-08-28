@@ -16,7 +16,7 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use compatibility_recipes::{
-    ApplyReceipt, AuthenticatedRecipe, LauncherAction, LauncherResponse, LocalOverrides, Preview,
+    ApplyReceipt, LauncherAction, LauncherResponse, LocalOverrides, MatchedRecipe, Preview,
     ValidationContext,
 };
 use launch_contract::{
@@ -26,7 +26,6 @@ use launch_contract::{
 };
 use launcher_presentation::Screen as PresentationScreen;
 use launcher_theme::ValidatedTheme;
-use package_trust::VerificationTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use session_broker::{
@@ -323,7 +322,11 @@ fn sync_view(status: save_sync::SyncStatus) -> launcher_presentation::SaveSyncVi
         actions: status
             .actions
             .into_iter()
-            .map(|action| format!("{:?}", action).to_ascii_lowercase())
+            .map(|action| match action {
+                save_sync::ResolutionAction::KeepLocal => "keep-local".into(),
+                save_sync::ResolutionAction::KeepRemote => "keep-remote".into(),
+                save_sync::ResolutionAction::KeepBoth => "keep-both".into(),
+            })
             .collect(),
     }
 }
@@ -474,7 +477,7 @@ const MAX_ADAPTER_VALUE: i32 = 1_000_000;
 pub struct CompatibilityRecipeController {
     root: PathBuf,
     target_id: String,
-    authenticated: AuthenticatedRecipe,
+    authenticated: MatchedRecipe,
     context: ValidationContext,
 }
 
@@ -500,16 +503,13 @@ impl CompatibilityRecipeController {
     pub fn new(
         root: impl Into<PathBuf>,
         repository: &Path,
-        state: &Path,
         target_id: &str,
         rom_sha256: &str,
         context: ValidationContext,
-        time: VerificationTime<'_>,
     ) -> Result<Self> {
-        let authenticated = compatibility_recipes::authenticate_and_match(
-            repository, state, target_id, rom_sha256, time, &context,
-        )
-        .map_err(|error| anyhow!(error.to_string()))?;
+        let authenticated =
+            compatibility_recipes::match_recipe(repository, target_id, rom_sha256, &context)
+                .map_err(|error| anyhow!(error.to_string()))?;
         Ok(Self {
             root: root.into(),
             target_id: target_id.to_string(),

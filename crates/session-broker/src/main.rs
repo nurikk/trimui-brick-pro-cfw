@@ -18,8 +18,6 @@ use launch_contract::{
     parse_catalog_json, parse_request_json, validate_host_fixture, Catalog, LaunchKind,
     LaunchRequest, LogicalPath, PathRoot,
 };
-use package_manager::TrustContext;
-use package_trust::VerifiedTarget;
 use serde::Serialize;
 use session_broker::{
     resume::{CheckpointReason, CommitFault, ResumeCapabilityConfig, ResumeDecision, ResumeStore},
@@ -165,26 +163,11 @@ fn install_portmaster_fixture(root: &Path, package_id: &str) -> Result<(), Strin
         return Err("PortMaster fixture package is not catalog-owned".to_string());
     };
     let manifest_path = root.join(payload_name).join("manifest.json");
-    let manifest_bytes = fs::read(&manifest_path)
-        .map_err(|_| "PortMaster fixture manifest unavailable".to_string())?;
-    let target = VerifiedTarget {
-        path: format!("packages/{package_id}/manifest.json"),
-        length: manifest_bytes.len() as u64,
-        sha256: format!("{:x}", Sha256::digest(&manifest_bytes)),
-        delegated_role: "packages".to_string(),
-    };
     let install_root = root.join("host-root");
     package_manager::install(
         &install_root,
         &manifest_path,
         &root.join(payload_name),
-        &target,
-        TrustContext {
-            signed: true,
-            developer_enabled: false,
-            local_key_trusted: false,
-            running_as_root: false,
-        },
         package_manager::TransactionOptions::default(),
     )
     .map(|_| ())

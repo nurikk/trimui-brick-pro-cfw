@@ -1,27 +1,22 @@
 # Third-party notices
 
-Generated from approved distributed artifacts by `scripts/provenance.py`.
+Human-maintained list for the TrimUI Brick Pro CFW release.
 
-## TrimUI Brick Pro CFW baseline payload
+## Project
 
-- License: `MIT`
-- Source: https://github.com/nurikk/trimui-brick-pro-cfw
-- Attribution: Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.
-- Distributed paths:
-  - `THIRD_PARTY_NOTICES.md`
-  - `bootstrap/boot.sh`
-  - `bootstrap/recovery.sh`
-  - `config/platform/tg4040/compatibility.json`
-  - `usr/bin/brickpro-boot-state`
-  - `usr/bin/brickpro-bootstrap-probe`
-  - `usr/bin/brickpro-diagnostics`
-  - `usr/bin/brickpro-launcher-aarch64-journey`
-  - `usr/bin/brickpro-recovery`
-  - `usr/bin/brickpro-update-agent`
-  - `usr/bin/brickpro-userspace-supervisor`
-  - `usr/bin/package-manager`
-  - `usr/bin/session-broker`
-  - `usr/bin/session-broker-helper`
-  - `usr/share/trimui/bootstrap-supported.tar`
-  - `usr/share/trimui/packages.tar`
-  - `usr/share/trimui/session-broker-generated-v1.tar`
+- TrimUI Brick Pro CFW — MIT — <https://github.com/nurikk/trimui-brick-pro-cfw>
+
+## Rust dependencies
+
+- anyhow — MIT OR Apache-2.0
+- hex — MIT OR Apache-2.0
+- jiff — MIT OR Apache-2.0
+- libc — MIT OR Apache-2.0
+- png — MIT OR Apache-2.0
+- serde, serde_json — MIT OR Apache-2.0
+- sha2 — MIT OR Apache-2.0
+- signal-hook — MIT OR Apache-2.0
+- sdl2 — MIT
+- unicode-normalization, unicode-segmentation — MIT OR Apache-2.0
+
+This list is human-maintained.

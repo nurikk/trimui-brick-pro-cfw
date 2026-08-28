@@ -397,6 +397,7 @@ pub fn build_with_recent(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_with_sync(
     state: &UiState,
     theme: &ValidatedTheme,

@@ -1,7 +1,6 @@
 use display_profile::{Catalog as DisplayCatalog, RequestKind, ResolutionRequest};
 use emulator_catalog::{Catalog as EmulatorCatalog, ChannelName};
 use input_profile::Catalog as InputCatalog;
-use package_trust::{RepositoryMetadata, TrustStore, VerificationReport, VerificationTime};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use settings_schema::{FieldKind, Registry, SettingValue};
 use std::{
@@ -67,9 +66,6 @@ pub struct Recipe {
     pub profiles: ProfileReferences,
     #[serde(rename = "knownIssues")]
     pub known_issues: Vec<String>,
-    pub provenance: Provenance,
-    pub supersession: Supersession,
-    pub rollback: RollbackMetadata,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -99,50 +95,6 @@ pub struct ProfileReferences {
     #[serde(rename = "powerProfileId")]
     pub power_profile_id: String,
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Provenance {
-    pub status: ProvenanceStatus,
-    #[serde(rename = "sourceId")]
-    pub source_id: String,
-    #[serde(rename = "evidenceId")]
-    pub evidence_id: String,
-    #[serde(rename = "licenseId")]
-    pub license_id: String,
-}
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProvenanceStatus {
-    ProjectAuthored,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Supersession {
-    pub supersedes: Vec<String>,
-    #[serde(rename = "supersededBy")]
-    pub superseded_by: Option<String>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct RollbackMetadata {
-    #[serde(rename = "layerName")]
-    pub layer_name: String,
-    #[serde(rename = "vaultPolicy")]
-    pub vault_policy: VaultPolicy,
-    #[serde(rename = "boundary")]
-    pub boundary: RollbackBoundary,
-}
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum VaultPolicy {
-    NamedPrechangeGeneration,
-}
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum RollbackBoundary {
-    RecipeLayerOnly,
-}
-
 #[derive(Clone, Debug)]
 pub struct ValidationContext {
     pub catalog_root: PathBuf,
@@ -166,33 +118,13 @@ impl ValidationContext {
 }
 
 #[derive(Clone, Debug)]
-pub struct AuthenticatedRecipe {
+pub struct MatchedRecipe {
     recipe: Recipe,
-    target: VerifiedTargetSummary,
 }
-impl AuthenticatedRecipe {
+impl MatchedRecipe {
     pub fn target_id(&self) -> &str {
-        &self.target.target_id
+        &self.recipe.target_id
     }
-    pub fn delegated_role(&self) -> &str {
-        &self.target.delegated_role
-    }
-    pub fn repository_versions(&self) -> &RepositoryVersions {
-        &self.target.repository_versions
-    }
-}
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VerifiedTargetSummary {
-    pub target_id: String,
-    pub delegated_role: String,
-    pub repository_versions: RepositoryVersions,
-}
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RepositoryVersions {
-    pub root: u64,
-    pub timestamp: u64,
-    pub snapshot: u64,
-    pub targets: u64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -212,9 +144,7 @@ pub struct PreviewRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Preview {
-    pub signer: String,
-    #[serde(rename = "trustTier")]
-    pub trust_tier: String,
+    pub source: String,
     #[serde(rename = "recipeTarget")]
     pub recipe_target: String,
     pub core: CoreConstraint,
@@ -226,9 +156,6 @@ pub struct Preview {
     pub collisions: Vec<Collision>,
     #[serde(rename = "knownIssues")]
     pub known_issues: Vec<String>,
-    pub provenance: Provenance,
-    pub supersession: Supersession,
-    pub rollback: RollbackMetadata,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -302,7 +229,7 @@ pub enum LauncherResponse {
 
 pub fn launcher_dispatch(
     root: &Path,
-    authenticated: &AuthenticatedRecipe,
+    authenticated: &MatchedRecipe,
     context: &ValidationContext,
     target_id: &str,
     action: LauncherAction,
@@ -472,55 +399,15 @@ pub fn validate_recipe(recipe: &Recipe, context: &ValidationContext) -> Result<(
     Ok(())
 }
 
-pub fn authenticate_and_match(
+pub fn match_recipe(
     repository: &Path,
-    state: &Path,
     target_id: &str,
     rom_sha256: &str,
-    time: VerificationTime<'_>,
     context: &ValidationContext,
-) -> Result<AuthenticatedRecipe> {
+) -> Result<MatchedRecipe> {
     validate_id(target_id, "recipe target")?;
     validate_hash(rom_sha256)?;
-    let target_path = format!("recipes/{target_id}.json");
-    let target_bytes = read_repository_file(repository, &target_path)?;
-    let root_bytes = read_repository_file(repository, "root.json")?;
-    let timestamp_bytes = read_repository_file(repository, "timestamp.json")?;
-    let snapshot_bytes = read_repository_file(repository, "snapshot.json")?;
-    let targets_bytes = read_repository_file(repository, "targets.json")?;
-    let delegated_bytes = read_repository_file(repository, "recipes.json")?;
-    validate_recipe_delegation(&targets_bytes, &delegated_bytes)?;
-    let metadata = RepositoryMetadata {
-        root_bytes: &root_bytes,
-        root_updates: &[],
-        timestamp_bytes: &timestamp_bytes,
-        snapshot_bytes: &snapshot_bytes,
-        targets_bytes: &targets_bytes,
-        delegated_role: "recipes",
-        delegated_bytes: &delegated_bytes,
-        target_bytes: &target_bytes,
-    };
-    let preflight = state.with_file_name(format!(
-        ".{}.recipe-preflight-{}",
-        state
-            .file_name()
-            .ok_or_else(|| RecipeError::new("unsafe-path", "trusted state path has no file name"))?
-            .to_string_lossy(),
-        std::process::id()
-    ));
-    let preflight_result = TrustStore::new(&preflight)
-        .verify_repository(metadata, &target_path, time)
-        .map_err(map_trust_error);
-    let _ = fs::remove_file(&preflight);
-    let preflight_report = preflight_result?;
-    if preflight_report.target.path != target_path
-        || preflight_report.target.delegated_role != "recipes"
-    {
-        return Err(RecipeError::new(
-            "trust-rejected",
-            "signed recipe target identity is invalid",
-        ));
-    }
+    let target_bytes = read_repository_file(repository, &format!("recipes/{target_id}.json"))?;
     let parsed = parse_recipe(&target_bytes)?;
     validate_recipe(&parsed, context)?;
     if parsed.target_id != target_id || parsed.rom_sha256 != rom_sha256 {
@@ -529,30 +416,11 @@ pub fn authenticate_and_match(
             "no recipe matches the supplied content",
         ));
     }
-    let report = TrustStore::new(state)
-        .verify_repository(
-            RepositoryMetadata {
-                root_bytes: &root_bytes,
-                root_updates: &[],
-                timestamp_bytes: &timestamp_bytes,
-                snapshot_bytes: &snapshot_bytes,
-                targets_bytes: &targets_bytes,
-                delegated_role: "recipes",
-                delegated_bytes: &delegated_bytes,
-                target_bytes: &target_bytes,
-            },
-            &target_path,
-            time,
-        )
-        .map_err(map_trust_error)?;
-    Ok(AuthenticatedRecipe {
-        recipe: parsed,
-        target: summary(target_id, &report),
-    })
+    Ok(MatchedRecipe { recipe: parsed })
 }
 
 pub fn preview(
-    authenticated: &AuthenticatedRecipe,
+    authenticated: &MatchedRecipe,
     context: &ValidationContext,
     local: &LocalOverrides,
 ) -> Result<Preview> {
@@ -582,7 +450,7 @@ pub fn preview(
 
 pub fn apply(
     root: &Path,
-    authenticated: &AuthenticatedRecipe,
+    authenticated: &MatchedRecipe,
     context: &ValidationContext,
     local: &LocalOverrides,
     options: ApplyOptions,
@@ -733,7 +601,7 @@ pub fn rollback(root: &Path, target_id: &str) -> Result<()> {
 
 #[allow(clippy::too_many_arguments)]
 fn make_preview(
-    auth: &AuthenticatedRecipe,
+    auth: &MatchedRecipe,
     registry: &Registry,
     before: BTreeMap<String, SettingValue>,
     before_sources: BTreeMap<String, String>,
@@ -761,18 +629,14 @@ fn make_preview(
         .collect();
     let _ = registry;
     Preview {
-        signer: "recipes delegated TUF role".into(),
-        trust_tier: "verified".into(),
-        recipe_target: auth.target.target_id.clone(),
+        source: "local".into(),
+        recipe_target: auth.recipe.target_id.clone(),
         core: auth.recipe.core.clone(),
         profiles: auth.recipe.profiles.clone(),
         setting_changes,
         local_overrides: flatten_local(local),
         collisions,
         known_issues: auth.recipe.known_issues.clone(),
-        provenance: auth.recipe.provenance.clone(),
-        supersession: auth.recipe.supersession.clone(),
-        rollback: auth.recipe.rollback.clone(),
     }
 }
 
@@ -901,44 +765,6 @@ fn validate_recipe_shape(recipe: &Recipe) -> Result<()> {
         return Err(RecipeError::new(
             "unsafe-value",
             "known issue text is unsafe or oversized",
-        ));
-    }
-    if recipe.provenance.status != ProvenanceStatus::ProjectAuthored
-        || recipe.provenance.source_id != "project-authored-synthetic"
-        || recipe.provenance.evidence_id != "host-static-fixture"
-        || recipe.provenance.license_id != "project-owned-metadata"
-    {
-        return Err(RecipeError::new(
-            "provenance-invalid",
-            "recipe provenance is not trusted",
-        ));
-    }
-    if recipe.supersession.supersedes.len() > 16 {
-        return Err(RecipeError::new(
-            "supersession-invalid",
-            "supersession list is oversized",
-        ));
-    }
-    let mut superseded = BTreeSet::new();
-    for id in &recipe.supersession.supersedes {
-        validate_id(id, "superseded recipe")?;
-        if !superseded.insert(id) {
-            return Err(RecipeError::new(
-                "supersession-invalid",
-                "supersession list is duplicated",
-            ));
-        }
-    }
-    if let Some(id) = &recipe.supersession.superseded_by {
-        validate_id(id, "successor recipe")?;
-    }
-    if recipe.rollback.layer_name != "compatibility-recipes"
-        || recipe.rollback.vault_policy != VaultPolicy::NamedPrechangeGeneration
-        || recipe.rollback.boundary != RollbackBoundary::RecipeLayerOnly
-    {
-        return Err(RecipeError::new(
-            "rollback-invalid",
-            "rollback metadata is invalid",
         ));
     }
     Ok(())
@@ -1189,94 +1015,16 @@ fn read_repository_file(root: &Path, relative: &str) -> Result<Vec<u8>> {
             ));
         }
     }
-    let metadata = fs::symlink_metadata(&path).map_err(|_| {
-        RecipeError::new(
-            "repository-unavailable",
-            "signed repository file is unavailable",
-        )
-    })?;
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|_| RecipeError::new("repository-unavailable", "recipe file is unavailable"))?;
     if !metadata.file_type().is_file() {
         return Err(RecipeError::new(
             "repository-invalid",
             "repository object is not a regular file",
         ));
     }
-    fs::read(path).map_err(|_| {
-        RecipeError::new(
-            "repository-unavailable",
-            "signed repository file is unavailable",
-        )
-    })
-}
-fn validate_recipe_delegation(top_bytes: &[u8], delegated_bytes: &[u8]) -> Result<()> {
-    reject_duplicate_keys(top_bytes)?;
-    reject_duplicate_keys(delegated_bytes)?;
-    let top: serde_json::Value = serde_json::from_slice(top_bytes).map_err(|_| {
-        RecipeError::new(
-            "trust-rejected",
-            "top-level delegation metadata is malformed",
-        )
-    })?;
-    let delegated: serde_json::Value = serde_json::from_slice(delegated_bytes).map_err(|_| {
-        RecipeError::new("trust-rejected", "recipe delegation metadata is malformed")
-    })?;
-    let paths = top
-        .pointer("/signed/delegations/roles")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|roles| {
-            roles.iter().find(|role| {
-                role.get("name").and_then(serde_json::Value::as_str) == Some("recipes")
-            })
-        })
-        .and_then(|role| role.get("paths"))
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| RecipeError::new("trust-rejected", "recipes delegation is missing"))?;
-    if paths.len() != 1 || paths[0].as_str() != Some("recipes/*.json") {
-        return Err(RecipeError::new(
-            "trust-rejected",
-            "recipes delegation scope is too broad",
-        ));
-    }
-    let targets = delegated
-        .pointer("/signed/targets")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| RecipeError::new("trust-rejected", "recipe targets are missing"))?;
-    if targets
-        .keys()
-        .any(|path| !path.starts_with("recipes/") || !path.ends_with(".json"))
-    {
-        return Err(RecipeError::new(
-            "trust-rejected",
-            "recipe target is outside recipe scope",
-        ));
-    }
-    Ok(())
-}
-
-fn map_trust_error(error: package_trust::TrustError) -> RecipeError {
-    let code = match error.status {
-        package_trust::RecoveryStatus::Expired => "expired",
-        package_trust::RecoveryStatus::Rollback => "rollback",
-        package_trust::RecoveryStatus::Freeze => "freeze",
-        package_trust::RecoveryStatus::ClockUncertain => "clock-uncertain",
-        package_trust::RecoveryStatus::CorruptTrustedState => "target-integrity",
-        package_trust::RecoveryStatus::SignatureFailure
-        | package_trust::RecoveryStatus::Unsupported => "trust-rejected",
-    };
-    RecipeError::new(code, "signed recipe repository was rejected")
-}
-
-fn summary(target_id: &str, report: &VerificationReport) -> VerifiedTargetSummary {
-    VerifiedTargetSummary {
-        target_id: target_id.into(),
-        delegated_role: report.target.delegated_role.clone(),
-        repository_versions: RepositoryVersions {
-            root: report.root_version,
-            timestamp: report.timestamp_version,
-            snapshot: report.snapshot_version,
-            targets: report.targets_version,
-        },
-    }
+    fs::read(path)
+        .map_err(|_| RecipeError::new("repository-unavailable", "recipe file is unavailable"))
 }
 fn blocked_core_pack(root: &Path, id: &str, version: &str) -> Result<bool> {
     let path = root.join("core-packs/stable.json");

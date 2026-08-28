@@ -1975,14 +1975,6 @@ pub enum InputPrecedence {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CorePackProvenance {
-    pub status: CorePackStatus,
-    #[serde(rename = "blockedReason")]
-    pub blocked_reason: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct CorePackCatalog {
     #[serde(rename = "$schema")]
     pub schema: String,
@@ -2007,7 +1999,6 @@ pub struct CorePackCatalog {
     pub display_precedence: Vec<DisplayPrecedence>,
     #[serde(rename = "inputPrecedence")]
     pub input_precedence: Vec<InputPrecedence>,
-    pub provenance: CorePackProvenance,
 }
 
 impl CorePackCatalog {
@@ -2149,14 +2140,6 @@ impl CorePackCatalog {
             return Err(CatalogError::new(
                 "core_pack_precedence",
                 "core-pack precedence is invalid",
-            ));
-        }
-        if self.provenance.status != CorePackStatus::Blocked
-            || self.provenance.blocked_reason.is_empty()
-        {
-            return Err(CatalogError::new(
-                "core_pack_provenance",
-                "core-pack provenance is not blocked",
             ));
         }
         Ok(())

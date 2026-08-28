@@ -1,3 +1,3 @@
 # Theme Garden synthetic fixtures
 
-Project-authored Theme v1 JSON and generated-neutral preview inputs only. Signed local metadata contains public keys and no private signing material.
+Project-authored Theme v1 JSON, local catalog metadata, and generated-neutral preview inputs only. Themes contain no scripts or executable content.

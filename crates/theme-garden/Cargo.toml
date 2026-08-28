@@ -3,7 +3,7 @@ name = "theme-garden"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Offline, authenticated Theme Garden catalog and lifecycle fixture"
+description = "Offline Theme Garden catalog and lifecycle fixture"
 
 [[bin]]
 name = "theme-garden"
@@ -14,7 +14,6 @@ anyhow.workspace = true
 hex.workspace = true
 launcher-theme = { path = "../launcher-theme" }
 package-manager = { path = "../package-manager" }
-package-trust = { path = "../package-trust" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

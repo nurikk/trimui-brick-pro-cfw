@@ -5,66 +5,242 @@
   "description": "Closed declarative metadata. It contains no package, payload, executable, script, URL, path, ROM, or BIOS data.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "format", "schemaVersion", "apiVersion", "kind", "targetSku", "targetId", "romSha256", "systemId", "core", "configDelta", "profiles", "knownIssues", "provenance", "supersession", "rollback"],
+  "required": [
+    "$schema",
+    "format",
+    "schemaVersion",
+    "apiVersion",
+    "kind",
+    "targetSku",
+    "targetId",
+    "romSha256",
+    "systemId",
+    "core",
+    "configDelta",
+    "profiles",
+    "knownIssues"
+  ],
   "properties": {
-    "$schema": {"const": "https://example.invalid/trimui-compat-recipe-v1.schema.json"},
-    "format": {"const": "trimui-compatibility-recipe"},
-    "schemaVersion": {"const": 1},
-    "apiVersion": {"const": 1},
-    "kind": {"const": "compatibility-recipe"},
-    "targetSku": {"const": "TG4040"},
-    "targetId": {"$ref": "#/$defs/id"},
-    "romSha256": {"$ref": "#/$defs/sha256"},
-    "systemId": {"$ref": "#/$defs/id"},
-    "core": {"$ref": "#/$defs/core"},
-    "configDelta": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/change"}, "uniqueItems": true},
-    "profiles": {"$ref": "#/$defs/profiles"},
-    "knownIssues": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/safeText"}},
-    "provenance": {"$ref": "#/$defs/provenance"},
-    "supersession": {"$ref": "#/$defs/supersession"},
-    "rollback": {"$ref": "#/$defs/rollback"}
+    "$schema": {
+      "const": "https://example.invalid/trimui-compat-recipe-v1.schema.json"
+    },
+    "format": {
+      "const": "trimui-compatibility-recipe"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "apiVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "compatibility-recipe"
+    },
+    "targetSku": {
+      "const": "TG4040"
+    },
+    "targetId": {
+      "$ref": "#/$defs/id"
+    },
+    "romSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "systemId": {
+      "$ref": "#/$defs/id"
+    },
+    "core": {
+      "$ref": "#/$defs/core"
+    },
+    "configDelta": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/change"
+      },
+      "uniqueItems": true
+    },
+    "profiles": {
+      "$ref": "#/$defs/profiles"
+    },
+    "knownIssues": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/safeText"
+      }
+    }
   },
   "$defs": {
-    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
-    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 32},
-    "safeText": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!.*//)(?!.*\\\\)(?!/)(?!.*\\.\\.)(?!.*(script|command|exec|argv|shell|payload|https?:))[^\\u0000-\\u001f]*$"},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "maxLength": 32
+    },
+    "safeText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!.*//)(?!.*\\\\)(?!/)(?!.*\\.\\.)(?!.*(script|command|exec|argv|shell|payload|https?:))[^\\u0000-\\u001f]*$"
+    },
     "core": {
-      "type": "object", "additionalProperties": false, "required": ["id", "versionConstraint"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "versionConstraint": {"type": "string", "pattern": "^=[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 33}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "versionConstraint"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "versionConstraint": {
+          "type": "string",
+          "pattern": "^=[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "maxLength": 33
+        }
+      }
     },
     "settingValue": {
       "oneOf": [
-        {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "boolean"}, "value": {"type": "boolean"}}},
-        {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "integer"}, "value": {"type": "integer"}}},
-        {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "decimal"}, "value": {"type": "number"}}},
-        {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "enum-single"}, "value": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}},
-        {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"const": "enum-multi"}, "value": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}}}
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "integer"
+            },
+            "value": {
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "decimal"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "enum-single"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,63}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "enum-multi"
+            },
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              }
+            }
+          }
+        }
       ]
     },
     "change": {
-      "type": "object", "additionalProperties": false, "required": ["key", "value"],
-      "properties": {"key": {"type": "string", "pattern": "^core\\.[a-z][a-z0-9-]{0,63}(\\.[a-z][a-z0-9-]{0,63})?$", "maxLength": 128}, "value": {"$ref": "#/$defs/settingValue"}}
-    },
-    "profiles": {
-      "type": "object", "additionalProperties": false, "required": ["displayProfileId", "inputProfileId", "powerProfileId"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
       "properties": {
-        "displayProfileId": {"$ref": "#/$defs/id"},
-        "inputProfileId": {"$ref": "#/$defs/id"},
-        "powerProfileId": {"enum": ["balanced", "battery-saver"]}
+        "key": {
+          "type": "string",
+          "pattern": "^core\\.[a-z][a-z0-9-]{0,63}(\\.[a-z][a-z0-9-]{0,63})?$",
+          "maxLength": 128
+        },
+        "value": {
+          "$ref": "#/$defs/settingValue"
+        }
       }
     },
-    "provenance": {
-      "type": "object", "additionalProperties": false, "required": ["status", "sourceId", "evidenceId", "licenseId"],
-      "properties": {"status": {"const": "project-authored"}, "sourceId": {"const": "project-authored-synthetic"}, "evidenceId": {"const": "host-static-fixture"}, "licenseId": {"const": "project-owned-metadata"}}
-    },
-    "supersession": {
-      "type": "object", "additionalProperties": false, "required": ["supersedes", "supersededBy"],
-      "properties": {"supersedes": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}, "supersededBy": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}}
-    },
-    "rollback": {
-      "type": "object", "additionalProperties": false, "required": ["layerName", "vaultPolicy", "boundary"],
-      "properties": {"layerName": {"const": "compatibility-recipes"}, "vaultPolicy": {"const": "named-prechange-generation"}, "boundary": {"const": "recipe-layer-only"}}
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayProfileId",
+        "inputProfileId",
+        "powerProfileId"
+      ],
+      "properties": {
+        "displayProfileId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputProfileId": {
+          "$ref": "#/$defs/id"
+        },
+        "powerProfileId": {
+          "enum": [
+            "balanced",
+            "battery-saver"
+          ]
+        }
+      }
     }
   }
 }

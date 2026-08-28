@@ -5,16 +5,15 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use launcher_theme::{load_theme_dir, render_png, DirectCatalogTransport, ThemesCatalog};
-use package_manager::{install_with_validation, uninstall, TransactionOptions, TrustContext};
-use package_trust::{RepositoryMetadata, TrustStore, VerificationTime, VerifiedTarget};
+use package_manager::{install_with_validation, uninstall, TransactionOptions};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const TARGET_SKU: &str = "TG4040";
 pub const THEME_API: &str = "1.0.0";
 pub const CACHE_PATH: &str = "/data/cache/theme-garden";
 pub const STAGING_PATH: &str = "/data/staging/themes";
-const CATALOG_TARGET: &str = "catalog/theme-catalog.json";
-const NOW: &str = "2030-01-01T00:00:00Z";
+const CATALOG_TARGET: &str = "catalog.json";
 const ARTBOOK: &str = "artbook";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -29,7 +28,6 @@ pub struct Catalog {
     pub target_sku: String,
     #[serde(rename = "catalogVersion")]
     pub catalog_version: String,
-    pub expires: String,
     pub themes: Vec<CatalogEntry>,
 }
 
@@ -39,8 +37,6 @@ pub struct CatalogEntry {
     pub id: String,
     pub author: String,
     pub license: String,
-    #[serde(rename = "provenanceUrl")]
-    pub provenance_url: String,
     pub versions: Vec<ThemeVersion>,
 }
 
@@ -87,15 +83,12 @@ pub struct ScreenshotMetadata {
 pub struct CacheRecord {
     #[serde(rename = "catalogVersion")]
     pub catalog_version: String,
-    pub expires: String,
     #[serde(rename = "targetPath")]
     pub target_path: String,
     #[serde(rename = "targetLength")]
     pub target_length: u64,
     #[serde(rename = "targetSha256")]
     pub target_sha256: String,
-    #[serde(rename = "delegatedRole")]
-    pub delegated_role: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -118,7 +111,7 @@ pub struct Detail {
     pub sha256: String,
     pub license: String,
     pub author: String,
-    pub provenance: String,
+    pub source: String,
     pub screenshots_available: bool,
     pub cache_state: String,
 }
@@ -156,13 +149,11 @@ impl Catalog {
             || catalog.schema_version != 1
             || catalog.target_sku != TARGET_SKU
             || catalog.themes.len() != 3
-            || catalog.expires.len() != 20
-            || !catalog.expires.ends_with('Z')
             || !version(&catalog.catalog_version)
         {
             bail!("unsupported theme catalog")
         }
-        let mut ids: Vec<&str> = Vec::new();
+        let mut ids = Vec::new();
         for entry in &catalog.themes {
             validate_entry(entry)?;
             if ids.iter().any(|id| *id == entry.id) {
@@ -187,27 +178,27 @@ impl ThemeGarden {
             controller: "controller-first".into(),
             entries: self.browse().len(),
             active_theme: self.active()?.id,
-            cache_state: "verified".into(),
+            cache_state: "available".into(),
         })
     }
 
-    pub fn authenticate(root: &Path, fixtures: &Path) -> Result<Self> {
-        let (catalog, report, target) = verify_catalog_target(root, fixtures, None)?;
+    pub fn load(root: &Path, fixtures: &Path) -> Result<Self> {
+        let repository = fixtures.join("repository");
+        let target = fs::read(repository.join(CATALOG_TARGET))?;
+        let catalog = Catalog::parse(&target)?;
         let cache = root.join(CACHE_PATH.trim_start_matches('/'));
         fs::create_dir_all(&cache)?;
-        let cache_record = CacheRecord {
+        let record = CacheRecord {
             catalog_version: catalog.catalog_version.clone(),
-            expires: catalog.expires.clone(),
-            target_path: report.target.path.clone(),
-            target_length: report.target.length,
-            target_sha256: report.target.sha256.clone(),
-            delegated_role: report.target.delegated_role.clone(),
+            target_path: CATALOG_TARGET.into(),
+            target_length: target.len() as u64,
+            target_sha256: digest(&target),
         };
         atomic_bytes(&cache.join("catalog.json"), &target)?;
-        atomic_json(&cache.join("metadata.json"), &cache_record)?;
+        atomic_json(&cache.join("metadata.json"), &record)?;
         Ok(Self {
-            root: root.to_path_buf(),
-            fixtures: fixtures.to_path_buf(),
+            root: root.into(),
+            fixtures: fixtures.into(),
             catalog,
         })
     }
@@ -217,19 +208,18 @@ impl ThemeGarden {
         let target = fs::read(cache.join("catalog.json"))?;
         let metadata: CacheRecord =
             serde_json::from_slice(&fs::read(cache.join("metadata.json"))?)?;
-        let (catalog, report, _) = verify_catalog_target(root, fixtures, Some(&target))?;
+        let catalog = Catalog::parse(&target)?;
         if metadata.catalog_version != catalog.catalog_version
-            || metadata.expires != catalog.expires
-            || metadata.target_path != report.target.path
-            || metadata.target_length != report.target.length
-            || metadata.target_sha256 != report.target.sha256
-            || metadata.delegated_role != report.target.delegated_role
+            || metadata.target_path != CATALOG_TARGET
+            || metadata.target_length != target.len() as u64
+            || metadata.target_sha256 != digest(&target)
         {
-            bail!("offline cache metadata is not the authenticated target")
+            bail!("offline cache metadata does not match catalog")
         }
+        let _ = fixtures;
         Ok(Self {
-            root: root.to_path_buf(),
-            fixtures: fixtures.to_path_buf(),
+            root: root.into(),
+            fixtures: fixtures.into(),
             catalog,
         })
     }
@@ -286,9 +276,9 @@ impl ThemeGarden {
             sha256: record.package.sha256.clone(),
             license: entry.license.clone(),
             author: entry.author.clone(),
-            provenance: entry.provenance_url.clone(),
+            source: "local".into(),
             screenshots_available: record.screenshots.available,
-            cache_state: "verified".into(),
+            cache_state: "available".into(),
         })
     }
 
@@ -345,9 +335,8 @@ impl ThemeGarden {
     }
 
     pub fn updates(&self) -> Result<Vec<Update>> {
-        let installed = self.installed()?;
         let mut updates = Vec::new();
-        for item in installed {
+        for item in self.installed()? {
             let Ok(entry) = self.catalog.entry(&item.id) else {
                 continue;
             };
@@ -392,8 +381,7 @@ impl ThemeGarden {
                     .find(|record| record.version == active.version)
             })
             .is_some_and(compatible_version);
-        let theme = self.installed_theme_path(&active);
-        if !compatible || load_theme_dir(&theme).is_err() {
+        if !compatible || load_theme_dir(&self.installed_theme_path(&active)).is_err() {
             let fallback = default_theme();
             atomic_json(&self.active_path(), &fallback)?;
             return Ok(fallback);
@@ -428,9 +416,6 @@ impl ThemeGarden {
         interrupt_after: Option<usize>,
         fail_preview: bool,
     ) -> Result<ActiveTheme> {
-        if self.cache_record()?.expires.as_str() <= NOW {
-            bail!("expired offline catalog denies install")
-        }
         let entry = self.catalog.entry(id)?;
         let record = entry
             .versions
@@ -440,9 +425,14 @@ impl ThemeGarden {
         if !compatible_version(record) {
             bail!("theme is incompatible with TG4040")
         }
-        let manifest = fs::read(self.manifest_fixture_path(id, record)?)?;
+        let manifest = fs::read(self.manifest_fixture_path(record)?)?;
         let manifest_path = self.acquire(id, &record.version, &manifest, interrupt_after)?;
-        let target = self.verify_package_target(entry, record, &manifest)?;
+        if manifest_path.metadata()?.len() != record.package.length
+            || digest(&manifest) != record.package.sha256
+        {
+            let _ = fs::remove_file(&manifest_path);
+            bail!("catalog package digest does not match manifest")
+        }
         let payload = self.payload_path(id, record);
         let root = self.root.clone();
         let cache_root = root.join(CACHE_PATH.trim_start_matches('/'));
@@ -452,8 +442,6 @@ impl ThemeGarden {
             &root,
             &manifest_path,
             &payload,
-            &target,
-            TrustContext::community_signed(),
             TransactionOptions::default(),
             move |manifest, staging| {
                 if manifest.id != id_owned || manifest.version != version_owned || fail_preview {
@@ -498,97 +486,22 @@ impl ThemeGarden {
         if id == ARTBOOK {
             bail!("Artbook is built-in and cannot be removed")
         }
-        let active = self.active()?;
-        if active.id == id {
-            atomic_json(&self.active_path(), &default_theme())?;
+        if self.active()?.id == id {
+            atomic_json(&self.active_path(), &default_theme())?
         }
-        uninstall(&self.root, id, TransactionOptions::default()).context("remove theme")?;
-        let _ = fs::remove_dir_all(self.root.join(".brickpro/packages").join(id));
-        Ok(())
+        uninstall(&self.root, id, TransactionOptions::default()).context("remove theme")
     }
 
-    pub fn expire_cache(&self) -> Result<()> {
-        let metadata_path = self
-            .root
-            .join(CACHE_PATH.trim_start_matches('/'))
-            .join("metadata.json");
-        let mut metadata: CacheRecord = serde_json::from_slice(&fs::read(&metadata_path)?)?;
-        metadata.expires = "2029-01-01T00:00:00Z".into();
-        atomic_json(&metadata_path, &metadata)?;
-        let catalog_path = self
-            .root
-            .join(CACHE_PATH.trim_start_matches('/'))
-            .join("catalog.json");
-        let mut catalog: Catalog = serde_json::from_slice(&fs::read(&catalog_path)?)?;
-        catalog.expires = metadata.expires;
-        atomic_bytes(&catalog_path, &serde_json::to_vec_pretty(&catalog)?)
+    fn manifest_fixture_path(&self, record: &ThemeVersion) -> Result<PathBuf> {
+        Ok(self.fixtures.join("repository").join(format!(
+            "{}-{}",
+            record.target_path.split('/').nth(1).unwrap_or_default(),
+            Path::new(&record.target_path)
+                .file_name()
+                .context("catalog target has no filename")?
+                .to_string_lossy()
+        )))
     }
-
-    fn cache_record(&self) -> Result<CacheRecord> {
-        Ok(serde_json::from_slice(&fs::read(
-            self.root
-                .join(CACHE_PATH.trim_start_matches('/'))
-                .join("metadata.json"),
-        )?)?)
-    }
-
-    fn verify_package_target(
-        &self,
-        entry: &CatalogEntry,
-        record: &ThemeVersion,
-        manifest: &[u8],
-    ) -> Result<VerifiedTarget> {
-        let target = self.verify_signed_target(&record.target_path, manifest)?;
-        if target.length != record.package.length || target.sha256 != record.package.sha256 {
-            bail!("catalog package pin differs from delegated target")
-        }
-        if !record
-            .target_path
-            .starts_with(&format!("themes/{}/", entry.id))
-        {
-            bail!("catalog target identity differs from theme id")
-        }
-        Ok(target)
-    }
-
-    fn verify_signed_target(
-        &self,
-        target_path: &str,
-        target_bytes: &[u8],
-    ) -> Result<VerifiedTarget> {
-        let repository = self.fixtures.join("repository");
-        let state = self.root.join(".brickpro/theme-garden/trust-state.json");
-        Ok(TrustStore::new(&state)
-            .verify_repository(
-                RepositoryMetadata {
-                    root_bytes: &fs::read(repository.join("root.json"))?,
-                    root_updates: &[],
-                    timestamp_bytes: &fs::read(repository.join("timestamp.json"))?,
-                    snapshot_bytes: &fs::read(repository.join("snapshot.json"))?,
-                    targets_bytes: &fs::read(repository.join("targets.json"))?,
-                    delegated_role: "themes",
-                    delegated_bytes: &fs::read(repository.join("themes.json"))?,
-                    target_bytes,
-                },
-                target_path,
-                VerificationTime {
-                    now_rfc3339: NOW,
-                    uncertainty_seconds: 0,
-                },
-            )?
-            .target)
-    }
-
-    fn manifest_fixture_path(&self, id: &str, record: &ThemeVersion) -> Result<PathBuf> {
-        let filename = Path::new(&record.target_path)
-            .file_name()
-            .context("catalog target has no filename")?;
-        Ok(self
-            .fixtures
-            .join("repository")
-            .join(format!("{}-{}", id, filename.to_string_lossy())))
-    }
-
     fn payload_path(&self, id: &str, record: &ThemeVersion) -> PathBuf {
         let suffix = if record.version == "1.0.0" {
             String::new()
@@ -597,7 +510,6 @@ impl ThemeGarden {
         };
         self.fixtures.join("packages").join(format!("{id}{suffix}"))
     }
-
     fn acquire(
         &self,
         id: &str,
@@ -612,10 +524,10 @@ impl ThemeGarden {
         fs::create_dir_all(&directory)?;
         let partial = directory.join(format!("{version}.partial"));
         let validator = partial.with_extension("validator");
-        let expected_validator = format!("fixture-validator-{id}-{version}");
-        if fs::read_to_string(&validator).ok().as_deref() != Some(&expected_validator) {
+        let expected = format!("fixture-validator-{id}-{version}");
+        if fs::read_to_string(&validator).ok().as_deref() != Some(&expected) {
             let _ = fs::remove_file(&partial);
-            fs::write(&validator, &expected_validator)?;
+            fs::write(&validator, &expected)?;
         }
         let mut existing = fs::read(&partial).unwrap_or_default();
         if existing.len() > bytes.len() || !bytes.starts_with(&existing) {
@@ -634,11 +546,9 @@ impl ThemeGarden {
         fs::write(&partial, &existing)?;
         Ok(partial)
     }
-
     fn active_path(&self) -> PathBuf {
         self.root.join(".brickpro/theme-garden/active.json")
     }
-
     fn installed_theme_path(&self, active: &ActiveTheme) -> PathBuf {
         self.root
             .join(".brickpro/packages")
@@ -648,42 +558,10 @@ impl ThemeGarden {
     }
 }
 
-fn verify_catalog_target(
-    root: &Path,
-    fixtures: &Path,
-    cached_target: Option<&[u8]>,
-) -> Result<(Catalog, package_trust::VerificationReport, Vec<u8>)> {
-    let repository = fixtures.join("repository");
-    let target = cached_target
-        .map(ToOwned::to_owned)
-        .unwrap_or(fs::read(repository.join("catalog.json"))?);
-    let state = root.join(".brickpro/theme-garden/trust-state.json");
-    let report = TrustStore::new(&state).verify_repository(
-        RepositoryMetadata {
-            root_bytes: &fs::read(repository.join("root.json"))?,
-            root_updates: &[],
-            timestamp_bytes: &fs::read(repository.join("timestamp.json"))?,
-            snapshot_bytes: &fs::read(repository.join("snapshot.json"))?,
-            targets_bytes: &fs::read(repository.join("targets.json"))?,
-            delegated_role: "themes",
-            delegated_bytes: &fs::read(repository.join("themes.json"))?,
-            target_bytes: &target,
-        },
-        CATALOG_TARGET,
-        VerificationTime {
-            now_rfc3339: NOW,
-            uncertainty_seconds: 0,
-        },
-    )?;
-    let catalog = Catalog::parse(&target)?;
-    Ok((catalog, report, target))
-}
-
 fn validate_entry(entry: &CatalogEntry) -> Result<()> {
     if !identifier(&entry.id)
         || entry.author != "Project Authors"
         || entry.license != "MIT"
-        || !entry.provenance_url.starts_with("https://example.invalid/")
         || entry.versions.is_empty()
         || entry.versions.len() > 2
     {
@@ -717,7 +595,6 @@ fn validate_entry(entry: &CatalogEntry) -> Result<()> {
     }
     Ok(())
 }
-
 fn expected_target(id: &str, version: &str) -> String {
     if version == "1.0.0" {
         format!("themes/{id}/manifest.json")
@@ -725,28 +602,23 @@ fn expected_target(id: &str, version: &str) -> String {
         format!("themes/{id}/manifest-{version}.json")
     }
 }
-
 fn compatible_version(record: &ThemeVersion) -> bool {
     record.target_sku == TARGET_SKU
         && record.theme_api_version == THEME_API
         && record.theme_api_compatibility == ">=1.0.0 <2.0.0"
 }
-
 fn latest(versions: &[ThemeVersion]) -> Result<&ThemeVersion> {
     versions
         .iter()
         .max_by(|left, right| compare_version(&left.version, &right.version))
         .context("catalog has no versions")
 }
-
 fn compare_version(left: &str, right: &str) -> std::cmp::Ordering {
     version_parts(left).cmp(&version_parts(right))
 }
-
 fn greater_version(left: &str, right: &str) -> bool {
     compare_version(left, right).is_gt()
 }
-
 fn version_parts(value: &str) -> (u64, u64, u64) {
     let mut parts = value.split('.').map(|part| part.parse().unwrap_or(0));
     (
@@ -755,7 +627,6 @@ fn version_parts(value: &str) -> (u64, u64, u64) {
         parts.next().unwrap_or(0),
     )
 }
-
 fn identifier(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
@@ -764,21 +635,21 @@ fn identifier(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
-
 fn version(value: &str) -> bool {
     value.split('.').count() == 3
         && value
             .split('.')
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
-
 fn default_theme() -> ActiveTheme {
     ActiveTheme {
         id: ARTBOOK.into(),
         version: "1.0.0".into(),
     }
 }
-
+fn digest(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
 fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -788,7 +659,6 @@ fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::rename(temp, path)?;
     Ok(())
 }
-
 fn atomic_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     atomic_bytes(path, &serde_json::to_vec_pretty(value)?)
 }

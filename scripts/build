@@ -38,7 +38,6 @@ from pathlib import Path
 root = Path(os.environ["ROOT"])
 paths = [
     Path("containers/baseline/Dockerfile"),
-    Path("Cargo.lock"),
     Path(".cargo/config.toml"),
     Path("Cargo.toml"),
 ]
@@ -102,7 +101,6 @@ command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 DOCKERFILE_SHA256=$(sha256sum "$ROOT/containers/baseline/Dockerfile" | awk '{print $1}')
 BUILD_DEFINITION_SHA256=$(build_definition_digest)
 
-PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/provenance.py" check >/dev/null
 PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/check-diagnostics-schema" >/dev/null
 IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro-cfw.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro-cfw.build-definition-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
     || fail "baseline image is missing; run ./scripts/build image"
@@ -349,32 +347,12 @@ base.update({
     },
     "toolchain": toolchain,
     "payload": payload,
-    "provenance": {
-        "inventory": "provenance/components.json",
-        "inventorySha256": hashlib.sha256(
-            (root / "provenance/components.json").read_bytes()
-        ).hexdigest(),
-        "allowlist": "policy/distribution-allowlist.json",
-        "allowlistSha256": hashlib.sha256(
-            (root / "policy/distribution-allowlist.json").read_bytes()
-        ).hexdigest(),
-    },
 })
 manifest = out / "manifest.json"
 manifest.write_text(json.dumps(base, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
 os.chmod(manifest, 0o644)
 os.utime(manifest, (epoch, epoch))
 
-sys.dont_write_bytecode = True
-sys.path.insert(0, str(root / "scripts"))
-import provenance
-
-spdx = out / "brickpro-cfw.spdx.json"
-spdx.write_bytes(provenance.json_bytes(provenance.render_spdx(
-    json.loads((root / "provenance/components.json").read_text(encoding="utf-8")), payload
-)))
-os.chmod(spdx, 0o644)
-os.utime(spdx, (epoch, epoch))
 notices = out / "THIRD_PARTY_NOTICES.md"
 shutil.copyfile(root / "THIRD_PARTY_NOTICES.md", notices)
 os.chmod(notices, 0o644)
@@ -407,7 +385,6 @@ build_info = {
         for name in (
             "trimui-brick-pro-cfw-baseline.tar",
             "manifest.json",
-            "brickpro-cfw.spdx.json",
             "THIRD_PARTY_NOTICES.md",
         )
     },
@@ -423,7 +400,6 @@ checksums = out / "SHA256SUMS"
 names = (
     "trimui-brick-pro-cfw-baseline.tar",
     "manifest.json",
-    "brickpro-cfw.spdx.json",
     "THIRD_PARTY_NOTICES.md",
     "build-info.json",
 )
@@ -432,12 +408,8 @@ os.chmod(checksums, 0o644)
 os.utime(checksums, (epoch, epoch))
 PY
 
-PYTHONDONTWRITEBYTECODE=1 "$ROOT/scripts/audit-dist" "$STAGE" \
-    "$ROOT/policy/distribution-allowlist.json" \
-    --inventory "$ROOT/provenance/components.json" \
-    --manifest "$OUT/manifest.json" \
-    --spdx "$OUT/brickpro-cfw.spdx.json" \
-    --checksums "$OUT/SHA256SUMS" >/dev/null
+PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/audit-dist" "$STAGE" \
+    "$OUT/manifest.json" "$OUT/SHA256SUMS" >/dev/null
 
 for script in bootstrap/boot.sh bootstrap/recovery.sh; do
     dash -n "$STAGE/$script"

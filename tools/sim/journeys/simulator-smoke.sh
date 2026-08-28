@@ -321,7 +321,7 @@ def assert_session(case, identity):
     if request["kind"] != expected_kind:
         raise SystemExit(f"wrong launch kind for {identity}")
     if expected_kind == "portmaster" and request["package"]["id"] != identity:
-        raise SystemExit(f"wrong signed package identity for {identity}")
+        raise SystemExit(f"wrong package identity for {identity}")
     session = load(case / "session.json")
     if session.get("state") != "completed":
         raise SystemExit(f"session did not complete for {identity}")
@@ -355,8 +355,8 @@ def validate_run(run_name):
     package_log = run / "commands/package-manager.log"
     package_text = package_log.read_text(encoding="utf-8")
     for marker in (
-        "PASS signed delegated package target progression",
-        "PASS corrupt target leaves state unchanged and valid retry publishes once",
+        "PASS safe install promoted demo-theme 1.0.0",
+        "PASS interrupted install leaves no activation",
     ):
         if marker not in package_text:
             raise SystemExit(f"missing package boundary: {marker}")
@@ -429,7 +429,7 @@ def validate_run(run_name):
         "routes": [entry["route"] for entry in log_lines if entry["event"] == "route_selection"][:3],
         "launcherIdentities": list(IDENTITIES),
         "sessionCompletions": 4,
-        "packageBoundaries": ["signed-progression", "corrupt-target-retry"],
+        "packageBoundaries": ["safe-install", "interrupted-install"],
         "lifecycle": ["suspend-success", "resume-success", "checkpoint-failure-recovery"],
         "resume": ["accepted", "runner-mismatch-rejected"],
         "eventLog": normalized_log,
@@ -440,7 +440,7 @@ def validate_run(run_name):
         "outcome": "pass",
         "coverage": {
             "launcherSemanticLaunch": {"count": 4, "identities": list(IDENTITIES), "normalSessionCompletions": 4, "outcome": "pass"},
-            "packageSignedProgression": {"count": 1, "facility": "package-manager demo", "outcome": "pass"},
+            "packageInstall": {"count": 1, "facility": "package-manager demo", "outcome": "pass"},
             "packageRejectionRecovery": {"count": 1, "case": "corrupt-target-retry", "outcome": "pass"},
             "lifecycleSuspendResume": {"count": 1, "outcome": "pass"},
             "lifecycleNegativeRecovery": {"count": 1, "case": "checkpoint-failure-gated", "outcome": "pass"},

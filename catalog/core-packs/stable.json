@@ -1,163 +1,365 @@
 {
   "$schema": "https://example.invalid/trimui-tg4040-core-pack-v1.schema.json",
-  "format": "trimui-tg4040-core-pack",
-  "schemaVersion": 1,
-  "kind": "core-pack",
-  "id": "tg4040-stable-core-pack",
-  "version": "1.0.0",
-  "targetSku": "TG4040",
+  "blockedReason": "No runner, core, package, artifact, or BIOS input has been separately sourced or approved",
   "channel": "stable",
-  "status": "blocked",
-  "blockedReason": "No runner, core, package, artifact, license, or BIOS input has been separately sourced, approved, and signed.",
+  "defaults": {
+    "audioLatencyMs": 64,
+    "display": {
+      "height": 768,
+      "overlay": null,
+      "scaling": "integer",
+      "shader": null,
+      "width": 1024
+    },
+    "frameSkip": 0,
+    "inputProfileId": "default",
+    "rumble": false
+  },
+  "displayPrecedence": [
+    "system",
+    "profile",
+    "game",
+    "reset"
+  ],
+  "format": "trimui-tg4040-core-pack",
+  "id": "tg4040-stable-core-pack",
+  "inputPrecedence": [
+    "built-in",
+    "system",
+    "game",
+    "session"
+  ],
+  "kind": "core-pack",
   "package": {
+    "artifact": {
+      "id": "tg4040-stable-core-pack-artifact",
+      "sha256": null
+    },
+    "blockedReason": "No package manifest or approved package payload exists.",
     "id": "tg4040-stable-core-pack",
-    "version": "1.0.0",
-    "targetArchitecture": "aarch64-unknown-linux-musl",
-    "manifest": {"id": "tg4040-stable-core-pack-manifest", "sha256": null},
-    "artifact": {"id": "tg4040-stable-core-pack-artifact", "sha256": null},
+    "manifest": {
+      "id": "tg4040-stable-core-pack-manifest",
+      "sha256": null
+    },
     "status": "blocked",
-    "blockedReason": "No signed package manifest or approved package payload exists."
+    "targetArchitecture": "aarch64-unknown-linux-musl",
+    "version": "1.0.0"
+  },
+  "routing": {
+    "mode": "explicit-system-selection",
+    "sharedExtensions": [
+      "zip"
+    ]
   },
   "runner": {
+    "artifact": {
+      "id": "project-authored-libretro-runner-artifact",
+      "sha256": null
+    },
+    "blockedReason": "No separately sourced and approved runner artifact exists.",
     "id": "project-authored-libretro-runner",
-    "version": "1.0.0",
-    "targetArchitecture": "aarch64-unknown-linux-musl",
-    "manifest": {"id": "project-authored-libretro-runner-manifest", "sha256": null},
-    "artifact": {"id": "project-authored-libretro-runner-artifact", "sha256": null},
+    "manifest": {
+      "id": "project-authored-libretro-runner-manifest",
+      "sha256": null
+    },
     "status": "blocked",
-    "blockedReason": "No separately sourced, licensed, signed, and approved runner artifact exists."
+    "targetArchitecture": "aarch64-unknown-linux-musl",
+    "version": "1.0.0"
   },
+  "schemaVersion": 1,
+  "status": "blocked",
   "systems": [
     {
+      "biosRequirements": [
+        {
+          "blockedReason": "BIOS identity and approved hash are not available.",
+          "expectedSha256": null,
+          "id": "gameboy-system-rom",
+          "required": true,
+          "status": "blocked"
+        }
+      ],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-gambatte-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-gambatte",
+        "manifest": {
+          "id": "core-gambatte-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "gb"
+      ],
       "id": "gb",
-      "extensions": ["gb"],
-      "core": {
-        "id": "core-gambatte", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-gambatte-manifest", "sha256": null},
-        "artifact": {"id": "core-gambatte-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [{"id": "gameboy-system-rom", "required": true, "expectedSha256": null, "status": "blocked", "blockedReason": "BIOS identity and approved hash are not available."}],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [
+        {
+          "blockedReason": "BIOS identity and approved hash are not available.",
+          "expectedSha256": null,
+          "id": "gameboy-system-rom",
+          "required": true,
+          "status": "blocked"
+        }
+      ],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-gambatte-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-gambatte",
+        "manifest": {
+          "id": "core-gambatte-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "gbc"
+      ],
       "id": "gbc",
-      "extensions": ["gbc"],
-      "core": {
-        "id": "core-gambatte", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-gambatte-manifest", "sha256": null},
-        "artifact": {"id": "core-gambatte-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [{"id": "gameboy-system-rom", "required": true, "expectedSha256": null, "status": "blocked", "blockedReason": "BIOS identity and approved hash are not available."}],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-mgba-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-mgba",
+        "manifest": {
+          "id": "core-mgba-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "gba"
+      ],
       "id": "gba",
-      "extensions": ["gba"],
-      "core": {
-        "id": "core-mgba", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-mgba-manifest", "sha256": null},
-        "artifact": {"id": "core-mgba-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-genesis-plus-gx-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-genesis-plus-gx",
+        "manifest": {
+          "id": "core-genesis-plus-gx-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "md",
+        "gen"
+      ],
       "id": "mega-drive",
-      "extensions": ["md", "gen"],
-      "core": {
-        "id": "core-genesis-plus-gx", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-genesis-plus-gx-manifest", "sha256": null},
-        "artifact": {"id": "core-genesis-plus-gx-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-mesen-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-mesen",
+        "manifest": {
+          "id": "core-mesen-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "nes"
+      ],
       "id": "nes",
-      "extensions": ["nes"],
-      "core": {
-        "id": "core-mesen", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-mesen-manifest", "sha256": null},
-        "artifact": {"id": "core-mesen-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-snes9x-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-snes9x",
+        "manifest": {
+          "id": "core-snes9x-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "sfc",
+        "smc"
+      ],
       "id": "snes",
-      "extensions": ["sfc", "smc"],
-      "core": {
-        "id": "core-snes9x", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-snes9x-manifest", "sha256": null},
-        "artifact": {"id": "core-snes9x-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-beetle-pce-fast-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-beetle-pce-fast",
+        "manifest": {
+          "id": "core-beetle-pce-fast-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "pce"
+      ],
       "id": "pc-engine",
-      "extensions": ["pce"],
-      "core": {
-        "id": "core-beetle-pce-fast", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-beetle-pce-fast-manifest", "sha256": null},
-        "artifact": {"id": "core-beetle-pce-fast-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-fbneo-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-fbneo",
+        "manifest": {
+          "id": "core-fbneo-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "zip"
+      ],
       "id": "neo-geo",
-      "extensions": ["zip"],
-      "core": {
-        "id": "core-fbneo", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-fbneo-manifest", "sha256": null},
-        "artifact": {"id": "core-fbneo-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
+      "biosRequirements": [],
+      "blockedReason": "The core-pack is blocked.",
+      "core": {
+        "artifact": {
+          "id": "core-fbneo-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-fbneo",
+        "manifest": {
+          "id": "core-fbneo-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
+      },
+      "extensions": [
+        "zip"
+      ],
       "id": "arcade",
-      "extensions": ["zip"],
-      "core": {
-        "id": "core-fbneo", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-fbneo-manifest", "sha256": null},
-        "artifact": {"id": "core-fbneo-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
-      },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     },
     {
-      "id": "ps1",
-      "extensions": ["cue", "chd", "iso", "pbp", "m3u"],
+      "biosRequirements": [
+        {
+          "blockedReason": "BIOS identity and approved hash are not available.",
+          "expectedSha256": null,
+          "id": "ps1-system-rom",
+          "required": true,
+          "status": "blocked"
+        }
+      ],
+      "blockedReason": "The core-pack is blocked.",
       "core": {
-        "id": "core-pcsx-rearmed", "version": "1.0.0", "targetArchitecture": "aarch64-unknown-linux-musl",
-        "manifest": {"id": "core-pcsx-rearmed-manifest", "sha256": null},
-        "artifact": {"id": "core-pcsx-rearmed-artifact", "sha256": null},
-        "status": "blocked", "blockedReason": "Prospective core identity only; source, license, signature, and artifact approval are incomplete."
+        "artifact": {
+          "id": "core-pcsx-rearmed-artifact",
+          "sha256": null
+        },
+        "blockedReason": "Prospective core identity only; source, license, and artifact approval are incomplete.",
+        "id": "core-pcsx-rearmed",
+        "manifest": {
+          "id": "core-pcsx-rearmed-manifest",
+          "sha256": null
+        },
+        "status": "blocked",
+        "targetArchitecture": "aarch64-unknown-linux-musl",
+        "version": "1.0.0"
       },
-      "packageId": "tg4040-stable-core-pack", "packageVersion": "1.0.0", "biosRequirements": [{"id": "ps1-system-rom", "required": true, "expectedSha256": null, "status": "blocked", "blockedReason": "BIOS identity and approved hash are not available."}],
-      "status": "blocked", "blockedReason": "The core-pack is blocked."
+      "extensions": [
+        "cue",
+        "chd",
+        "iso",
+        "pbp",
+        "m3u"
+      ],
+      "id": "ps1",
+      "packageId": "tg4040-stable-core-pack",
+      "packageVersion": "1.0.0",
+      "status": "blocked"
     }
   ],
-  "routing": {"mode": "explicit-system-selection", "sharedExtensions": ["zip"]},
-  "defaults": {
-    "display": {"width": 1024, "height": 768, "scaling": "integer", "shader": null, "overlay": null},
-    "frameSkip": 0,
-    "rumble": false,
-    "audioLatencyMs": 64,
-    "inputProfileId": "default"
-  },
-  "displayPrecedence": ["system", "profile", "game", "reset"],
-  "inputPrecedence": ["built-in", "system", "game", "session"],
-  "provenance": {"status": "blocked", "blockedReason": "Project-authored planning metadata only; no third-party source, payload, license clearance, or signing evidence is present."}
+  "targetSku": "TG4040",
+  "version": "1.0.0"
 }

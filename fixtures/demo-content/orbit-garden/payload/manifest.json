@@ -1,59 +1,57 @@
 {
   "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
-  "format": "brickpro-package",
-  "schemaVersion": 1,
-  "id": "orbit-garden",
-  "version": "1.0.0",
-  "targetSku": "TG4040",
-  "tier": "verified",
-  "type": "portmaster",
-  "files": [
-    {
-      "path": "immutable/port/launch.sh",
-      "sha256": "621eda3d0451f451e54056d66b8d6d6e82cf0d8c6761fb55cb8b5b9c9a0b18d7",
-      "length": 1034,
-      "class": "immutable"
-    },
-    {
-      "path": "immutable/port/metadata.json",
-      "sha256": "9f1868028b0a4bcea96f4cf6c439678c429b45f3edeab0d720c375e1c606cddb",
-      "length": 77,
-      "class": "immutable"
-    },
-    {
-      "path": "runtime/lib/README.txt",
-      "sha256": "a14eee6bee029c6d8512fb2d1a1745cd943f717610343b600ee78a1c888994dc",
-      "length": 21,
-      "class": "runtime"
-    }
-  ],
-  "entrypoints": [
-    {
-      "name": "launch",
-      "path": "immutable/port/launch.sh",
-      "mode": "0755"
-    }
-  ],
-  "runtime": {
-    "path": "runtime",
-    "dependencies": []
-  },
   "capabilities": {
-    "network": [],
-    "input": [
-      "buttons"
-    ],
     "audio": [
       "playback"
     ],
     "display": [
       "read"
     ],
+    "input": [
+      "buttons"
+    ],
+    "network": [],
     "save": [
       "read",
       "write"
     ]
   },
+  "entrypoints": [
+    {
+      "mode": "0755",
+      "name": "launch",
+      "path": "immutable/port/launch.sh"
+    }
+  ],
+  "files": [
+    {
+      "class": "immutable",
+      "length": 1034,
+      "path": "immutable/port/launch.sh",
+      "sha256": "621eda3d0451f451e54056d66b8d6d6e82cf0d8c6761fb55cb8b5b9c9a0b18d7"
+    },
+    {
+      "class": "immutable",
+      "length": 77,
+      "path": "immutable/port/metadata.json",
+      "sha256": "9f1868028b0a4bcea96f4cf6c439678c429b45f3edeab0d720c375e1c606cddb"
+    },
+    {
+      "class": "runtime",
+      "length": 21,
+      "path": "runtime/lib/README.txt",
+      "sha256": "a14eee6bee029c6d8512fb2d1a1745cd943f717610343b600ee78a1c888994dc"
+    }
+  ],
+  "format": "brickpro-package",
+  "id": "orbit-garden",
+  "runtime": {
+    "dependencies": [],
+    "path": "runtime"
+  },
+  "schemaVersion": 1,
+  "targetSku": "TG4040",
+  "type": "portmaster",
   "uninstall": {
     "preserve": [
       "/roms",
@@ -67,17 +65,5 @@
       "staging"
     ]
   },
-  "license": {
-    "spdx": "MIT",
-    "source": "https://example.invalid/orbit-garden"
-  },
-  "provenance": {
-    "sbom": "provenance/brickpro-cfw.spdx.json",
-    "source": "generated synthetic platform demo"
-  },
-  "developer": {
-    "enabled": false,
-    "localKeyTrusted": false,
-    "nonRoot": true
-  }
+  "version": "1.0.0"
 }

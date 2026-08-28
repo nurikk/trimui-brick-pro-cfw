@@ -1,48 +1,142 @@
 {
   "$schema": "urn:project:theme-v1",
-  "format": "theme-v1",
-  "schemaVersion": 1,
-  "metadata": {
-    "name": "High Contrast",
-    "author": "Project Authors",
-    "license": "MIT",
-    "provenance": "project-authored"
+  "canvas": {
+    "aspect": "4:3",
+    "height": 768,
+    "width": 1024
   },
-  "canvas": { "width": 1024, "height": 768, "aspect": "4:3" },
   "colors": {
-    "background": "#000000",
-    "surface": "#181818",
     "accent": "#0055FF",
-    "text": "#FFFFFF",
+    "background": "#000000",
+    "highlight": "#FFFF00",
     "muted": "#404040",
-    "highlight": "#FFFF00"
+    "surface": "#181818",
+    "text": "#FFFFFF"
   },
-  "resources": {
-    "font": { "kind": "builtin", "ref": "generated-sans", "budgetBytes": 0 },
-    "icon": { "kind": "generated", "ref": "controller-mark", "budgetBytes": 0 },
-    "background": { "kind": "generated", "ref": "grid-gradient", "budgetBytes": 0 },
-    "sound": { "kind": "builtin", "ref": "silent", "budgetBytes": 0 }
+  "fallback": {
+    "onInvalid": "safe-artbook",
+    "splash": "generated-neutral"
   },
+  "format": "theme-v1",
   "layout": {
-    "preset": "contrast",
     "maxVisibleGames": 10,
+    "preset": "contrast",
     "regions": [
-      { "id": "system-art", "kind": "system-art", "x": 20, "y": 68, "width": 390, "height": 260, "visible": true },
-      { "id": "game-list", "kind": "game-list", "x": 430, "y": 68, "width": 574, "height": 260, "visible": true },
-      { "id": "box-art", "kind": "box-art-placeholder", "x": 20, "y": 350, "width": 190, "height": 200, "visible": true },
-      { "id": "screenshot", "kind": "screenshot-placeholder", "x": 230, "y": 350, "width": 290, "height": 164, "visible": true },
-      { "id": "metadata", "kind": "metadata", "x": 540, "y": 350, "width": 464, "height": 200, "visible": true },
-      { "id": "menu", "kind": "menu", "x": 20, "y": 580, "width": 984, "height": 90, "visible": true },
-      { "id": "help", "kind": "help-strip", "x": 20, "y": 696, "width": 720, "height": 40, "visible": true },
-      { "id": "clock", "kind": "clock", "x": 770, "y": 10, "width": 100, "height": 40, "visible": true },
-      { "id": "battery", "kind": "battery", "x": 884, "y": 10, "width": 120, "height": 40, "visible": true }
+      {
+        "height": 260,
+        "id": "system-art",
+        "kind": "system-art",
+        "visible": true,
+        "width": 390,
+        "x": 20,
+        "y": 68
+      },
+      {
+        "height": 260,
+        "id": "game-list",
+        "kind": "game-list",
+        "visible": true,
+        "width": 574,
+        "x": 430,
+        "y": 68
+      },
+      {
+        "height": 200,
+        "id": "box-art",
+        "kind": "box-art-placeholder",
+        "visible": true,
+        "width": 190,
+        "x": 20,
+        "y": 350
+      },
+      {
+        "height": 164,
+        "id": "screenshot",
+        "kind": "screenshot-placeholder",
+        "visible": true,
+        "width": 290,
+        "x": 230,
+        "y": 350
+      },
+      {
+        "height": 200,
+        "id": "metadata",
+        "kind": "metadata",
+        "visible": true,
+        "width": 464,
+        "x": 540,
+        "y": 350
+      },
+      {
+        "height": 90,
+        "id": "menu",
+        "kind": "menu",
+        "visible": true,
+        "width": 984,
+        "x": 20,
+        "y": 580
+      },
+      {
+        "height": 40,
+        "id": "help",
+        "kind": "help-strip",
+        "visible": true,
+        "width": 720,
+        "x": 20,
+        "y": 696
+      },
+      {
+        "height": 40,
+        "id": "clock",
+        "kind": "clock",
+        "visible": true,
+        "width": 100,
+        "x": 770,
+        "y": 10
+      },
+      {
+        "height": 40,
+        "id": "battery",
+        "kind": "battery",
+        "visible": true,
+        "width": 120,
+        "x": 884,
+        "y": 10
+      }
     ]
   },
+  "metadata": {
+    "author": "Project Authors",
+    "license": "MIT",
+    "name": "High Contrast"
+  },
+  "resources": {
+    "background": {
+      "budgetBytes": 0,
+      "kind": "generated",
+      "ref": "grid-gradient"
+    },
+    "font": {
+      "budgetBytes": 0,
+      "kind": "builtin",
+      "ref": "generated-sans"
+    },
+    "icon": {
+      "budgetBytes": 0,
+      "kind": "generated",
+      "ref": "controller-mark"
+    },
+    "sound": {
+      "budgetBytes": 0,
+      "kind": "builtin",
+      "ref": "silent"
+    }
+  },
+  "schemaVersion": 1,
   "settings": {
     "artworkMode": "box-art",
-    "metadataVisibility": "full",
+    "colorScheme": "high-contrast",
     "fontScale": 120,
-    "colorScheme": "high-contrast"
-  },
-  "fallback": { "splash": "generated-neutral", "onInvalid": "safe-artbook" }
+    "metadataVisibility": "full"
+  }
 }

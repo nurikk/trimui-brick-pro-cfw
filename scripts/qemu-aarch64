@@ -3,7 +3,6 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 BASE_IMAGE=debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
-LOCK=$ROOT/containers/qemu/versions.lock
 EPOCH=${SOURCE_DATE_EPOCH-}
 WORK=
 REPORT=
@@ -31,10 +30,6 @@ cleanup() {
     fi
 }
 trap cleanup EXIT HUP INT TERM
-
-lock_sha256() {
-    sha256sum "$LOCK" | awk '{print $1}'
-}
 
 qemu_run() {
     docker run --rm --network none --read-only --cap-drop=ALL \
@@ -73,9 +68,7 @@ busybox_nested_run() {
 if [ "$#" -eq 1 ] && [ "$1" = image ]; then
     command -v docker >/dev/null 2>&1 || fail "docker is required"
     command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
-    QEMU_LOCK_SHA256=$(lock_sha256)
     docker build --platform linux/amd64 \
-        --build-arg "QEMU_LOCK_SHA256=$QEMU_LOCK_SHA256" \
         --build-arg "DOCKER_CACHE_SCOPE=$DOCKER_NAMESPACE" \
         --label "$WORKTREE_LABEL" \
         --label "$ROOT_LABEL" \
@@ -110,10 +103,9 @@ esac
 for command in docker python3 dash file readelf sha256sum jq tar; do
     command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
-LOCK_SHA256=$(lock_sha256)
-IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro.qemu.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro.qemu.lock-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
+IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro.qemu.base-image" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
     || fail "qemu image is missing; run ./scripts/qemu-aarch64 image"
-[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$LOCK_SHA256|$DOCKER_NAMESPACE|$ROOT_FINGERPRINT|$SOURCE_FINGERPRINT|$DOCKER_NAMESPACE" ] \
+[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$DOCKER_NAMESPACE|$ROOT_FINGERPRINT|$SOURCE_FINGERPRINT|$DOCKER_NAMESPACE" ] \
     || fail "qemu image is stale, foreign, or missing exact checkout labels; run ./scripts/qemu-aarch64 image"
 
 TMP_BASE=${TMPDIR:-/tmp}
@@ -284,7 +276,7 @@ BRICKPRO_SIMULATION_RECOVERY=/data/qemu-recovery \
 BRICKPRO_SIMULATION_SUPERVISOR=/data/qemu-supervisor \
 busybox_nested_run /system/bootstrap/recovery.sh --simulation-fixture-root /data/recovery-supported --select safe-mode >"$RESULTS/recovery.json"
 
-ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" DATA="$DATA" RESULTS="$RESULTS" REPORT="$REPORT" LOCK="$LOCK" DOCKER_NAMESPACE="$DOCKER_NAMESPACE" ROOT_FINGERPRINT="$ROOT_FINGERPRINT" SOURCE_FINGERPRINT="$SOURCE_FINGERPRINT" BASE_IMAGE="$BASE_IMAGE" LOCK_SHA256="$LOCK_SHA256" python3 - <<'PY'
+ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" DATA="$DATA" RESULTS="$RESULTS" REPORT="$REPORT" DOCKER_NAMESPACE="$DOCKER_NAMESPACE" ROOT_FINGERPRINT="$ROOT_FINGERPRINT" SOURCE_FINGERPRINT="$SOURCE_FINGERPRINT" BASE_IMAGE="$BASE_IMAGE" python3 - <<'PY'
 import hashlib
 import json
 import os
@@ -319,10 +311,9 @@ for item in broker:
 
 package_lines = (results / "package-manager.txt").read_text().splitlines()
 package_checks = [
-    "PASS signed delegated package target progression",
+    "PASS safe install promoted demo-theme 1.0.0",
     "PASS blocked core-pack rejected before installation",
-    "PASS install promoted immutable activation demo-theme 1.0.0",
-    "PASS uninstall preserves ROM/save/state/resume bytes",
+    "PASS uninstall preserves protected data",
     "PASS interrupted install leaves no activation",
     "PASS interrupted uninstall preserves protected data",
 ]
@@ -383,8 +374,6 @@ report_data = {
         "rootFingerprint": os.environ["ROOT_FINGERPRINT"],
         "sourceFingerprint": os.environ["SOURCE_FINGERPRINT"],
         "baseImage": os.environ["BASE_IMAGE"],
-        "lockFile": "containers/qemu/versions.lock",
-        "lockSha256": os.environ["LOCK_SHA256"],
         "toolchain": [],
     },
     "cleanup": {

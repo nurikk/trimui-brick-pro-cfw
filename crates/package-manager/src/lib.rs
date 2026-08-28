@@ -15,7 +15,15 @@ const MAX_FILES: usize = 64;
 const MAX_EXPANDED_BYTES: u64 = 1_048_576;
 const PACKAGE_STATE: &str = ".brickpro/package-state";
 const PACKAGE_ROOT: &str = ".brickpro/packages";
-const PRESERVED: [&str; 4] = ["/roms", "/data/saves", "/data/states", "/data/resume"];
+const PRESERVED: [&str; 6] = [
+    "/roms",
+    "/data/saves",
+    "/data/states",
+    "/data/resume",
+    "/data/settings",
+    "/.brickpro/save-vault",
+];
+
 const LEGACY_PRESERVED: [&str; 3] = ["/roms", "/data/saves", "/data/states"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -409,6 +417,10 @@ where
     verify_tier(&manifest, context)?;
     let root = root.canonicalize().context("resolve package root")?;
     reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
+    save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)
+        .map_err(|error| anyhow::anyhow!("pre-package save snapshot failed: {error}"))?;
+    let vault_before = save_vault::SaveVault::standard_integrity(&root)
+        .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?;
     let payload_root = payload_root
         .canonicalize()
         .context("resolve package payload root")?;
@@ -532,6 +544,13 @@ where
         let _ = fs::remove_dir_all(&staging);
         let _ = fs::remove_dir_all(&version_root);
     }
+    if result.is_ok()
+        && save_vault::SaveVault::standard_integrity(&root)
+            .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?
+            != vault_before
+    {
+        return Err(anyhow::anyhow!("package transaction changed save vault"));
+    }
     result
 }
 
@@ -601,6 +620,10 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     let record: ActivationRecord =
         serde_json::from_slice(&fs::read(&state_path)?).context("read activation record")?;
     validate_activation_record(&record, id)?;
+    save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)
+        .map_err(|error| anyhow::anyhow!("pre-package save snapshot failed: {error}"))?;
+    let vault_before = save_vault::SaveVault::standard_integrity(&root)
+        .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?;
     let canonical_root = root.canonicalize()?;
     let version_root = package_root.join(&record.version);
     reject_symlink_path(&version_root, "package version root")?;
@@ -632,6 +655,12 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
         fs::remove_dir(package_root)?;
     }
     fs::remove_file(state_path)?;
+    if save_vault::SaveVault::standard_integrity(&root)
+        .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?
+        != vault_before
+    {
+        return Err(anyhow::anyhow!("package uninstall changed save vault"));
+    }
     Ok(())
 }
 

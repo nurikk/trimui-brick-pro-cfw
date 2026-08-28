@@ -20,3 +20,4 @@ emulator-catalog = { path = "../emulator-catalog" }
 display-profile = { path = "../display-profile" }
 input-profile = { path = "../input-profile" }
 settings-schema = { path = "../settings-schema" }
+save-vault = { path = "../save-vault" }

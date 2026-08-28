@@ -123,6 +123,7 @@ struct AppState {
     route: Route,
     selected_index: usize,
     broker: Box<dyn SessionBrokerClient>,
+    save_vault: SaveVaultUi,
     active_session: Option<SessionHandle>,
     last_session: Option<SessionResult>,
     modal: Option<String>,
@@ -132,6 +133,26 @@ struct AppState {
     presentation: PresentationState,
     session_step: u32,
     lifecycle: LifecycleController,
+}
+
+struct SaveVaultUi {
+    screen: String,
+    history_count: usize,
+    protected_count: usize,
+    preview: Option<session_broker::SaveVaultPreview>,
+    confirmed: bool,
+}
+
+impl Default for SaveVaultUi {
+    fn default() -> Self {
+        Self {
+            screen: "hidden".into(),
+            history_count: 0,
+            protected_count: 0,
+            preview: None,
+            confirmed: false,
+        }
+    }
 }
 
 struct PresentationState {
@@ -238,6 +259,12 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EmptyArgs {}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveVaultRestoreArgs {
+    confirmed: bool,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -613,6 +640,7 @@ fn run_session<P: Platform>(
         route: Route::Library,
         selected_index: 0,
         broker,
+        save_vault: SaveVaultUi::default(),
         active_session: None,
         last_session: None,
         modal: None,
@@ -881,6 +909,38 @@ fn handle_request<P: Platform>(
                 &args.name,
                 "screenshot",
             )
+        }),
+        "save-vault.history" => parse_empty(request.args).and_then(|_| {
+            let history = state
+                .broker
+                .save_vault_history()
+                .map_err(|error| error.to_string())?;
+            state.save_vault.history_count = history.len();
+            state.save_vault.protected_count =
+                history.iter().filter(|entry| entry.protected).count();
+            state.save_vault.screen = "history".into();
+            serde_json::to_value(history).map_err(|error| error.to_string())
+        }),
+        "save-vault.preview" => parse_empty(request.args).and_then(|_| {
+            let preview = state
+                .broker
+                .save_vault_preview()
+                .map_err(|error| error.to_string())?;
+            state.save_vault.preview = Some(preview.clone());
+            state.save_vault.screen = "preview".into();
+            serde_json::to_value(preview).map_err(|error| error.to_string())
+        }),
+        "save-vault.restore" => parse::<SaveVaultRestoreArgs>(request.args).and_then(|args| {
+            if !args.confirmed {
+                return Err("save-vault restore requires explicit confirmation".into());
+            }
+            state
+                .broker
+                .save_vault_restore(true)
+                .map_err(|error| error.to_string())?;
+            state.save_vault.confirmed = true;
+            state.save_vault.screen = "restored".into();
+            Ok(json!({"restored": true}))
         }),
         "autosave" => parse::<AutosaveArgs>(request.args).and_then(|args| {
             let fault = match args.fault.as_deref() {
@@ -1233,6 +1293,48 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
                     message: "generated-radio-unavailable".into(),
                 }),
             )
+        }
+        "save-vault-history" => {
+            let entries = state
+                .broker
+                .save_vault_history()
+                .map_err(|error| error.to_string())?;
+            state.save_vault.history_count = entries.len();
+            state.save_vault.protected_count =
+                entries.iter().filter(|entry| entry.protected).count();
+            state.save_vault.preview = None;
+            state.save_vault.confirmed = false;
+            state.save_vault.screen = "history".into();
+        }
+        "save-vault-preview" => {
+            state.save_vault.preview = Some(
+                state
+                    .broker
+                    .save_vault_preview()
+                    .map_err(|error| error.to_string())?,
+            );
+            state.save_vault.screen = "preview".into();
+        }
+        "save-vault-confirm" => {
+            if state.save_vault.preview.is_none() {
+                return Err("save-vault preview is required".into());
+            }
+            state.save_vault.confirmed = true;
+            state.save_vault.screen = "confirm".into();
+        }
+        "save-vault-restore" => {
+            if !state.save_vault.confirmed {
+                return Err("save-vault confirmation is required".into());
+            }
+            state
+                .broker
+                .save_vault_restore(true)
+                .map_err(|error| error.to_string())?;
+            state.save_vault.screen = "restored".into();
+        }
+        "save-vault-cancel" => {
+            state.save_vault.confirmed = false;
+            state.save_vault.screen = "cancelled".into();
         }
         "fallback" => {
             state.presentation.theme_fallback = Some(launcher_theme::Reason::MissingTheme);
@@ -1654,7 +1756,10 @@ fn handle_button<P: Platform>(
     }
 
     let route_before_presentation = state.route.clone();
-    handle_presentation_button(&mut state.presentation, event.button)?;
+    let vault_button = handle_save_vault_button(state, event.button)?;
+    if !vault_button {
+        handle_presentation_button(&mut state.presentation, event.button)?;
+    }
     if matches!(state.presentation.ui.route, ui_model::Route::GameSwitcher) {
         state.route = Route::GameSwitcher;
     } else if matches!(state.presentation.ui.route, ui_model::Route::Home)
@@ -1854,6 +1959,7 @@ fn state_json<P: Platform>(
         "platformState": platform.platform_state().map_err(|error| error.to_string())?,
         "faults": state.faults,
         "lifecycle": state.lifecycle.evidence(),
+        "saveVault": save_vault_json(state),
         "presentation": presentation,
     }))
 }
@@ -2054,6 +2160,66 @@ fn launch_request(
             suspend: SuspendMode::Allowed,
             battery_saver: false,
         },
+    })
+}
+
+fn handle_save_vault_button(state: &mut AppState, button: Button) -> Result<bool> {
+    if state.save_vault.screen == "hidden" {
+        return Ok(false);
+    }
+    match (state.save_vault.screen.as_str(), button) {
+        ("history", Button::Primary) => {
+            state.save_vault.preview = Some(
+                state
+                    .broker
+                    .save_vault_preview()
+                    .map_err(|error| anyhow!(error.to_string()))?,
+            );
+            state.save_vault.screen = "preview".into();
+        }
+        ("preview", Button::Primary) => {
+            state.save_vault.confirmed = true;
+            state.save_vault.screen = "confirm".into();
+        }
+        ("confirm", Button::Primary) => {
+            state
+                .broker
+                .save_vault_restore(true)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            state.save_vault.screen = "restored".into();
+        }
+        (_, Button::Secondary) => {
+            state.save_vault.confirmed = false;
+            state.save_vault.screen = "cancelled".into();
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+fn save_vault_json(state: &AppState) -> Value {
+    let preview = state.save_vault.preview.as_ref().map(|value| {
+        json!({
+            "generation": value.generation,
+            "runnerVersion": value.runner_version,
+            "coreVersion": value.core_version,
+            "oldSize": value.old_size,
+            "newSize": value.new_size,
+            "oldHashStatus": value.old_hash_status,
+            "newHashStatus": value.new_hash_status,
+            "oldHashPrefix": value.old_hash_prefix,
+            "newHashPrefix": value.new_hash_prefix,
+            "affectedKinds": value.affected_kinds,
+            "reason": value.reason,
+            "timestampMs": value.timestamp_ms,
+        })
+    });
+    json!({
+        "screen": state.save_vault.screen,
+        "historyCount": state.save_vault.history_count,
+        "protectedCount": state.save_vault.protected_count,
+        "preview": preview,
+        "confirmed": state.save_vault.confirmed,
     })
 }
 

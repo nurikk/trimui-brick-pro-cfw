@@ -157,6 +157,7 @@ for name in os.listdir(os.path.join(resume, "generations")):
 expected_content_ids = {"nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"}
 allowed_reasons = {"periodic", "pre-suspend", "low-battery", "normal-exit"}
 assert all(record["contentId"] in expected_content_ids for record in generations)
+assert len(generations) == len({record["contentId"] for record in generations}) == 4
 assert all(record["reason"] in allowed_reasons for record in generations)
 assert current_generation in {record["generation"] for record in generations}
 with open(os.path.join(run, "resume-before-decisions.json"), encoding="utf-8") as stream:

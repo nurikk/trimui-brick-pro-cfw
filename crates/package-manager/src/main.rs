@@ -7,7 +7,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use package_manager::{
     install, load_manifest, uninstall, upgrade, validate_manifest, TransactionOptions, TrustContext,
 };
@@ -72,6 +72,11 @@ fn demo(fixtures: &Path) -> Result<()> {
         root.join(".brickpro/save-vault/keep.record"),
         b"generated-save-vault-boundary",
     )?;
+    let snapshot =
+        save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)?;
+    if !snapshot.committed {
+        bail!("demo pre-package save snapshot was not committed")
+    }
     let protected_before = protected_bytes(&root)?;
     let state = root.join(".brickpro/trust-state.json");
     let report = verify_fixture(&repository, &state, target_path)?;
@@ -337,7 +342,7 @@ fn demo(fixtures: &Path) -> Result<()> {
     println!("PASS clock uncertainty rejection");
 
     let rollback_state = root.join(".brickpro/rollback-state.json");
-    fs::create_dir_all(rollback_state.parent().unwrap())?;
+    fs::create_dir_all(rollback_state.parent().context("rollback state parent")?)?;
     fs::write(
         &rollback_state,
         serde_json::to_vec(&TrustedMetadataState {
@@ -414,7 +419,12 @@ fn verify_fixture(
     state: &Path,
     target: &str,
 ) -> Result<package_trust::VerificationReport> {
-    let target_bytes = fs::read(repository.parent().unwrap().join("payload/manifest.json"))?;
+    let target_bytes = fs::read(
+        repository
+            .parent()
+            .context("package fixture parent")?
+            .join("payload/manifest.json"),
+    )?;
     verify_fixture_with_target(repository, state, target, &target_bytes)
 }
 
@@ -440,7 +450,12 @@ fn verify_fixture_with_root(
     target: &str,
     root: &[u8],
 ) -> Result<package_trust::VerificationReport> {
-    let target_bytes = fs::read(repository.parent().unwrap().join("payload/manifest.json"))?;
+    let target_bytes = fs::read(
+        repository
+            .parent()
+            .context("package fixture parent")?
+            .join("payload/manifest.json"),
+    )?;
     verify_fixture_with_store_and_root(
         repository,
         &TrustStore::new(state),
@@ -461,7 +476,12 @@ fn verify_fixture_with_timestamp(
     target: &str,
     timestamp: &[u8],
 ) -> Result<package_trust::VerificationReport> {
-    let target_bytes = fs::read(repository.parent().unwrap().join("payload/manifest.json"))?;
+    let target_bytes = fs::read(
+        repository
+            .parent()
+            .context("package fixture parent")?
+            .join("payload/manifest.json"),
+    )?;
     verify_fixture_with_store_and_root(
         repository,
         &TrustStore::new(state),

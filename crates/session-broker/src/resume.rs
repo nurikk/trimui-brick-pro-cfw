@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
@@ -613,8 +614,20 @@ impl ResumeStore {
             .filter(|(number, _)| *number <= current)
             .collect::<Vec<_>>();
         generations.sort_by_key(|(number, _)| *number);
-        while generations.len() > MAX_HISTORY {
-            let (_, path) = generations.remove(0);
+        let mut seen_content_ids = HashSet::new();
+        let mut retained = Vec::with_capacity(generations.len());
+        for (number, path) in generations.into_iter().rev() {
+            if let Some(record) = read_record(&path, self.mode.file_mode()) {
+                if !seen_content_ids.insert(record.content_id) {
+                    fs::remove_dir_all(path).map_err(error)?;
+                    continue;
+                }
+            }
+            retained.push((number, path));
+        }
+        retained.sort_by_key(|(number, _)| *number);
+        while retained.len() > MAX_HISTORY {
+            let (_, path) = retained.remove(0);
             fs::remove_dir_all(path).map_err(error)?;
         }
         sync_dir(&self.root.join("generations"))
@@ -623,8 +636,17 @@ impl ResumeStore {
 
 fn entries_valid(entries: &mut Vec<ResumeSummary>) {
     entries.sort_by(|left, right| {
+        right
+            .generation
+            .cmp(&left.generation)
+            .then(left.content_id.cmp(&right.content_id))
+    });
+    let mut seen_content_ids = HashSet::new();
+    entries.retain(|entry| seen_content_ids.insert(entry.content_id.clone()));
+    entries.sort_by(|left, right| {
         content_rank(&left.content_id)
             .cmp(&content_rank(&right.content_id))
+            .then(left.content_id.cmp(&right.content_id))
             .then(right.generation.cmp(&left.generation))
     });
     entries.truncate(MAX_HISTORY);

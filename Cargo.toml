@@ -5,6 +5,7 @@ members = [
     "crates/host-platform",
     "crates/launcher",
     "crates/storage-layout",
+    "crates/save-vault",
     "crates/bootstrap-probe",
     "crates/brick-recovery",
     "crates/brick-diagnostics",

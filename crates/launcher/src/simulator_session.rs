@@ -1,12 +1,17 @@
-use std::path::PathBuf;
+use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
 use launch_contract::{validate, Catalog, LaunchRequest};
+use save_vault::{
+    Catalog as SaveCatalog, Identity as SaveIdentity, SaveKind, SaveVault, SnapshotFile,
+    SnapshotReason,
+};
 use session_broker::resume::{
     CheckpointReason, CommitFault, ResumeCapabilityConfig, ResumeDecision, ResumeRecord,
     ResumeResult, ResumeStore, ResumeSummary,
 };
 use session_broker::{
-    accepted_handle, BrokerError, SessionBrokerClient, SessionHandle, SessionResult,
+    accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary, SessionBrokerClient,
+    SessionHandle, SessionResult,
 };
 
 const CAPABILITIES: &[u8] =
@@ -15,6 +20,8 @@ const CAPABILITIES: &[u8] =
 pub(crate) struct SimulatorSessionAdapter {
     active: Option<(SessionHandle, LaunchRequest)>,
     store: ResumeStore,
+    vault: SaveVault,
+    source_root: PathBuf,
 }
 
 impl Default for SimulatorSessionAdapter {
@@ -26,11 +33,43 @@ impl Default for SimulatorSessionAdapter {
 impl SimulatorSessionAdapter {
     pub(crate) fn with_root(root: PathBuf) -> Self {
         let config = ResumeCapabilityConfig::parse(CAPABILITIES).expect("generated resume config");
+        fs::create_dir_all(root.join("live/saves")).expect("save source directory");
+        fs::create_dir_all(root.join("live/states")).expect("state source directory");
+        fs::write(
+            root.join("live/saves/active.save"),
+            b"synthetic-live-save-v1",
+        )
+        .expect("save source");
+        fs::write(
+            root.join("live/states/active.state"),
+            b"synthetic-live-state-v1",
+        )
+        .expect("state source");
+        for path in [
+            root.join("live"),
+            root.join("live/saves"),
+            root.join("live/states"),
+        ] {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o777)).expect("save source mode");
+        }
+        for path in [
+            root.join("live/saves/active.save"),
+            root.join("live/states/active.state"),
+        ] {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o644)).expect("save source mode");
+        }
         Self {
             active: None,
             store: ResumeStore::for_simulator(root.join("resume"), config)
                 .expect("resume store")
                 .to_owned(),
+            vault: SaveVault::for_simulator(
+                root.join("save-vault"),
+                root.join("live"),
+                SaveCatalog::default(),
+            )
+            .expect("save vault"),
+            source_root: root.join("live"),
         }
     }
 
@@ -40,7 +79,8 @@ impl SimulatorSessionAdapter {
         reason: CheckpointReason,
         fault: CommitFault,
     ) -> Result<ResumeRecord, BrokerError> {
-        self.store
+        let record = self
+            .store
             .checkpoint(
                 request,
                 reason,
@@ -49,7 +89,31 @@ impl SimulatorSessionAdapter {
                 b"synthetic-resume-screenshot-v1",
                 fault,
             )
-            .map_err(|error| BrokerError::new(error.to_string()))
+            .map_err(|error| BrokerError::new(error.to_string()))?;
+        let files = [
+            SnapshotFile {
+                kind: SaveKind::Save,
+                relative: "saves/active.save".into(),
+                source: self.source_root.join("saves/active.save"),
+            },
+            SnapshotFile {
+                kind: SaveKind::State,
+                relative: "states/active.state".into(),
+                source: self.source_root.join("states/active.state"),
+            },
+        ];
+        self.vault
+            .snapshot(
+                SaveIdentity {
+                    content_version: &request.content_sha256,
+                    runner_version: &request.runner.version,
+                    core_version: request.core.as_ref().map(|core| core.version.as_str()),
+                },
+                &files,
+                SnapshotReason::NormalExit,
+            )
+            .map_err(|error| BrokerError::new(error.to_string()))?;
+        Ok(record)
     }
 }
 
@@ -137,6 +201,55 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
     ) -> Result<ResumeResult, BrokerError> {
         self.store
             .decide(&request, decision)
+            .map_err(|error| BrokerError::new(error.to_string()))
+    }
+
+    fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
+        Ok(self
+            .vault
+            .history()
+            .into_iter()
+            .map(|manifest| SaveVaultSummary {
+                generation: manifest.generation,
+                artifact_count: manifest.artifacts.len(),
+                protected: manifest.retention == save_vault::RetentionClass::Protected,
+            })
+            .collect())
+    }
+
+    fn save_vault_preview(&mut self) -> Result<SaveVaultPreview, BrokerError> {
+        let generation = self
+            .vault
+            .current_generation()
+            .ok_or_else(|| BrokerError::new("save vault has no current generation"))?;
+        let preview = self
+            .vault
+            .preview(generation)
+            .map_err(|error| BrokerError::new(error.to_string()))?;
+        Ok(SaveVaultPreview {
+            generation: preview.generation,
+            runner_version: preview.runner_version,
+            core_version: preview.core_version,
+            old_size: preview.old_size,
+            new_size: preview.new_size,
+            old_hash_status: preview.old_hash_status,
+            new_hash_status: preview.new_hash_status,
+            old_hash_prefix: preview.old_hash_prefix,
+            new_hash_prefix: preview.new_hash_prefix,
+            affected_kinds: preview.affected_kinds,
+            reason: format!("{:?}", preview.reason).to_ascii_lowercase(),
+            timestamp_ms: preview.timestamp_ms,
+        })
+    }
+
+    fn save_vault_restore(&mut self, confirmed: bool) -> Result<(), BrokerError> {
+        let generation = self
+            .vault
+            .current_generation()
+            .ok_or_else(|| BrokerError::new("save vault has no current generation"))?;
+        self.vault
+            .restore(generation, confirmed)
+            .map(|_| ())
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 }

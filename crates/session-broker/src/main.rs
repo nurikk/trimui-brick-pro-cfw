@@ -322,7 +322,7 @@ fn resume_security_journey(
             let Some(max_generation) = generations.iter().max().copied() else {
                 return Err("concurrent checkpoints produced no records".to_string());
             };
-            if !unique || current != max_generation || visible != 4 {
+            if !unique || current != max_generation || visible != 1 {
                 return Err("concurrent resume publication was not serialized".to_string());
             }
         }

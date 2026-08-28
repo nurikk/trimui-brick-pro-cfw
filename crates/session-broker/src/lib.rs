@@ -3,9 +3,35 @@ pub mod resume;
 use std::{fmt, time::Duration};
 
 use launch_contract::{Catalog, LaunchRequest};
+use save_vault::SaveKind;
 use serde::Serialize;
 
 pub const HANDLE_SCHEMA: &str = "trimui-session-broker-handle/v1";
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveVaultSummary {
+    pub generation: u64,
+    pub artifact_count: usize,
+    pub protected: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveVaultPreview {
+    pub generation: u64,
+    pub runner_version: String,
+    pub core_version: Option<String>,
+    pub old_size: u64,
+    pub new_size: u64,
+    pub old_hash_status: String,
+    pub new_hash_status: String,
+    pub old_hash_prefix: String,
+    pub new_hash_prefix: String,
+    pub affected_kinds: Vec<SaveKind>,
+    pub reason: String,
+    pub timestamp_ms: u64,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LifecycleCheckpointPolicy {
@@ -117,6 +143,18 @@ pub trait SessionBrokerClient {
         _decision: resume::ResumeDecision,
     ) -> Result<resume::ResumeResult, BrokerError> {
         Err(BrokerError::new("resume decision is unavailable"))
+    }
+
+    fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
+        Err(BrokerError::new("save vault is unavailable"))
+    }
+
+    fn save_vault_preview(&mut self) -> Result<SaveVaultPreview, BrokerError> {
+        Err(BrokerError::new("save vault is unavailable"))
+    }
+
+    fn save_vault_restore(&mut self, _confirmed: bool) -> Result<(), BrokerError> {
+        Err(BrokerError::new("save vault is unavailable"))
     }
 }
 

@@ -21,3 +21,4 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sim-platform-contract = { path = "../platform-contract" }
+save-vault = { path = "../save-vault" }

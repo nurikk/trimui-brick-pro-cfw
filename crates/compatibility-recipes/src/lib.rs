@@ -18,7 +18,7 @@ pub const API_VERSION: u8 = 1;
 pub const MAX_RECIPE_BYTES: usize = 256 * 1024;
 pub const MAX_DELTA: usize = 16;
 const CONFIG_ROOT: &str = ".brickpro/config/compatibility-recipes";
-const VAULT_ROOT: &str = ".brickpro/save-vault/compatibility-recipes";
+const VAULT_ROOT: &str = ".brickpro/config/compatibility-recipes/rollback-metadata";
 const SAFE_POWER_PROFILES: [&str; 2] = ["balanced", "battery-saver"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -600,6 +600,14 @@ pub fn apply(
         ));
     }
     validate_private_root(root)?;
+    save_vault::SaveVault::snapshot_standard(root, save_vault::SnapshotReason::PreRecipe).map_err(
+        |error| {
+            RecipeError::new(
+                "snapshot-failed",
+                format!("pre-recipe save snapshot failed: {error}"),
+            )
+        },
+    )?;
     let layer_path = private_path(
         root,
         &format!("{CONFIG_ROOT}/{}.json", authenticated.recipe.target_id),
@@ -673,6 +681,14 @@ pub fn apply(
 pub fn rollback(root: &Path, target_id: &str) -> Result<()> {
     validate_id(target_id, "recipe target")?;
     validate_private_root(root)?;
+    save_vault::SaveVault::snapshot_standard(root, save_vault::SnapshotReason::PreRecipe).map_err(
+        |error| {
+            RecipeError::new(
+                "snapshot-failed",
+                format!("pre-recipe save snapshot failed: {error}"),
+            )
+        },
+    )?;
     let layer_path = private_path(root, &format!("{CONFIG_ROOT}/{target_id}.json"))?;
     let layer = read_optional_layer(&layer_path)?
         .ok_or_else(|| RecipeError::new("rollback-unavailable", "recipe layer is not active"))?;

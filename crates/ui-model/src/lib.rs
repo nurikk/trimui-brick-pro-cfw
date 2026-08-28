@@ -91,7 +91,24 @@ pub enum Button {
     Secondary,
     Start,
     Select,
+    L1,
+    R1,
     Menu,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SemanticAction {
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+    Primary,
+    Secondary,
+    Start,
+    Select,
+    JumpNextGroup,
+    JumpPreviousGroup,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -99,6 +116,7 @@ pub enum Button {
 pub struct HelpBinding {
     pub button: Button,
     pub label: String,
+    pub action: Option<SemanticAction>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -114,18 +132,32 @@ impl Default for ControllerHelpStrip {
                 HelpBinding {
                     button: Button::Primary,
                     label: "Open".into(),
+                    action: Some(SemanticAction::Primary),
                 },
                 HelpBinding {
                     button: Button::Secondary,
                     label: "Back".into(),
+                    action: Some(SemanticAction::Secondary),
                 },
                 HelpBinding {
                     button: Button::Menu,
                     label: "Menu".into(),
+                    action: Some(SemanticAction::Select),
                 },
                 HelpBinding {
                     button: Button::Start,
                     label: "Launch".into(),
+                    action: Some(SemanticAction::Start),
+                },
+                HelpBinding {
+                    button: Button::L1,
+                    label: "Prev group".into(),
+                    action: Some(SemanticAction::JumpPreviousGroup),
+                },
+                HelpBinding {
+                    button: Button::R1,
+                    label: "Next group".into(),
+                    action: Some(SemanticAction::JumpNextGroup),
                 },
             ],
         }
@@ -530,6 +562,15 @@ pub enum UiFeedback {
     DisabledSelection(MenuId),
     FavoriteChanged(GameId),
     PreferenceChanged,
+    GroupBoundary,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupJumpState {
+    pub current: Option<String>,
+    pub target: Option<String>,
+    pub visible: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -558,6 +599,7 @@ pub struct UiState {
     pub wifi: WifiState,
     pub session: SessionState,
     pub feedback: UiFeedback,
+    pub group_jump: GroupJumpState,
 }
 
 impl UiState {
@@ -593,6 +635,7 @@ impl UiState {
             wifi: WifiState::default(),
             session: SessionState::Idle,
             feedback: UiFeedback::None,
+            group_jump: GroupJumpState::default(),
         };
         state.menu = menu_for_route(&route, &state);
         state
@@ -772,6 +815,7 @@ impl Default for WifiState {
 pub enum Action {
     Navigate(Route),
     MoveSelection(Direction),
+    SelectGame(GameId),
     SetFocus(FocusTarget),
     SetSettingsMenuProjection { entries: Vec<MenuEntry> },
     ActivateSelected,
@@ -782,6 +826,8 @@ pub enum Action {
     SetPreference(PreferenceChange),
     SetAffordances(PlatformAffordances),
     SetCapabilities(PlatformCapabilities),
+    SetGroupJump(GroupJumpState),
+    SetGroupBoundaryFeedback,
     FinishSplash,
     ShowFallback { reason: FallbackReason },
     ShowModal(ModalState),
@@ -875,6 +921,7 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
     match action {
         Action::Navigate(route) => navigate(&mut next, route),
         Action::MoveSelection(direction) => move_selection(&mut next, direction),
+        Action::SelectGame(game_id) => select_game(&mut next, game_id),
         Action::SetFocus(focus) => next.focus = focus,
         Action::SetSettingsMenuProjection { entries } => {
             next.settings_menu_projection = entries;
@@ -908,6 +955,8 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
             let route = next.route.clone();
             next.menu = menu_for_route(&route, &next);
         }
+        Action::SetGroupJump(group_jump) => next.group_jump = group_jump,
+        Action::SetGroupBoundaryFeedback => next.feedback = UiFeedback::GroupBoundary,
         Action::FinishSplash => next.splash = SplashState::Ready,
         Action::ShowFallback { reason } => {
             next.route = Route::Recovery;
@@ -964,6 +1013,17 @@ fn move_selection(state: &mut UiState, direction: Direction) {
             state.menu.selection.index = index as usize;
             return;
         }
+    }
+}
+
+fn select_game(state: &mut UiState, game_id: GameId) {
+    if let Some(index) = state
+        .menu
+        .entries
+        .iter()
+        .position(|entry| entry.id.0 == game_id.0)
+    {
+        state.menu.selection.index = index;
     }
 }
 
@@ -1320,6 +1380,7 @@ fn unavailable(capability: Capability) -> ModalState {
 }
 
 fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
+    let previous_id = state.menu.selection.item_id.clone();
     let entries = match route {
         Route::Home => vec![
             entry("systems", "Systems", Route::Systems, true, None),
@@ -1401,15 +1462,23 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
         Route::Recovery => vec![entry("home", "Return to Home", Route::Home, true, None)],
         Route::Scraper(_) | Route::Wifi(_) => vec![entry("home", "Home", Route::Home, true, None)],
     };
+    let index = previous_id
+        .as_ref()
+        .and_then(|id| menu_entry_index(&entries, id))
+        .unwrap_or(0);
     let mut menu = MenuState {
         entries,
         selection: Selection {
-            index: 0,
-            item_id: None,
+            index,
+            item_id: previous_id,
         },
     };
     menu.sync_selection();
     menu
+}
+
+fn menu_entry_index(entries: &[MenuEntry], id: &MenuId) -> Option<usize> {
+    entries.iter().position(|entry| entry.id == *id)
 }
 
 fn entry(

@@ -19,7 +19,7 @@
         "id": { "type": "string", "minLength": 1 },
         "kind": { "enum": ["built-in", "southpaw", "d-pad-to-stick", "stick-to-d-pad", "external"] },
         "transform": { "enum": ["standard", "southpaw", "d-pad-to-stick", "stick-to-d-pad"] },
-        "mappings": { "type": "array", "minItems": 14, "items": { "$ref": "#/$defs/mapping" } },
+        "mappings": { "type": "array", "minItems": 16, "items": { "$ref": "#/$defs/mapping" } },
         "externalController": { "anyOf": [{ "$ref": "#/$defs/external" }, { "type": "null" }] }
       }
     },
@@ -27,8 +27,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["control", "action", "axis"],
       "properties": {
-        "control": { "enum": ["up", "down", "left", "right", "a", "b", "start", "select", "l3", "r3", "f1", "f2", "fn", "home"] },
-        "action": { "enum": ["move-up", "move-down", "move-left", "move-right", "primary", "secondary", "start", "select", "left-stick-click", "right-stick-click", "f1", "f2", "fn", "home"] },
+        "control": { "enum": ["up", "down", "left", "right", "a", "b", "start", "select", "l1", "r1", "l3", "r3", "f1", "f2", "fn", "home"] },
+        "action": { "enum": ["move-up", "move-down", "move-left", "move-right", "primary", "secondary", "start", "select", "left-stick-click", "right-stick-click", "jump-next-group", "jump-previous-group", "f1", "f2", "fn", "home"] },
         "axis": { "$ref": "#/$defs/axis" }
       }
     },

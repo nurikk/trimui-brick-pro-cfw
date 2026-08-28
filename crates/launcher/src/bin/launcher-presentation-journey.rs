@@ -262,6 +262,7 @@ fn controller_press(state: &UiState, button: UiButton) -> UiState {
         UiButton::Secondary => Action::Back,
         UiButton::Start => Action::Navigate(Route::Home),
         UiButton::Select | UiButton::Menu => Action::SetFocus(ui_model::FocusTarget::Menu),
+        UiButton::L1 | UiButton::R1 => Action::SetGroupJump(ui_model::GroupJumpState::default()),
     };
     reduce(state, action)
 }

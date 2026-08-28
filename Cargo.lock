@@ -980,6 +980,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "compatibility-recipes",
+ "input-profile",
  "launch-contract",
  "launcher-presentation",
  "launcher-theme",
@@ -1000,6 +1001,8 @@ dependencies = [
  "sim-host-platform",
  "sim-platform-contract",
  "ui-model",
+ "unicode-normalization",
+ "unicode-segmentation",
  "virtual-keyboard",
  "wifi-manager",
  "wifi-settings-controller",
@@ -1111,6 +1114,36 @@ dependencies = [
  "quote",
  "syn 3.0.4",
 ]
+
+[[package]]
+name = "tinyvec"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "022db8904dfa342efe721985167e9fcd16c29b226db4397ed752a761cfce81e8"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5033c97c4262335cded6d6fc3e5c18ab755e1a3dc96376350f3d8e9f009ad956"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "tls_codec"

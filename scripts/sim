@@ -21,7 +21,7 @@ SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
 CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() {
-    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
+    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] [--catalog PATH] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
     exit 2
 }
 
@@ -153,6 +153,8 @@ parse_run_options() {
     BACKEND=dummy
     WAIT_READY=10
     DETACH=0
+    CATALOG=sim/fixtures/catalog.json
+    PROFILE=sim/device/tg4040-host.json
     RUN_DIR=
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -165,6 +167,18 @@ parse_run_options() {
                 RUN_DIR=$1
                 ;;
             --run-dir=*) RUN_DIR=${1#--run-dir=} ;;
+            --catalog)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --catalog value"
+                CATALOG=$1
+                ;;
+            --catalog=*) CATALOG=${1#--catalog=} ;;
+            --profile)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --profile value"
+                PROFILE=$1
+                ;;
+            --profile=*) PROFILE=${1#--profile=} ;;
             --wait-ready)
                 shift
                 [ "$#" -gt 0 ] || fail "missing --wait-ready value"
@@ -209,6 +223,19 @@ run_sim() {
         docker rm -f "$NAME" >/dev/null 2>&1 || fail "cannot remove existing simulator container"
     fi
     set -- --backend="$BACKEND"
+    case "$CATALOG" in
+        *..*) fail "--catalog may not contain .." ;;
+        sim/*.json) ;;
+        *) fail "--catalog must be a repository sim JSON fixture" ;;
+    esac
+    [ -f "$ROOT/$CATALOG" ] || fail "catalog fixture does not exist"
+    case "$PROFILE" in
+        *..*) fail "--profile may not contain .." ;;
+        sim/*.json) ;;
+        *) fail "--profile must be a repository sim JSON fixture" ;;
+    esac
+    [ -f "$ROOT/$PROFILE" ] || fail "profile fixture does not exist"
+    set -- "$@" --catalog "/src/$CATALOG" --profile "/src/$PROFILE"
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
     docker run -d \
         --name "$NAME" \

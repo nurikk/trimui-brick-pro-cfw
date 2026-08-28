@@ -83,6 +83,16 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-launcher-aarch64-journey",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-launcher-aarch64-journey\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/brickpro-launcher-aarch64-journey",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
       "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-recovery\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
@@ -107,6 +117,66 @@
       "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-brickpro-userspace-supervisor\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
       "fileName": "usr/bin/brickpro-userspace-supervisor",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-package-manager",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-package-manager\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/package-manager",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-session-broker",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-session-broker\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/session-broker",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-bin-session-broker-helper",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-bin-session-broker-helper\",\"linkTarget\":null,\"mode\":\"0755\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/bin/session-broker-helper",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-bootstrap-supported-tar",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-share-trimui-bootstrap-supported-tar\",\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/share/trimui/bootstrap-supported.tar",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-packages-tar",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-share-trimui-packages-tar\",\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/share/trimui/packages.tar",
+      "licenseConcluded": "MIT",
+      "licenseInfoInFiles": [
+        "MIT"
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-session-broker-generated-v1-tar",
+      "comment": "{\"artifactId\":\"artifact-baseline-usr-share-trimui-session-broker-generated-v1-tar\",\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
+      "fileName": "usr/share/trimui/session-broker-generated-v1.tar",
       "licenseConcluded": "MIT",
       "licenseInfoInFiles": [
         "MIT"
@@ -163,6 +233,11 @@
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
     },
     {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-launcher-aarch64-journey",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
       "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-recovery",
       "relationshipType": "CONTAINS",
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
@@ -174,6 +249,36 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-brickpro-userspace-supervisor",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-package-manager",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-session-broker",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-bin-session-broker-helper",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-bootstrap-supported-tar",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-packages-tar",
+      "relationshipType": "CONTAINS",
+      "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Artifact-artifact-baseline-usr-share-trimui-session-broker-generated-v1-tar",
       "relationshipType": "CONTAINS",
       "spdxElementId": "SPDXRef-Candidate-project-authored-baseline-payload"
     }

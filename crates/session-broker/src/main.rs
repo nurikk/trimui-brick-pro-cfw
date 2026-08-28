@@ -1034,7 +1034,13 @@ fn spawn_with_barrier(plan: &LaunchPlan, marker: &str) -> io::Result<(Child, Lau
     }
     let read_fd = fds[0];
     let write_fd = fds[1];
-    let mut command = Command::new(&plan.executable);
+    let mut command = if let Some(qemu) = std::env::var_os("BRICKPRO_QEMU_USER") {
+        let mut command = Command::new(qemu);
+        command.arg(&plan.executable);
+        command
+    } else {
+        Command::new(&plan.executable)
+    };
     if plan
         .executable
         .file_name()

@@ -119,8 +119,11 @@ docker run --rm \
         export CARGO_NET_OFFLINE=true
         cargo fmt --check
         cargo clippy --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor -- -D warnings
+        cargo clippy --locked --offline --release --no-default-features --features simulator -p sim-launcher --bin aarch64-semantic-journey -- -D warnings
         cargo build --locked --offline --release -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor
-        cargo build --locked --offline --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor
+        cargo build --locked --offline --release --no-default-features --features simulator -p sim-launcher --bin aarch64-semantic-journey
+        cargo build --locked --offline --release --target aarch64-unknown-linux-musl -p bootstrap-probe -p brick-recovery -p brick-diagnostics -p boot-state -p update-agent -p userspace-supervisor -p session-broker -p package-manager
+        cargo build --locked --offline --release --target aarch64-unknown-linux-musl --no-default-features --features simulator -p sim-launcher --bin aarch64-semantic-journey
         install -m 0755 /tmp/cargo-target/release/bootstrap-probe /work/host/bootstrap-probe
         install -m 0755 /tmp/cargo-target/release/brick-recovery /work/host/brick-recovery
         install -m 0755 /tmp/cargo-target/release/brickpro-diagnostics /work/host/brickpro-diagnostics
@@ -133,6 +136,10 @@ docker run --rm \
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/boot-state /work/payload/boot-state
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/update-agent /work/payload/update-agent
         install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/userspace-supervisor /work/payload/userspace-supervisor
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/session-broker /work/payload/session-broker
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/session-broker-helper /work/payload/session-broker-helper
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/package-manager /work/payload/package-manager
+        install -m 0755 /tmp/cargo-target/aarch64-unknown-linux-musl/release/aarch64-semantic-journey /work/payload/aarch64-semantic-journey
         cp /usr/share/trimui-baseline-toolchain.txt /work/toolchain.txt
     '
 
@@ -169,7 +176,7 @@ rm -rf -- "$SUPERVISOR_WORK"
 SUPERVISOR_WORK=
 
 STAGE=$WORK/stage
-mkdir -p "$STAGE/usr/bin" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
+mkdir -p "$STAGE/usr/bin" "$STAGE/usr/share/trimui" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
 install -m 0755 "$WORK/payload/bootstrap-probe" "$STAGE/usr/bin/brickpro-bootstrap-probe"
 install -m 0755 "$WORK/payload/brick-recovery" "$STAGE/usr/bin/brickpro-recovery"
 install -m 0755 "$WORK/payload/brickpro-diagnostics" "$STAGE/usr/bin/brickpro-diagnostics"
@@ -178,6 +185,10 @@ install -m 0755 "$WORK/payload/update-agent" "$STAGE/usr/bin/brickpro-update-age
 install -m 0755 "$WORK/payload/userspace-supervisor" "$STAGE/usr/bin/brickpro-userspace-supervisor"
 install -m 0755 "$ROOT/bootstrap/boot.sh" "$STAGE/bootstrap/boot.sh"
 install -m 0755 "$ROOT/bootstrap/recovery.sh" "$STAGE/bootstrap/recovery.sh"
+install -m 0755 "$WORK/payload/session-broker" "$STAGE/usr/bin/session-broker"
+install -m 0755 "$WORK/payload/session-broker-helper" "$STAGE/usr/bin/session-broker-helper"
+install -m 0755 "$WORK/payload/package-manager" "$STAGE/usr/bin/package-manager"
+install -m 0755 "$WORK/payload/aarch64-semantic-journey" "$STAGE/usr/bin/brickpro-launcher-aarch64-journey"
 install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
     "$STAGE/config/platform/tg4040/compatibility.json"
 install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
@@ -210,6 +221,36 @@ if metadata["targetSku"] != "TG4040" or metadata["activation"]["enabled"]:
 
 for path in sorted(stage.rglob("*.json")):
     json.loads(path.read_text(encoding="utf-8"))
+
+def fixture_archive(source, destination):
+    with tarfile.open(destination, "w", format=tarfile.USTAR_FORMAT) as handle:
+        entries = sorted(source.rglob("*"), key=lambda item: item.relative_to(source).as_posix())
+        for path in entries:
+            relative = path.relative_to(source).as_posix()
+            info = tarfile.TarInfo(relative)
+            info.uid = 0
+            info.gid = 0
+            info.uname = ""
+            info.gname = ""
+            info.mtime = epoch
+            if path.is_dir():
+                info.mode = 0o755
+                info.type = tarfile.DIRTYPE
+                handle.addfile(info)
+            elif path.is_file():
+                info.mode = stat.S_IMODE(path.stat().st_mode)
+                info.type = tarfile.REGTYPE
+                info.size = path.stat().st_size
+                with path.open("rb") as source_file:
+                    handle.addfile(info, source_file)
+            else:
+                raise SystemExit(f"unsupported fixture entry: {relative}")
+    os.chmod(destination, 0o644)
+    os.utime(destination, (epoch, epoch))
+
+fixture_archive(root / "fixtures/bootstrap/supported", stage / "usr/share/trimui/bootstrap-supported.tar")
+fixture_archive(root / "fixtures/packages", stage / "usr/share/trimui/packages.tar")
+fixture_archive(root / "fixtures/session-broker/generated-v1", stage / "usr/share/trimui/session-broker-generated-v1.tar")
 
 payload = []
 for path in sorted(stage.rglob("*"), key=lambda item: item.relative_to(stage).as_posix()):

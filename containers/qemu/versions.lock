@@ -1,0 +1,40 @@
+schema = "trimui-tg4040-qemu-user-toolchain/v1"
+platform = "linux/amd64"
+base_image = "debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867"
+
+[[package]]
+name = "qemu-user-static"
+version = "1:7.2+dfsg-7+deb12u18+b3"
+
+[[package]]
+name = "busybox-static:arm64"
+version = "1:1.35.0-4+deb12u1+b1"
+
+[[package]]
+name = "binutils"
+version = "2.40-2"
+
+[[package]]
+name = "coreutils"
+version = "9.1-1"
+
+[[package]]
+name = "file"
+version = "1:5.44-3"
+
+[[package]]
+name = "jq"
+version = "1.6-2.1+deb12u2"
+
+[[package]]
+name = "tar"
+version = "1.34+dfsg-1.2+deb12u1"
+
+[scope]
+clean_room = true
+vendor_files = false
+stock_rootfs = false
+roms = false
+bios = false
+firmware = false
+purpose = "Pinned QEMU-user and BusyBox ash verification environment only"

@@ -15,6 +15,13 @@ Generated from approved distributed artifacts by `scripts/provenance.py`.
   - `usr/bin/brickpro-boot-state`
   - `usr/bin/brickpro-bootstrap-probe`
   - `usr/bin/brickpro-diagnostics`
+  - `usr/bin/brickpro-launcher-aarch64-journey`
   - `usr/bin/brickpro-recovery`
   - `usr/bin/brickpro-update-agent`
   - `usr/bin/brickpro-userspace-supervisor`
+  - `usr/bin/package-manager`
+  - `usr/bin/session-broker`
+  - `usr/bin/session-broker-helper`
+  - `usr/share/trimui/bootstrap-supported.tar`
+  - `usr/share/trimui/packages.tar`
+  - `usr/share/trimui/session-broker-generated-v1.tar`

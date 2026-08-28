@@ -1,0 +1,39 @@
+{
+  "signatures": [
+    {
+      "keyid": "root-key",
+      "sig": "78b92ed08fe7dcc29667b85313df78c37813e1213162939e3747666bf82aa594a1e38f0ddcd7ccd77ea438d4eebd8719d67cf209ca33a0f20e1be4a9128f9b0c"
+    }
+  ],
+  "signed": {
+    "_type": "targets",
+    "delegations": {
+      "keys": {
+        "package-key": {
+          "keytype": "ed25519",
+          "keyval": {
+            "public": "2f4abf774ef22dcf5dbd6957df503424f83ffb091bc7678c73df7f1ccd7b84e2"
+          },
+          "scheme": "ed25519"
+        }
+      },
+      "roles": [
+        {
+          "keyids": [
+            "package-key"
+          ],
+          "name": "packages",
+          "paths": [
+            "packages/*/*.json"
+          ],
+          "terminating": true,
+          "threshold": 1
+        }
+      ]
+    },
+    "expires": "2031-01-01T00:00:00Z",
+    "spec_version": "1.0.0",
+    "targets": {},
+    "version": 1
+  }
+}

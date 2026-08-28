@@ -1,0 +1,36 @@
+{
+  "signatures": [
+    {
+      "keyid": "package-key",
+      "sig": "51eea2e6d9164bcc310fd08eb7419047a231ee0d9f14d30702760731bf8dc49ec42ca93410df290d57459f7bf71fb2f8c7055286b6e965817c9d4723d0c08a02"
+    }
+  ],
+  "signed": {
+    "_type": "targets",
+    "expires": "2031-01-01T00:00:00Z",
+    "spec_version": "1.0.0",
+    "targets": {
+      "packages/orbit-garden/manifest.json": {
+        "custom": {
+          "packageId": "orbit-garden",
+          "packageType": "portmaster"
+        },
+        "hashes": {
+          "sha256": "13ae832101b2d1c1d5732bd334e75b72b75e81b4cd393f7fb16f5be6f1ca5563"
+        },
+        "length": 1723
+      },
+      "packages/signal-workshop/manifest.json": {
+        "custom": {
+          "packageId": "signal-workshop",
+          "packageType": "portmaster"
+        },
+        "hashes": {
+          "sha256": "633d0228924bc63b742629e2b895848ffc75f1e7fdca14c018029fb1a4419ff3"
+        },
+        "length": 1729
+      }
+    },
+    "version": 1
+  }
+}

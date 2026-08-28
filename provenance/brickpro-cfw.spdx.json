@@ -17,10 +17,10 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "58d4a9e8a10f76369c03dfddb652f7caa2a14dd865960bebe97e66d94784437f"
+          "checksumValue": "d19ab61363ddc8ffc53b0c985af5bf1d7066924e8236c3d3b428bab484a6fa17"
         }
       ],
-      "comment": "{\"artifactId\":\"artifact-baseline-third-party-notices-md\",\"byteSize\":675,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
+      "comment": "{\"artifactId\":\"artifact-baseline-third-party-notices-md\",\"byteSize\":710,\"linkTarget\":null,\"mode\":\"0644\",\"type\":\"regular\"}",
       "copyrightText": "Repository commit authors are the attribution source; no standalone copyright notice is present in Cargo.toml.",
       "fileName": "THIRD_PARTY_NOTICES.md",
       "licenseConcluded": "MIT",

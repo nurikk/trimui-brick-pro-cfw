@@ -1,0 +1,57 @@
+{
+  "signatures": [
+    {
+      "keyid": "root-key",
+      "sig": "1033524a184acd0d8f0316c53f604af58856889ada4a088f6a561285bab0ef80d34e6e96806d1c6a225df54e9316770f5b08cf17d9309f0e801f2f2fdc717904"
+    }
+  ],
+  "signed": {
+    "_type": "root",
+    "consistent_snapshot": true,
+    "expires": "2031-01-01T00:00:00Z",
+    "keys": {
+      "root-key": {
+        "keytype": "ed25519",
+        "keyval": {
+          "public": "a569bf3f24b24123351bc2eadfe2571a0b1e4406c51a452fe12f73f500933900"
+        },
+        "scheme": "ed25519"
+      },
+      "package-key": {
+        "keytype": "ed25519",
+        "keyval": {
+          "public": "2f4abf774ef22dcf5dbd6957df503424f83ffb091bc7678c73df7f1ccd7b84e2"
+        },
+        "scheme": "ed25519"
+      }
+    },
+    "roles": {
+      "root": {
+        "keyids": [
+          "root-key"
+        ],
+        "threshold": 1
+      },
+      "snapshot": {
+        "keyids": [
+          "root-key"
+        ],
+        "threshold": 1
+      },
+      "targets": {
+        "keyids": [
+          "root-key"
+        ],
+        "threshold": 1
+      },
+      "timestamp": {
+        "keyids": [
+          "root-key"
+        ],
+        "threshold": 1
+      }
+    },
+    "spec_version": "1.0.0",
+    "version": 1
+  }
+}

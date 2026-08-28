@@ -40,8 +40,14 @@ const LANE: &str = "host-native userspace simulator";
 const SESSION_ID: &str = "run-local";
 const LAUNCH_CATALOG_BYTES: &[u8] =
     include_bytes!("../../../fixtures/launch-contract/generated-v1/catalog.synthetic.json");
-const GENERATED_CONTENT_SHA256: &str =
-    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const NEBULA_CONTENT_SHA256: &str =
+    "eb0b39e700629b526932cf8555468761d65d0e7897807df5df5f7acb2ba28a51";
+const MIRROR_CONTENT_SHA256: &str =
+    "1f4ea13bac997d4cb3f2245aa16bc76a02fe49a2fbdb89c6a54b9ed9242158e9";
+const ORBIT_CONTENT_SHA256: &str =
+    "667fc8a4f6a35cf1a3f31feb7df60281e619d3f5480910d6334db830651d6461";
+const SIGNAL_CONTENT_SHA256: &str =
+    "15462e6b849f258655b640e8fd8434a4cbc50c763e2a5b1a1d1135926edc047c";
 const MAX_GENERATED_ENTRIES: usize = 32;
 const SETTINGS_REGISTRY_BYTES: &[u8] =
     include_bytes!("../../../fixtures/settings-schema/registry-v1.json");
@@ -113,6 +119,7 @@ struct AppState {
     faults: Vec<String>,
     readiness_generation: u64,
     presentation: PresentationState,
+    session_step: u32,
 }
 
 struct PresentationState {
@@ -196,6 +203,18 @@ impl PresentationState {
             Some(&wifi),
         ))
     }
+}
+
+fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<PresentationScreen> {
+    let mut screen = state.presentation.screen()?;
+    if matches!(state.route, Route::Session)
+        && matches!(state.presentation.ui.route, ui_model::Route::Games)
+    {
+        let entry = &catalog.entries[state.selected_index];
+        screen.title = entry.title.clone();
+        screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
+    }
+    Ok(screen)
 }
 
 #[derive(Debug, Deserialize)]
@@ -444,13 +463,17 @@ fn run_session<P: Platform>(
     if catalog.catalog_version != "1"
         || catalog.entries.is_empty()
         || catalog.entries.len() > MAX_GENERATED_ENTRIES
+        || catalog.entries.len() != 4
         || catalog.entries.iter().any(|entry| {
             entry.id.is_empty()
                 || entry.id.len() > 64
                 || entry.title.is_empty()
                 || entry.title.len() > 128
-                || entry.system != "synthetic"
-                || !entry.id.starts_with("generated-")
+                || !matches!(entry.system.as_str(), "nes" | "ps1" | "portmaster")
+                || !matches!(
+                    entry.id.as_str(),
+                    "nebula-nes" | "mirror-ps1" | "orbit-garden" | "signal-workshop"
+                )
         })
     {
         return Err(anyhow!("invalid generated catalog"));
@@ -471,10 +494,11 @@ fn run_session<P: Platform>(
         faults: Vec::new(),
         readiness_generation: 1,
         presentation: PresentationState::new()?,
+        session_step: 0,
     };
     refresh_presentation_affordances(&mut state.presentation, &platform)
         .map_err(|error| anyhow!(error))?;
-    let screen = state.presentation.screen()?;
+    let screen = screen_for_state(&state, &catalog)?;
 
     present(&mut platform, &screen)?;
     let first_frame_us = startup_started.elapsed().as_micros();
@@ -668,10 +692,7 @@ fn handle_request<P: Platform>(
         }),
         "presentation" => parse::<PresentationArgs>(request.args).and_then(|args| {
             presentation_action(state, args)?;
-            let screen = state
-                .presentation
-                .screen()
-                .map_err(|error| error.to_string())?;
+            let screen = screen_for_state(state, catalog).map_err(|error| error.to_string())?;
             present(platform, &screen).map_err(|error| error.to_string())?;
             state_json(platform, evidence, log, catalog, state)
         }),
@@ -1150,8 +1171,12 @@ fn handle_button<P: Platform>(
             state.route = Route::Library;
             route_changed = true;
         }
+        (Route::Session, Button::Start) => {
+            state.route = Route::Library;
+            route_changed = true;
+        }
         (Route::Games, Button::Primary) => {
-            let request = launch_request(&catalog.entries[state.selected_index]);
+            let request = launch_request(&catalog.entries[state.selected_index])?;
             let bytes = launch_contract::request_json(&request)
                 .map_err(|error| anyhow!(error.to_string()))?
                 .into_bytes();
@@ -1161,6 +1186,7 @@ fn handle_button<P: Platform>(
                 .map_err(|error| anyhow!(error.to_string()))?;
             write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
             state.route = Route::Session;
+            state.session_step = 0;
             state.modal = Some("fake-session-started".to_string());
             state.active_fake_session = Some(FakeSession {
                 id: SESSION_ID.to_string(),
@@ -1195,12 +1221,23 @@ fn handle_button<P: Platform>(
         let selection = route_selection(&state.route, catalog, state.selected_index);
         emit_route_selection(log, event.at_ms, &state.route, selection)?;
     }
-    let screen = state.presentation.screen()?;
+    if matches!(state.route, Route::Session)
+        && matches!(
+            event.button,
+            Button::Up | Button::Down | Button::Left | Button::Right
+        )
+    {
+        state.session_step = state.session_step.saturating_add(1);
+    }
+    let screen = screen_for_state(state, catalog)?;
     present(platform, &screen)?;
     log.emit(
         "input_to_frame",
         event.at_ms,
-        json_map([("latencyUs", json!(input_started.elapsed().as_micros()))]),
+        json_map([
+            ("latencyUs", json!(input_started.elapsed().as_micros())),
+            ("sessionStep", json!(state.session_step)),
+        ]),
     )?;
     write_route(
         &evidence.root,
@@ -1264,10 +1301,7 @@ fn state_json<P: Platform>(
     state: &AppState,
 ) -> Result<Value, String> {
     let _ = evidence;
-    let presentation = state
-        .presentation
-        .screen()
-        .map_err(|error| error.to_string())?;
+    let presentation = screen_for_state(state, catalog).map_err(|error| error.to_string())?;
     Ok(json!({
         "schema": "sim-state/v1",
         "runId": log.run_id,
@@ -1276,6 +1310,7 @@ fn state_json<P: Platform>(
         "activeFakeSession": state.active_fake_session,
         "modal": state.modal,
         "readinessGeneration": state.readiness_generation,
+        "sessionStep": state.session_step,
         "hardware": hardware_json(&platform.hardware_state().map_err(|error| error.to_string())?),
         "faults": state.faults,
         "presentation": presentation,
@@ -1335,40 +1370,82 @@ fn emit_route_selection(
     Ok(())
 }
 
-fn launch_request(entry: &sim_domain::CatalogEntry) -> LaunchRequest {
-    LaunchRequest {
+fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
+    let (request_id, content_sha256, kind, package_id, core_id) =
+        match (entry.id.as_str(), entry.system.as_str()) {
+            ("nebula-nes", "nes") => (
+                "nebula-nes-request",
+                NEBULA_CONTENT_SHA256,
+                LaunchKind::Libretro,
+                None,
+                Some("generated-core"),
+            ),
+            ("mirror-ps1", "ps1") => (
+                "mirror-ps1-request",
+                MIRROR_CONTENT_SHA256,
+                LaunchKind::Libretro,
+                None,
+                Some("generated-core"),
+            ),
+            ("orbit-garden", "portmaster") => (
+                "orbit-garden-request",
+                ORBIT_CONTENT_SHA256,
+                LaunchKind::Portmaster,
+                Some("orbit-garden"),
+                None,
+            ),
+            ("signal-workshop", "portmaster") => (
+                "signal-workshop-request",
+                SIGNAL_CONTENT_SHA256,
+                LaunchKind::Portmaster,
+                Some("signal-workshop"),
+                None,
+            ),
+            _ => return Err(anyhow!("selected demo is not allowlisted")),
+        };
+    let runner_id = match &kind {
+        LaunchKind::Libretro => "generated-libretro",
+        LaunchKind::Portmaster => "generated-portmaster",
+        LaunchKind::Standalone => return Err(anyhow!("standalone demo is not allowlisted")),
+    };
+    let profile_id = if package_id.is_some() {
+        "generated-default"
+    } else {
+        "default"
+    };
+    Ok(LaunchRequest {
         schema: launch_contract::REQUEST_SCHEMA.to_string(),
         format: "brickpro-launch-request".to_string(),
         schema_version: 1,
-        request_id: format!(
-            "generated-request-{}",
-            entry.id.trim_start_matches("generated-")
-        ),
-        kind: LaunchKind::Libretro,
+        request_id: request_id.to_string(),
+        kind,
         content_id: entry.id.clone(),
-        content_sha256: GENERATED_CONTENT_SHA256.to_string(),
+        content_sha256: content_sha256.to_string(),
         content_path: LogicalPath {
             root: PathRoot::Roms,
-            relative: "generated/content.bin".to_string(),
+            relative: format!("{}.synthetic", entry.id),
         },
         save_path: LogicalPath {
             root: PathRoot::DataSaves,
-            relative: "generated/content.sav".to_string(),
+            relative: format!("{}.save", entry.id),
         },
         state_path: LogicalPath {
             root: PathRoot::DataStates,
-            relative: "generated/content.state".to_string(),
+            relative: format!("{}.state", entry.id),
         },
         runner: VersionedId {
-            id: "generated-libretro".to_string(),
+            id: runner_id.to_string(),
             version: "1.0.0".to_string(),
         },
-        package: None,
-        core: Some(VersionedId {
-            id: "generated-core".to_string(),
+        package: package_id.map(|id| VersionedId {
+            id: id.to_string(),
             version: "1.0.0".to_string(),
         }),
-        profile_id: "generated-default".to_string(),
+        core: core_id.map(|id| VersionedId {
+            id: id.to_string(),
+            version: "1.0.0".to_string(),
+        }),
+        profile_id: profile_id.to_string(),
         resume_mode: ResumeMode::Fresh,
         display: DisplaySettings {
             width: 1024,
@@ -1384,7 +1461,7 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> LaunchRequest {
             suspend: SuspendMode::Allowed,
             battery_saver: false,
         },
-    }
+    })
 }
 
 fn handle_presentation_button(state: &mut PresentationState, button: Button) -> Result<()> {
@@ -1437,7 +1514,7 @@ fn present<P: Platform>(platform: &mut P, screen: &PresentationScreen) -> Result
 fn route_selection<'a>(route: &Route, catalog: &'a UiCatalog, selected_index: usize) -> &'a str {
     match route {
         Route::Library => "library",
-        Route::Systems => "synthetic",
+        Route::Systems => catalog.entries[selected_index].system.as_str(),
         Route::Games | Route::Session => catalog.entries[selected_index].id.as_str(),
         Route::Catalog => "library",
     }

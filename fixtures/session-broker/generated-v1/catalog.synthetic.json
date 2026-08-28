@@ -11,6 +11,7 @@
     {"id": "generated-core", "version": "1.0.0", "runnerId": "generated-libretro", "runnerVersion": "1.0.0", "kind": "libretro", "status": "approved"}
   ],
   "profiles": [
+    {"id": "default", "capabilities": ["display-basic", "input-standard", "suspend"]},
     {"id": "generated-default", "capabilities": ["display-basic", "input-standard", "suspend"]}
   ]
 }

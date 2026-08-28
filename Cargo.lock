@@ -791,6 +791,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sim-domain",
+ "sim-launcher",
  "sim-platform-contract",
 ]
 

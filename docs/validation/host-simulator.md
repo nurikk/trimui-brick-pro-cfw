@@ -12,7 +12,7 @@ RUN=$(mktemp -d)
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30
 ```
 
-The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, semantic route/selection, launch metadata, a strict `launch-request.json`, session and exit-status records, and logical PNG screenshots. The deterministic fixture traverses `library → systems → games`, selects generated content, validates a typed `LaunchRequest`, and never starts an emulator. A persistent run can be started with `--detach` and stopped with:
+The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, semantic route/selection, launch metadata, a strict `launch-request.json`, session and exit-status records, and logical PNG screenshots. The deterministic fixture traverses `library → systems → games`, selects one of four synthetic platform or PortMaster catalog entries, validates a typed `LaunchRequest`, and never starts an emulator. A persistent run can be started with `--detach` and stopped with:
 
 ```sh
 ./scripts/sim run --backend=dummy --run-dir "$RUN" --wait-ready 30 --detach

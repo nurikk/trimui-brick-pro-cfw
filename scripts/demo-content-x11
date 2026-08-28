@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+RUN=$(mktemp -d /tmp/trimui-demo-XXXXXX)
+trap 'rm -rf "$RUN"' EXIT
+
+./scripts/sim run --backend=x11 --run-dir "$RUN" --wait-ready 30 --detach
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-1
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-2
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-3
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-1
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-2
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-3
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-1
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-2
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-3
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-1
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-2
+./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-3
+./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/sim stop --run-dir "$RUN"
+
+python3 - "$RUN" <<'PY'
+import hashlib
+import struct
+import sys
+
+for demo in ("orbit", "signal", "mirror", "nebula"):
+    frames = [
+        open(f"{sys.argv[1]}/screenshots/{demo}-{n}.png", "rb").read()
+        for n in (1, 2, 3)
+    ]
+    assert len({hashlib.sha256(frame).digest() for frame in frames}) == 3
+    assert all(struct.unpack(">II", frame[16:24]) == (1024, 768) for frame in frames)
+print('{"headedGames":4,"changedFramesPerGame":2,"result":"pass"}')
+PY

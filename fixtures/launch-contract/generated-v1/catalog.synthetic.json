@@ -37,6 +37,10 @@
   ],
   "profiles": [
     {
+      "id": "default",
+      "capabilities": ["display-basic", "input-standard", "rumble", "suspend", "battery-saver"]
+    },
+    {
       "id": "generated-default",
       "capabilities": ["display-basic", "input-standard", "rumble", "suspend", "battery-saver"]
     }

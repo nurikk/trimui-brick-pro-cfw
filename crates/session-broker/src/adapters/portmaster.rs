@@ -42,7 +42,13 @@ pub fn plan(
             paths.save.display().to_string(),
             "--state".to_string(),
             paths.state.display().to_string(),
-        ],
+        ]
+        .into_iter()
+        .chain(
+            (request.resume_mode != launch_contract::ResumeMode::Fresh)
+                .then_some("--resume".to_string()),
+        )
+        .collect(),
         cwd: activation.package_root,
         env: vec![
             (

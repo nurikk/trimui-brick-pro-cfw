@@ -335,7 +335,7 @@ fn check_storage_modes(path: &Path, directory_mode: u32, file_mode: u32) -> Resu
         return Err("resume storage symlink is forbidden".to_string());
     }
     if metadata.is_dir() {
-        if metadata.permissions().mode() & 0o777 != directory_mode {
+        if metadata.permissions().mode() & 0o7777 != directory_mode {
             return Err("resume directory mode is invalid".to_string());
         }
         return fs::read_dir(path)
@@ -349,7 +349,7 @@ fn check_storage_modes(path: &Path, directory_mode: u32, file_mode: u32) -> Resu
             })
             .try_fold(0, |total, result| result.map(|count| total + count));
     }
-    if metadata.is_file() && metadata.permissions().mode() & 0o777 == file_mode {
+    if metadata.is_file() && metadata.permissions().mode() & 0o7777 == file_mode {
         Ok(1)
     } else {
         Err("resume file mode is invalid".to_string())

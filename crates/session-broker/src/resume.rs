@@ -235,7 +235,6 @@ pub struct ResumeStore {
 }
 
 impl ResumeStore {
-    /// The durable root is owned by one broker process; cross-process writers are unsupported.
     pub fn new(
         root: impl Into<PathBuf>,
         config: ResumeCapabilityConfig,
@@ -259,15 +258,24 @@ impl ResumeStore {
             return Err(ResumeError::new("resume root must be absolute"));
         }
         reject_symlink_components(&root)?;
-        fs::create_dir_all(&root).map_err(error)?;
+        let root_missing = match fs::symlink_metadata(&root) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(ResumeError::new("resume root boundary is invalid"));
+            }
+            Ok(_) => false,
+            Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(io_error) => return Err(error(io_error)),
+        };
+        if root_missing {
+            fs::create_dir_all(&root).map_err(error)?;
+        }
         let store = Self {
             root,
             config,
             mode,
             publication_lock: Arc::new(Mutex::new(())),
         };
-        store.ensure_directory_layout()?;
-        store.harden_tree()?;
+        store.ensure_directory_layout(root_missing)?;
         store.validate_layout().map(|()| store)
     }
 
@@ -277,37 +285,42 @@ impl ResumeStore {
             .map_err(|_| ResumeError::new("resume publication lock is poisoned"))
     }
 
-    fn ensure_directory_layout(&self) -> Result<(), ResumeError> {
-        for directory in [
-            self.root.clone(),
-            self.root.join("generations"),
-            self.root.join(".staging"),
+    fn ensure_directory_layout(&self, root_missing: bool) -> Result<(), ResumeError> {
+        for (directory, created) in [
+            (self.root.clone(), root_missing),
+            (self.root.join("generations"), false),
+            (self.root.join(".staging"), false),
         ] {
             match fs::symlink_metadata(&directory) {
-                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                Ok(metadata)
+                    if metadata.file_type().is_symlink()
+                        || !metadata.is_dir()
+                        || (!created
+                            && metadata.permissions().mode() & 0o7777
+                                != self.mode.directory_mode()) =>
+                {
                     return Err(ResumeError::new("resume directory boundary is invalid"));
                 }
                 Ok(_) => {}
                 Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => {
                     fs::create_dir(&directory).map_err(error)?;
+                    fs::set_permissions(
+                        &directory,
+                        fs::Permissions::from_mode(self.mode.directory_mode()),
+                    )
+                    .map_err(error)?;
                 }
                 Err(io_error) => return Err(error(io_error)),
             }
-            fs::set_permissions(
-                directory,
-                fs::Permissions::from_mode(self.mode.directory_mode()),
-            )
-            .map_err(error)?;
+            if created {
+                fs::set_permissions(
+                    directory,
+                    fs::Permissions::from_mode(self.mode.directory_mode()),
+                )
+                .map_err(error)?;
+            }
         }
         Ok(())
-    }
-
-    fn harden_tree(&self) -> Result<(), ResumeError> {
-        harden_directory(
-            &self.root,
-            self.mode.directory_mode(),
-            self.mode.file_mode(),
-        )
     }
 
     fn validate_layout(&self) -> Result<(), ResumeError> {
@@ -669,7 +682,7 @@ fn read_record(path: &Path, file_mode: u32) -> Option<ResumeRecord> {
         let metadata = fs::symlink_metadata(&artifact_path).ok()?;
         if metadata.file_type().is_symlink()
             || !metadata.is_file()
-            || metadata.permissions().mode() & 0o777 != file_mode
+            || metadata.permissions().mode() & 0o7777 != file_mode
             || metadata.len() != artifact.size
         {
             return None;
@@ -751,7 +764,7 @@ fn read_current(root: &Path, file_mode: u32) -> Option<u64> {
     let metadata = fs::symlink_metadata(&path).ok()?;
     if metadata.file_type().is_symlink()
         || !metadata.is_file()
-        || metadata.permissions().mode() & 0o777 != file_mode
+        || metadata.permissions().mode() & 0o7777 != file_mode
         || metadata.len() > 1024
     {
         return None;
@@ -763,35 +776,11 @@ fn read_current(root: &Path, file_mode: u32) -> Option<u64> {
     .then_some(pointer.generation)
 }
 
-fn harden_directory(path: &Path, directory_mode: u32, file_mode: u32) -> Result<(), ResumeError> {
-    let metadata = fs::symlink_metadata(path).map_err(error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(ResumeError::new("resume directory boundary is invalid"));
-    }
-    fs::set_permissions(path, fs::Permissions::from_mode(directory_mode)).map_err(error)?;
-    for entry in fs::read_dir(path).map_err(error)? {
-        let entry = entry.map_err(error)?;
-        let child = entry.path();
-        let metadata = fs::symlink_metadata(&child).map_err(error)?;
-        if metadata.file_type().is_symlink() {
-            return Err(ResumeError::new("resume storage symlink is forbidden"));
-        }
-        if metadata.is_dir() {
-            harden_directory(&child, directory_mode, file_mode)?;
-        } else if metadata.is_file() {
-            fs::set_permissions(child, fs::Permissions::from_mode(file_mode)).map_err(error)?;
-        } else {
-            return Err(ResumeError::new("resume storage entry is invalid"));
-        }
-    }
-    Ok(())
-}
-
 fn validate_directory(path: &Path, directory_mode: u32, file_mode: u32) -> Result<(), ResumeError> {
     let metadata = fs::symlink_metadata(path).map_err(error)?;
     if metadata.file_type().is_symlink()
         || !metadata.is_dir()
-        || metadata.permissions().mode() & 0o777 != directory_mode
+        || metadata.permissions().mode() & 0o7777 != directory_mode
     {
         return Err(ResumeError::new("resume directory boundary is invalid"));
     }
@@ -803,7 +792,7 @@ fn validate_directory(path: &Path, directory_mode: u32, file_mode: u32) -> Resul
         }
         if metadata.is_dir() {
             validate_directory(&child, directory_mode, file_mode)?;
-        } else if !metadata.is_file() || metadata.permissions().mode() & 0o777 != file_mode {
+        } else if !metadata.is_file() || metadata.permissions().mode() & 0o7777 != file_mode {
             return Err(ResumeError::new("resume storage file mode is invalid"));
         }
     }
@@ -844,7 +833,7 @@ fn validate_file_slot(path: &Path, file_mode: u32) -> Result<(), ResumeError> {
         Ok(metadata)
             if metadata.file_type().is_symlink()
                 || !metadata.is_file()
-                || metadata.permissions().mode() & 0o777 != file_mode =>
+                || metadata.permissions().mode() & 0o7777 != file_mode =>
         {
             Err(ResumeError::new("resume file boundary is invalid"))
         }
@@ -861,7 +850,8 @@ fn write_file(path: &Path, bytes: &[u8], file_mode: u32) -> Result<(), ResumeErr
         .mode(file_mode)
         .open(path)
         .map_err(error)?;
-    file.write_all(bytes).map_err(error)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(file_mode)).map_err(error)?;
+    file.write_all(bytes).map_err(error)?
     file.sync_all().map_err(error)
 }
 

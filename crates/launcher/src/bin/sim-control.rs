@@ -121,6 +121,26 @@ fn command_args<'a>(
         "presentation" => Ok(("presentation", presentation_args(args)?)),
         "screenshot" => Ok(("screenshot", artifact_args(args)?)),
         "checkpoint" => Ok(("checkpoint", artifact_args(args)?)),
+        "save-vault.history" => {
+            require_empty(args)?;
+            Ok(("save-vault.history", json!({})))
+        }
+        "save-vault.preview" => {
+            require_empty(args)?;
+            Ok(("save-vault.preview", json!({})))
+        }
+        "save-vault.restore" => {
+            if args.len() != 2
+                || args[0] != "--confirmed"
+                || !["true", "false"].contains(&args[1].as_str())
+            {
+                return Err(("usage", "--confirmed true|false is required".into()));
+            }
+            Ok((
+                "save-vault.restore",
+                json!({"confirmed": args[1] == "true"}),
+            ))
+        }
         "autosave" => Ok(("autosave", autosave_args(args)?)),
         "resume" => Ok(("resume", resume_args(args)?)),
         "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
@@ -295,6 +315,11 @@ fn presentation_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         "wifi-manual",
         "wifi-progress",
         "wifi-error",
+        "save-vault-history",
+        "save-vault-preview",
+        "save-vault-confirm",
+        "save-vault-restore",
+        "save-vault-cancel",
         "fallback",
     ];
     if !actions.contains(&args[1].as_str()) {

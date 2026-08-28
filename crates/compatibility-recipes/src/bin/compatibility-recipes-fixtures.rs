@@ -170,6 +170,7 @@ fn run() -> Result<(), String> {
     );
 
     let failure_root = root.join("failure");
+    prepare_root(&failure_root)?;
     let failure_local = LocalOverrides::default();
     for (point, label) in [
         (FailurePoint::AfterVault, "vault"),

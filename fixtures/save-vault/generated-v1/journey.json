@@ -1,0 +1,16 @@
+{
+  "$schema": "https://example.invalid/trimui-save-vault-journey-v1.schema.json",
+  "format": "trimui-save-vault-journey",
+  "schemaVersion": 1,
+  "fixtureKind": "generated-synthetic-save-vault-journey",
+  "journeys": [
+    "publication",
+    "corruption",
+    "symlink-and-traversal",
+    "disk-full-equivalent",
+    "zero-and-shrink-quarantine",
+    "retention",
+    "preview-confirm-restore",
+    "cancel-preserves-live"
+  ]
+}

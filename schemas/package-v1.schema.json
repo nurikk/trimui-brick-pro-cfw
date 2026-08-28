@@ -140,7 +140,8 @@
         "preserve": {
           "oneOf": [
             {"const": ["/roms", "/data/saves", "/data/states"]},
-            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume"]}
+            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume"]},
+            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume", "/data/settings", "/.brickpro/save-vault"]}
           ]
         },
         "remove": {

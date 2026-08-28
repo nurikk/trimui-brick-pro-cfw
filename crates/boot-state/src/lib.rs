@@ -246,12 +246,13 @@ pub fn prepare_pending(root: &Path, slot: Slot, release: &str, sequence: u64) ->
     store(root, generation, &state)
 }
 
-pub fn protected_hashes(root: &Path) -> Result<[String; 4]> {
+pub fn protected_hashes(root: &Path) -> Result<[String; 5]> {
     Ok([
         tree_hash(&root.join("roms"))?,
         tree_hash(&root.join("data/saves"))?,
         tree_hash(&root.join("data/states"))?,
         tree_hash(&root.join("data/resume"))?,
+        tree_hash(&root.join("data/settings"))?,
     ])
 }
 

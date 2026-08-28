@@ -160,6 +160,7 @@ dependencies = [
 name = "compatibility-recipes"
 version = "0.1.0"
 dependencies = [
+ "save-vault",
  "display-profile",
  "emulator-catalog",
  "input-profile",
@@ -568,6 +569,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "package-manager"
 version = "0.1.0"
 dependencies = [
+ "save-vault",
  "anyhow",
  "hex",
  "package-trust",
@@ -738,6 +740,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "save-vault"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -784,6 +795,7 @@ dependencies = [
 name = "session-broker"
 version = "0.1.0"
 dependencies = [
+ "save-vault",
  "launch-contract",
  "libc",
  "package-manager",
@@ -950,6 +962,7 @@ dependencies = [
 name = "sim-launcher"
 version = "0.1.0"
 dependencies = [
+ "save-vault",
  "anyhow",
  "compatibility-recipes",
  "launch-contract",
@@ -1160,6 +1173,7 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 name = "update-agent"
 version = "0.1.0"
 dependencies = [
+ "save-vault",
  "anyhow",
  "boot-state",
  "minisign-verify",

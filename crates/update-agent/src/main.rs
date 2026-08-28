@@ -396,6 +396,10 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     }
     let slot = state.current.inactive();
     verify_signature(&document, &input.signature)?;
+    save_vault::SaveVault::snapshot_standard(root, save_vault::SnapshotReason::PreUpdate)
+        .map_err(|error| anyhow!("pre-update save snapshot failed: {error}"))?;
+    let vault_before = save_vault::SaveVault::standard_integrity(root)
+        .map_err(|error| anyhow!("save vault integrity failed: {error}"))?;
     let before = protected_hashes(root)?;
     let update = root.join(".brickpro/data/update");
     let staging = update.join("staging").join(&document.manifest.release_id);
@@ -427,6 +431,12 @@ fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     if protected_hashes(root)? != before {
         bail!("protected hashes changed")
     }
+    if save_vault::SaveVault::standard_integrity(root)
+        .map_err(|error| anyhow!("save vault integrity failed: {error}"))?
+        != vault_before
+    {
+        bail!("save vault changed during update")
+    }
     Ok(())
 }
 
@@ -446,6 +456,7 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
     fs::create_dir_all(root.join("data/saves"))?;
     fs::create_dir_all(root.join("data/states"))?;
     fs::create_dir_all(root.join("data/resume"))?;
+    fs::create_dir_all(root.join("data/settings"))?;
     fs::create_dir_all(root.join(".brickpro/data"))?;
     fs::create_dir_all(root.join(".brickpro/system/slots/A"))?;
     fs::create_dir_all(root.join(".brickpro/system/slots/B"))?;
@@ -453,6 +464,10 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
     fs::write(root.join("data/saves/save.synthetic"), b"protected\n")?;
     fs::write(root.join("data/states/state.synthetic"), b"protected\n")?;
     fs::write(root.join("data/resume/current.synthetic"), b"protected\n")?;
+    fs::write(
+        root.join("data/settings/settings.synthetic"),
+        b"protected\n",
+    )?;
     fs::write(
         root.join(".brickpro/data/prior-release-readable"),
         b"prior-release-readable-v1\n",
@@ -506,7 +521,7 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
     Ok((manifest, payload, signature))
 }
 
-fn assert_recovered(root: &Path, before: &[String; 4]) -> Result<()> {
+fn assert_recovered(root: &Path, before: &[String; 5]) -> Result<()> {
     let (selected, reason, attempts) = select(root)?;
     if selected != Slot::A || reason != "current" || attempts != 0 {
         bail!("last-known-good selection was not recovered")

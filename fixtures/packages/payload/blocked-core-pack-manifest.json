@@ -17,7 +17,7 @@
   "entrypoints": [],
   "runtime": {"path": "runtime", "dependencies": []},
   "capabilities": {"network": [], "input": [], "audio": [], "display": [], "save": []},
-  "uninstall": {"preserve": ["/roms", "/data/saves", "/data/states"], "remove": ["immutable", "runtime", "cache", "staging"]},
+  "uninstall": {"preserve": ["/roms", "/data/saves", "/data/states", "/data/resume", "/data/settings", "/.brickpro/save-vault"], "remove": ["immutable", "runtime", "cache", "staging"]},
   "license": {"spdx": "MIT", "source": "https://example.invalid/synthetic-blocked-core-pack"},
   "provenance": {"sbom": "provenance/brickpro-cfw.spdx.json", "source": "synthetic blocked fixture"},
   "developer": {"enabled": false, "localKeyTrusted": false, "nonRoot": true}

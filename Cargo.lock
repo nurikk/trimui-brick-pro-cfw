@@ -157,6 +157,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "compatibility-recipes"
+version = "0.1.0"
+dependencies = [
+ "display-profile",
+ "emulator-catalog",
+ "input-profile",
+ "package-trust",
+ "serde",
+ "serde_json",
+ "settings-schema",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -938,9 +951,11 @@ name = "sim-launcher"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "compatibility-recipes",
  "launch-contract",
  "launcher-presentation",
  "launcher-theme",
+ "package-trust",
  "png",
  "serde",
  "serde_json",

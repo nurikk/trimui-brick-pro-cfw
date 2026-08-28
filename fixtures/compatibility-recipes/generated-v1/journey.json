@@ -1,0 +1,23 @@
+{
+  "$schema": "https://example.invalid/trimui-compat-recipe-journey-v1.schema.json",
+  "format": "trimui-compatibility-recipe-journey",
+  "schemaVersion": 1,
+  "synthetic": true,
+  "cases": [
+    "valid-match-preview-apply-rollback",
+    "no-match",
+    "tampered-target",
+    "expired-metadata",
+    "rollback-metadata",
+    "wrong-tg4040-identity",
+    "wrong-rom",
+    "unavailable-blocked-core",
+    "invalid-config-value",
+    "unknown-config-key",
+    "local-override-collision",
+    "injected-partial-failure",
+    "duplicate-key",
+    "oversized-input",
+    "unsafe-repository-path"
+  ]
+}

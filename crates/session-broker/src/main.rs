@@ -6,6 +6,7 @@ mod state;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write},
+    os::unix::fs::{symlink, PermissionsExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
@@ -21,7 +22,7 @@ use package_manager::TrustContext;
 use package_trust::VerifiedTarget;
 use serde::Serialize;
 use session_broker::{
-    resume::{CheckpointReason, CommitFault, ResumeCapabilityConfig, ResumeStore},
+    resume::{CheckpointReason, CommitFault, ResumeCapabilityConfig, ResumeDecision, ResumeStore},
     LifecycleCheckpointPolicy, SessionResult,
 };
 use sha2::{Digest, Sha256};
@@ -59,6 +60,10 @@ const JOURNEYS: &[&str] = &[
     "crash-after-publish",
     "crash-after-release",
     "result-fsync-failure",
+    "resume-symlink",
+    "resume-mode",
+    "resume-production-mode",
+    "resume-concurrent",
 ];
 
 fn main() {
@@ -139,6 +144,16 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
 enum Output {
     Session(SessionResult),
     Rejection(journal::Rejection),
+    Security(ResumeSecurityResult),
+}
+
+#[derive(Serialize)]
+struct ResumeSecurityResult {
+    #[serde(rename = "type")]
+    result_type: &'static str,
+    journey: String,
+    prior_generation: u64,
+    visible_generations: usize,
 }
 
 fn install_portmaster_fixture(root: &Path) -> Result<(), String> {
@@ -188,6 +203,169 @@ fn seed_portmaster_symlink(root: &Path) -> Result<(), String> {
     }
 }
 
+fn production_mode_journey(
+    root: &Path,
+    request: &LaunchRequest,
+    config_path: &Path,
+) -> Result<ResumeSecurityResult, String> {
+    let config =
+        ResumeCapabilityConfig::parse(&fs::read(config_path).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+    let store_root = root.join("production-resume");
+    let store = ResumeStore::new(&store_root, config).map_err(|error| error.to_string())?;
+    let record = store
+        .checkpoint(
+            request,
+            CheckpointReason::NormalExit,
+            b"production-state",
+            b"production-sram",
+            b"production-screenshot",
+            CommitFault::None,
+        )
+        .map_err(|error| error.to_string())?;
+    let file_count = check_storage_modes(&store_root, 0o700, 0o600)?;
+    if file_count != 5 {
+        return Err("production resume artifact set is incomplete".to_string());
+    }
+    Ok(ResumeSecurityResult {
+        result_type: "ResumeSecurityResult",
+        journey: "resume-production-mode".to_string(),
+        prior_generation: record.generation,
+        visible_generations: store.list(&[request.clone()]).len(),
+    })
+}
+
+fn resume_security_journey(
+    broker: &Broker,
+    request: &LaunchRequest,
+    journey: &str,
+) -> Result<ResumeSecurityResult, String> {
+    let record = broker
+        .resume
+        .checkpoint(
+            request,
+            CheckpointReason::NormalExit,
+            b"security-state",
+            b"security-sram",
+            b"security-screenshot",
+            CommitFault::None,
+        )
+        .map_err(|error| error.to_string())?;
+    let prior_generation = record.generation;
+    let root = broker.fixture_root.join("data/resume");
+    match journey {
+        "resume-symlink" => {
+            fs::remove_dir_all(root.join(".staging")).map_err(|error| error.to_string())?;
+            symlink(root.join("outside"), root.join(".staging"))
+                .map_err(|error| error.to_string())?;
+            if broker.resume.choices(request) != [ResumeDecision::Cancel]
+                || current_generation(&root)? != prior_generation
+            {
+                return Err("resume symlink boundary was not rejected".to_string());
+            }
+        }
+        "resume-mode" => {
+            fs::set_permissions(
+                root.join(format!("generations/generation-{prior_generation}")),
+                fs::Permissions::from_mode(0o700),
+            )
+            .map_err(|error| error.to_string())?;
+            if broker.resume.choices(request) != [ResumeDecision::Cancel]
+                || current_generation(&root)? != prior_generation
+            {
+                return Err("resume mode corruption was not rejected".to_string());
+            }
+        }
+        "resume-concurrent" => {
+            let store = broker.resume.clone();
+            let handles = (0..8)
+                .map(|_| {
+                    let store = store.clone();
+                    let request = request.clone();
+                    thread::spawn(move || {
+                        store.checkpoint(
+                            &request,
+                            CheckpointReason::Periodic,
+                            b"concurrent-state",
+                            b"concurrent-sram",
+                            b"concurrent-screenshot",
+                            CommitFault::None,
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            let records = handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .map_err(|_| "checkpoint thread panicked".to_string())
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?;
+            let generations = records
+                .iter()
+                .map(|record| record.generation)
+                .collect::<std::collections::HashSet<_>>();
+            let unique = generations.len() == records.len();
+            let current = current_generation(&root)?;
+            let visible = broker.resume.list(&[request.clone()]).len();
+            let Some(max_generation) = generations.iter().max().copied() else {
+                return Err("concurrent checkpoints produced no records".to_string());
+            };
+            if !unique || current != max_generation || visible != 4 {
+                return Err("concurrent resume publication was not serialized".to_string());
+            }
+        }
+        _ => return Err("unsupported resume security journey".to_string()),
+    }
+    Ok(ResumeSecurityResult {
+        result_type: "ResumeSecurityResult",
+        journey: journey.to_string(),
+        prior_generation,
+        visible_generations: broker.resume.list(&[request.clone()]).len(),
+    })
+}
+
+fn check_storage_modes(path: &Path, directory_mode: u32, file_mode: u32) -> Result<usize, String> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("resume storage symlink is forbidden".to_string());
+    }
+    if metadata.is_dir() {
+        if metadata.permissions().mode() & 0o777 != directory_mode {
+            return Err("resume directory mode is invalid".to_string());
+        }
+        return fs::read_dir(path)
+            .map_err(|error| error.to_string())?
+            .map(|entry| {
+                check_storage_modes(
+                    &entry.map_err(|error| error.to_string())?.path(),
+                    directory_mode,
+                    file_mode,
+                )
+            })
+            .try_fold(0, |total, result| result.map(|count| total + count));
+    }
+    if metadata.is_file() && metadata.permissions().mode() & 0o777 == file_mode {
+        Ok(1)
+    } else {
+        Err("resume file mode is invalid".to_string())
+    }
+}
+
+fn current_generation(root: &Path) -> Result<u64, String> {
+    let value: serde_json::Value = serde_json::from_slice(
+        &fs::read(root.join("current.json")).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    value["generation"]
+        .as_u64()
+        .ok_or_else(|| "resume current pointer is invalid".to_string())
+}
+
 fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
     let root = temp_root(journey);
     let _ = fs::remove_dir_all(&root);
@@ -197,9 +375,13 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
     let mut catalog =
         parse_catalog_json(&catalog_bytes).map_err(|_| "catalog fixture is invalid".to_string())?;
     let request_name = match journey {
-        "standalone" | "standalone-sram-only" | "standalone-undeclared" => {
-            "standalone.synthetic.json"
-        }
+        "standalone"
+        | "standalone-sram-only"
+        | "standalone-undeclared"
+        | "resume-symlink"
+        | "resume-mode"
+        | "resume-production-mode"
+        | "resume-concurrent" => "standalone.synthetic.json",
         "portmaster"
         | "portmaster-success"
         | "portmaster-rejection"
@@ -258,10 +440,24 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         }
         _ => {}
     }
+    if journey == "resume-production-mode" {
+        let result =
+            production_mode_journey(&root, &request, &root.join("resume-capabilities.json"))?;
+        let _ = fs::remove_dir_all(root);
+        return Ok(Output::Security(result));
+    }
     let mut broker = Broker::new(
         root.join("host-root"),
         root.join("resume-capabilities.json"),
     );
+    if matches!(
+        journey,
+        "resume-symlink" | "resume-mode" | "resume-concurrent"
+    ) {
+        let result = resume_security_journey(&broker, &request, journey)?;
+        let _ = fs::remove_dir_all(root);
+        return Ok(Output::Security(result));
+    }
     let output = match journey {
         "restart" | "marker-mismatch" | "start-time-mismatch" => {
             broker.seed_recovery_fixture(journey)?;
@@ -437,8 +633,8 @@ impl Broker {
             &fs::read(config_path).expect("generated resume capability configuration"),
         )
         .expect("generated resume capability configuration");
-        let resume =
-            ResumeStore::new(fixture_root.join("data/resume"), config).expect("resume store");
+        let resume = ResumeStore::for_simulator(fixture_root.join("data/resume"), config)
+            .expect("resume store");
         Self {
             phase: Phase::Idle,
             platform: state::LogicalPlatform::new(),

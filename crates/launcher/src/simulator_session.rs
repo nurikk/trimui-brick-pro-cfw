@@ -28,7 +28,7 @@ impl SimulatorSessionAdapter {
         let config = ResumeCapabilityConfig::parse(CAPABILITIES).expect("generated resume config");
         Self {
             active: None,
-            store: ResumeStore::new(root.join("resume"), config)
+            store: ResumeStore::for_simulator(root.join("resume"), config)
                 .expect("resume store")
                 .to_owned(),
         }

@@ -1,8 +1,9 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -203,28 +204,118 @@ impl std::fmt::Display for ResumeError {
 
 impl std::error::Error for ResumeError {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StoreMode {
+    Production,
+    Simulator,
+}
+
+impl StoreMode {
+    fn directory_mode(self) -> u32 {
+        match self {
+            Self::Production => 0o700,
+            Self::Simulator => 0o777,
+        }
+    }
+
+    fn file_mode(self) -> u32 {
+        match self {
+            Self::Production => 0o600,
+            Self::Simulator => 0o644,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ResumeStore {
     root: PathBuf,
     config: ResumeCapabilityConfig,
+    mode: StoreMode,
+    publication_lock: Arc<Mutex<()>>,
 }
 
 impl ResumeStore {
+    /// The durable root is owned by one broker process; cross-process writers are unsupported.
     pub fn new(
         root: impl Into<PathBuf>,
         config: ResumeCapabilityConfig,
     ) -> Result<Self, ResumeError> {
-        let root = root.into();
-        fs::create_dir_all(root.join("generations")).map_err(error)?;
-        fs::create_dir_all(root.join(".staging")).map_err(error)?;
-        for directory in [
-            root.clone(),
-            root.join("generations"),
-            root.join(".staging"),
-        ] {
-            fs::set_permissions(directory, fs::Permissions::from_mode(0o777)).map_err(error)?;
+        Self::new_with_mode(root.into(), config, StoreMode::Production)
+    }
+
+    pub fn for_simulator(
+        root: impl Into<PathBuf>,
+        config: ResumeCapabilityConfig,
+    ) -> Result<Self, ResumeError> {
+        Self::new_with_mode(root.into(), config, StoreMode::Simulator)
+    }
+
+    fn new_with_mode(
+        root: PathBuf,
+        config: ResumeCapabilityConfig,
+        mode: StoreMode,
+    ) -> Result<Self, ResumeError> {
+        if !root.is_absolute() {
+            return Err(ResumeError::new("resume root must be absolute"));
         }
-        Ok(Self { root, config })
+        reject_symlink_components(&root)?;
+        fs::create_dir_all(&root).map_err(error)?;
+        let store = Self {
+            root,
+            config,
+            mode,
+            publication_lock: Arc::new(Mutex::new(())),
+        };
+        store.ensure_directory_layout()?;
+        store.harden_tree()?;
+        store.validate_layout().map(|()| store)
+    }
+
+    fn publication_guard(&self) -> Result<MutexGuard<'_, ()>, ResumeError> {
+        self.publication_lock
+            .lock()
+            .map_err(|_| ResumeError::new("resume publication lock is poisoned"))
+    }
+
+    fn ensure_directory_layout(&self) -> Result<(), ResumeError> {
+        for directory in [
+            self.root.clone(),
+            self.root.join("generations"),
+            self.root.join(".staging"),
+        ] {
+            match fs::symlink_metadata(&directory) {
+                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                    return Err(ResumeError::new("resume directory boundary is invalid"));
+                }
+                Ok(_) => {}
+                Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => {
+                    fs::create_dir(&directory).map_err(error)?;
+                }
+                Err(io_error) => return Err(error(io_error)),
+            }
+            fs::set_permissions(
+                directory,
+                fs::Permissions::from_mode(self.mode.directory_mode()),
+            )
+            .map_err(error)?;
+        }
+        Ok(())
+    }
+
+    fn harden_tree(&self) -> Result<(), ResumeError> {
+        harden_directory(
+            &self.root,
+            self.mode.directory_mode(),
+            self.mode.file_mode(),
+        )
+    }
+
+    fn validate_layout(&self) -> Result<(), ResumeError> {
+        validate_directory(
+            &self.root,
+            self.mode.directory_mode(),
+            self.mode.file_mode(),
+        )
     }
 
     pub fn checkpoint(
@@ -236,6 +327,8 @@ impl ResumeStore {
         screenshot: &[u8],
         fault: CommitFault,
     ) -> Result<ResumeRecord, ResumeError> {
+        let _guard = self.publication_guard()?;
+        self.validate_layout()?;
         let capability = self
             .config
             .capability(request)
@@ -260,11 +353,19 @@ impl ResumeStore {
             .join(format!("generation-{generation}"));
         let _ = fs::remove_dir_all(&stage);
         fs::create_dir(&stage).map_err(error)?;
-        fs::set_permissions(&stage, fs::Permissions::from_mode(0o777)).map_err(error)?;
+        fs::set_permissions(
+            &stage,
+            fs::Permissions::from_mode(self.mode.directory_mode()),
+        )
+        .map_err(error)?;
         let result = (|| {
-            write_file(&stage.join("state.bin"), state)?;
-            write_file(&stage.join("sram.bin"), sram)?;
-            write_file(&stage.join("screenshot.png"), screenshot)?;
+            write_file(&stage.join("state.bin"), state, self.mode.file_mode())?;
+            write_file(&stage.join("sram.bin"), sram, self.mode.file_mode())?;
+            write_file(
+                &stage.join("screenshot.png"),
+                screenshot,
+                self.mode.file_mode(),
+            )?;
             if fault == CommitFault::Artifact {
                 return Err(ResumeError::new("injected artifact commit failure"));
             }
@@ -288,7 +389,7 @@ impl ResumeStore {
             if bytes.len() as u64 > MAX_RECORD_BYTES {
                 return Err(ResumeError::new("resume record exceeds its bound"));
             }
-            write_file(&stage.join("record.json"), &bytes)?;
+            write_file(&stage.join("record.json"), &bytes, self.mode.file_mode())?;
             sync_dir(&stage)?;
             if fault == CommitFault::Metadata {
                 return Err(ResumeError::new("injected metadata commit failure"));
@@ -301,7 +402,7 @@ impl ResumeStore {
             if fault == CommitFault::Pointer {
                 return Err(ResumeError::new("injected current pointer failure"));
             }
-            publish_current(&self.root, generation)?;
+            publish_current(&self.root, generation, self.mode.file_mode())?;
             self.prune(generation)?;
             Ok(record)
         })();
@@ -312,7 +413,13 @@ impl ResumeStore {
     }
 
     pub fn list(&self, requests: &[LaunchRequest]) -> Vec<ResumeSummary> {
-        let Some(current) = read_current(&self.root) else {
+        let Ok(_guard) = self.publication_guard() else {
+            return Vec::new();
+        };
+        if self.validate_layout().is_err() {
+            return Vec::new();
+        }
+        let Some(current) = read_current(&self.root, self.mode.file_mode()) else {
             return Vec::new();
         };
         let Ok(entries) = fs::read_dir(self.root.join("generations")) else {
@@ -320,13 +427,13 @@ impl ResumeStore {
         };
         let mut records = entries
             .flatten()
-            .filter_map(|entry| read_record(&entry.path()))
+            .filter_map(|entry| read_record(&entry.path(), self.mode.file_mode()))
             .filter(|record| record.generation <= current)
             .map(|record| {
                 let choices = requests
                     .iter()
                     .find(|request| request.content_id == record.content_id)
-                    .map(|request| self.choices(request))
+                    .map(|request| self.choices_unlocked(request))
                     .unwrap_or_else(|| vec![ResumeDecision::Cancel]);
                 ResumeSummary {
                     content_id: record.content_id,
@@ -349,10 +456,25 @@ impl ResumeStore {
     }
 
     pub fn choices(&self, request: &LaunchRequest) -> Vec<ResumeDecision> {
-        let Some(current) = read_current(&self.root) else {
+        let Ok(_guard) = self.publication_guard() else {
             return vec![ResumeDecision::Cancel];
         };
-        let Some(record) = read_record_for(&self.root, current, &request.content_id) else {
+        if self.validate_layout().is_err() {
+            return vec![ResumeDecision::Cancel];
+        }
+        self.choices_unlocked(request)
+    }
+
+    fn choices_unlocked(&self, request: &LaunchRequest) -> Vec<ResumeDecision> {
+        let Some(current) = read_current(&self.root, self.mode.file_mode()) else {
+            return vec![ResumeDecision::Cancel];
+        };
+        let Some(record) = read_record_for(
+            &self.root,
+            current,
+            &request.content_id,
+            self.mode.file_mode(),
+        ) else {
             return vec![ResumeDecision::Cancel];
         };
         let exact = record.content_sha256 == request.content_sha256
@@ -376,9 +498,17 @@ impl ResumeStore {
         request: &LaunchRequest,
         decision: ResumeDecision,
     ) -> Result<ResumeResult, ResumeError> {
-        let current = read_current(&self.root);
-        let record = current
-            .and_then(|generation| read_record_for(&self.root, generation, &request.content_id));
+        let _guard = self.publication_guard()?;
+        self.validate_layout()?;
+        let current = read_current(&self.root, self.mode.file_mode());
+        let record = current.and_then(|generation| {
+            read_record_for(
+                &self.root,
+                generation,
+                &request.content_id,
+                self.mode.file_mode(),
+            )
+        });
         match decision {
             ResumeDecision::Cancel => Ok(ResumeResult {
                 decision,
@@ -455,6 +585,7 @@ impl ResumeStore {
     }
 
     fn prune(&self, current: u64) -> Result<(), ResumeError> {
+        self.validate_layout()?;
         let mut generations = fs::read_dir(self.root.join("generations"))
             .map_err(error)?
             .flatten()
@@ -496,18 +627,24 @@ fn content_rank(content_id: &str) -> usize {
     }
 }
 
-fn read_record_for(root: &Path, current: u64, content_id: &str) -> Option<ResumeRecord> {
+fn read_record_for(
+    root: &Path,
+    current: u64,
+    content_id: &str,
+    file_mode: u32,
+) -> Option<ResumeRecord> {
     (1..=current).rev().find_map(|generation| {
         let record = read_record(
             &root
                 .join("generations")
                 .join(format!("generation-{generation}")),
+            file_mode,
         )?;
         (record.content_id == content_id).then_some(record)
     })
 }
 
-fn read_record(path: &Path) -> Option<ResumeRecord> {
+fn read_record(path: &Path, file_mode: u32) -> Option<ResumeRecord> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return None;
@@ -532,6 +669,7 @@ fn read_record(path: &Path) -> Option<ResumeRecord> {
         let metadata = fs::symlink_metadata(&artifact_path).ok()?;
         if metadata.file_type().is_symlink()
             || !metadata.is_file()
+            || metadata.permissions().mode() & 0o777 != file_mode
             || metadata.len() != artifact.size
         {
             return None;
@@ -577,8 +715,14 @@ fn validate_record(record: &ResumeRecord) -> Result<(), ResumeError> {
     Ok(())
 }
 
-fn publish_current(root: &Path, generation: u64) -> Result<(), ResumeError> {
+fn publish_current(root: &Path, generation: u64, file_mode: u32) -> Result<(), ResumeError> {
+    let root_metadata = fs::symlink_metadata(root).map_err(error)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(ResumeError::new("resume root boundary is invalid"));
+    }
     let temporary = root.join(".current.json.tmp");
+    validate_file_slot(&temporary, file_mode)?;
+    validate_file_slot(&root.join("current.json"), file_mode)?;
     let bytes = serde_json::to_vec(&serde_json::json!({
         "schema": "trimui-resume-current/v1",
         "generation": generation,
@@ -586,12 +730,16 @@ fn publish_current(root: &Path, generation: u64) -> Result<(), ResumeError> {
     }))
     .map_err(error)?;
     let _ = fs::remove_file(&temporary);
-    write_file(&temporary, &bytes)?;
+    write_file(&temporary, &bytes, file_mode)?;
     fs::rename(temporary, root.join("current.json")).map_err(error)?;
     sync_dir(root)
 }
 
-fn read_current(root: &Path) -> Option<u64> {
+fn read_current(root: &Path, file_mode: u32) -> Option<u64> {
+    let metadata = fs::symlink_metadata(root).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return None;
+    }
     if fs::read_dir(root).ok()?.flatten().any(|entry| {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -601,7 +749,11 @@ fn read_current(root: &Path) -> Option<u64> {
     }
     let path = root.join("current.json");
     let metadata = fs::symlink_metadata(&path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 1024 {
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.permissions().mode() & 0o777 != file_mode
+        || metadata.len() > 1024
+    {
         return None;
     }
     let pointer: CurrentPointer = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
@@ -611,14 +763,102 @@ fn read_current(root: &Path) -> Option<u64> {
     .then_some(pointer.generation)
 }
 
+fn harden_directory(path: &Path, directory_mode: u32, file_mode: u32) -> Result<(), ResumeError> {
+    let metadata = fs::symlink_metadata(path).map_err(error)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(ResumeError::new("resume directory boundary is invalid"));
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(directory_mode)).map_err(error)?;
+    for entry in fs::read_dir(path).map_err(error)? {
+        let entry = entry.map_err(error)?;
+        let child = entry.path();
+        let metadata = fs::symlink_metadata(&child).map_err(error)?;
+        if metadata.file_type().is_symlink() {
+            return Err(ResumeError::new("resume storage symlink is forbidden"));
+        }
+        if metadata.is_dir() {
+            harden_directory(&child, directory_mode, file_mode)?;
+        } else if metadata.is_file() {
+            fs::set_permissions(child, fs::Permissions::from_mode(file_mode)).map_err(error)?;
+        } else {
+            return Err(ResumeError::new("resume storage entry is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_directory(path: &Path, directory_mode: u32, file_mode: u32) -> Result<(), ResumeError> {
+    let metadata = fs::symlink_metadata(path).map_err(error)?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_dir()
+        || metadata.permissions().mode() & 0o777 != directory_mode
+    {
+        return Err(ResumeError::new("resume directory boundary is invalid"));
+    }
+    for entry in fs::read_dir(path).map_err(error)? {
+        let child = entry.map_err(error)?.path();
+        let metadata = fs::symlink_metadata(&child).map_err(error)?;
+        if metadata.file_type().is_symlink() {
+            return Err(ResumeError::new("resume storage symlink is forbidden"));
+        }
+        if metadata.is_dir() {
+            validate_directory(&child, directory_mode, file_mode)?;
+        } else if !metadata.is_file() || metadata.permissions().mode() & 0o777 != file_mode {
+            return Err(ResumeError::new("resume storage file mode is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn reject_symlink_components(path: &Path) -> Result<(), ResumeError> {
+    let mut current = PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(name) => {
+                current.push(name);
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) if metadata.file_type().is_symlink() => {
+                        return Err(ResumeError::new("resume root symlink is forbidden"));
+                    }
+                    Ok(metadata) if !metadata.is_dir() => {
+                        return Err(ResumeError::new("resume root component is not a directory"));
+                    }
+                    Ok(_) => {}
+                    Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => break,
+                    Err(io_error) => return Err(error(io_error)),
+                }
+            }
+            std::path::Component::RootDir => {}
+            _ => return Err(ResumeError::new("resume root path is not normalized")),
+        }
+    }
+    Ok(())
+}
+
 fn pointer_checksum(generation: u64) -> String {
     digest(format!("trimui-resume-current/v1:{generation}").as_bytes())
 }
 
-fn write_file(path: &Path, bytes: &[u8]) -> Result<(), ResumeError> {
+fn validate_file_slot(path: &Path, file_mode: u32) -> Result<(), ResumeError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata)
+            if metadata.file_type().is_symlink()
+                || !metadata.is_file()
+                || metadata.permissions().mode() & 0o777 != file_mode =>
+        {
+            Err(ResumeError::new("resume file boundary is invalid"))
+        }
+        Ok(_) => Ok(()),
+        Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(io_error) => Err(error(io_error)),
+    }
+}
+
+fn write_file(path: &Path, bytes: &[u8], file_mode: u32) -> Result<(), ResumeError> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(file_mode)
         .open(path)
         .map_err(error)?;
     file.write_all(bytes).map_err(error)?;

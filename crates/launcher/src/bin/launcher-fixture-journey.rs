@@ -78,6 +78,9 @@ struct Journey {
 fn run_once(number: u8) -> Journey {
     let root = env::temp_dir().join(format!("trimui-launcher-journey-{}-{number}", process_id()));
     let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("data")).expect("create caller-owned data directory");
+    fs::write(root.join("data/rom-index.json"), b"interrupted-index")
+        .expect("seed interrupted index fixture");
     fs::create_dir_all(&root).expect("create caller-owned evidence directory");
     let started = Instant::now();
     let stop = Arc::new(AtomicBool::new(false));
@@ -128,6 +131,26 @@ fn run_once(number: u8) -> Journey {
             "private evidence marker: {forbidden}"
         );
     }
+    let index_event = events
+        .iter()
+        .find(|event| event["event"] == "index")
+        .expect("index event");
+    assert_eq!(index_event["status"], "recovered");
+    assert_eq!(index_event["visibleRows"], 12);
+    assert_eq!(index_event["searchResults"], 64);
+    assert_eq!(index_event["queueDepth"], 32);
+    let index: Value = serde_json::from_slice(
+        &fs::read(root.join("data/rom-index.json")).expect("recovered index"),
+    )
+    .expect("index JSON");
+    assert_eq!(index["schema"], "launcher-rom-index/v1");
+    assert_eq!(index["entries"].as_array().expect("index entries").len(), 4);
+    let state: Value = serde_json::from_slice(
+        &fs::read(root.join("data/launcher-state.json")).expect("launcher state"),
+    )
+    .expect("launcher state JSON");
+    assert_eq!(state["identity"], "Artbook");
+    assert_eq!(state["schemaVersion"], 1);
     let input_to_frame_us = events
         .iter()
         .filter(|event| event["event"] == "input_to_frame")
@@ -158,16 +181,7 @@ fn run_once(number: u8) -> Journey {
     let binary_bytes = fs::metadata(env::current_exe().expect("journey executable"))
         .expect("journey binary metadata")
         .len();
-    let idle_rss_kib = fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status
-                .lines()
-                .find(|line| line.starts_with("VmRSS:"))
-                .and_then(|line| line.split_whitespace().nth(1))
-                .and_then(|value| value.parse().ok())
-        })
-        .unwrap_or(0);
+    let idle_rss_kib = host_fixture_performance_rss_kib();
     let _ = fs::remove_dir_all(root);
     Journey {
         deterministic,
@@ -180,6 +194,20 @@ fn run_once(number: u8) -> Journey {
         catalog_list_us,
         input_to_frame_us,
     }
+}
+
+// Fixture-only host performance evidence; this is not frontend hardware access.
+fn host_fixture_performance_rss_kib() -> u64 {
+    fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find(|line| line.starts_with("VmRSS:"))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .and_then(|value| value.parse().ok())
+        })
+        .unwrap_or(0)
 }
 
 fn assert_schema_projection(request_bytes: &[u8], request: &launch_contract::LaunchRequest) {

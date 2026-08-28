@@ -20,12 +20,8 @@ use launch_contract::{
 use package_manager::TrustContext;
 use package_trust::VerifiedTarget;
 use serde::Serialize;
-use serde_json::Value;
+use session_broker::SessionResult;
 use sha2::{Digest, Sha256};
-use sim_platform_contract::{
-    Button, ButtonAction, ButtonEvent, HardwareState, Platform, PlatformError, PlatformResult,
-    PlatformSnapshot, PlatformState, Screen,
-};
 
 const JOURNEYS: &[&str] = &[
     "success",
@@ -76,16 +72,12 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     let Some(command) = arguments.first() else {
-        return Err("usage: session-broker simulate ... | demo-content".to_string());
+        return Err(
+            "usage: session-broker simulate [--fixture-root DIR] [--journey NAME]".to_string(),
+        );
     };
-    if command == "demo-content" {
-        if arguments.len() != 1 {
-            return Err("demo-content takes no arguments".to_string());
-        }
-        return demo_content_journey();
-    }
     if command != "simulate" {
-        return Err("only simulate or demo-content is available".to_string());
+        return Err("only simulate is available".to_string());
     }
     let mut fixture_root = default_fixture_root();
     let mut journeys = None;
@@ -140,583 +132,8 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Output {
-    Session(journal::SessionResult),
+    Session(SessionResult),
     Rejection(journal::Rejection),
-}
-
-fn demo_content_journey() -> Result<(), String> {
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/demo-content");
-    let root = temp_root("demo-content");
-    let _ = fs::remove_dir_all(&root);
-    copy_tree(&fixture.join("host-root"), &root)?;
-    fs::create_dir_all(root.join("data/saves"))
-        .map_err(|_| "cannot create demo save root".to_string())?;
-    fs::create_dir_all(root.join("data/states"))
-        .map_err(|_| "cannot create demo state root".to_string())?;
-    fs::create_dir_all(root.join("data/activity/sessions"))
-        .map_err(|_| "cannot create demo activity root".to_string())?;
-    let ui_catalog: sim_domain::Catalog = serde_json::from_slice(
-        &fs::read(fixture.join("catalog.json"))
-            .map_err(|_| "demo catalog unavailable".to_string())?,
-    )
-    .map_err(|_| "demo catalog is invalid".to_string())?;
-    if ui_catalog.catalog_version != "1" || ui_catalog.entries.len() != 4 {
-        return Err("demo catalog must contain exactly four entries".to_string());
-    }
-    let launch_catalog = parse_catalog_json(
-        &fs::read(fixture.join("../session-broker/generated-v1/catalog.synthetic.json"))
-            .map_err(|_| "launch catalog unavailable".to_string())?,
-    )
-    .map_err(|_| "launch catalog unavailable".to_string())?;
-    let protected_before = protected_demo_bytes(&root)?;
-    let mut broker = Broker::new(root.clone());
-    let mut platform_games = 0;
-    let mut platform_systems = Vec::new();
-    let mut portmaster_packages = 0;
-    let mut portmaster_launches = 0;
-    let mut ids = Vec::new();
-    let mut negative_seed = None;
-    for (entry_index, entry) in ui_catalog.entries.iter().enumerate() {
-        if ids.iter().any(|id| id == &entry.id) {
-            return Err("demo catalog contains duplicate content identities".to_string());
-        }
-        ids.push(entry.id.clone());
-        let request = launcher_selected_request(&fixture, entry_index, entry)?;
-        validate_demo_mapping(&entry.id, &entry.system, &request, &launch_catalog, &root)?;
-        if request.kind == LaunchKind::Libretro {
-            let mut first = request.clone();
-            first.request_id = format!("{}-fresh", entry.id);
-            first.resume_mode = launch_contract::ResumeMode::Fresh;
-            let result = broker.launch(
-                first,
-                launch_catalog.clone(),
-                &entry.id,
-                RunMode::Success,
-                Fault::None,
-            );
-            if !result.accepted || result.reason != "success" || !result.restored {
-                return Err(format!("{} did not complete through the broker", entry.id));
-            }
-            let mut resume = request;
-            resume.request_id = format!("{}-resume", entry.id);
-            resume.resume_mode = launch_contract::ResumeMode::Resume;
-            let result = broker.launch(
-                resume,
-                launch_catalog.clone(),
-                &format!("{}-resume", entry.id),
-                RunMode::Success,
-                Fault::None,
-            );
-            if !result.accepted
-                || !result.resume_published
-                || result.reason != "success"
-                || !result.restored
-            {
-                return Err(format!("{} did not restore its synthetic save", entry.id));
-            }
-            platform_games += 1;
-            if !platform_systems
-                .iter()
-                .any(|system| system == &entry.system)
-            {
-                platform_systems.push(entry.system.clone());
-            }
-            continue;
-        }
-        if entry.id == "orbit-garden" {
-            negative_seed = Some(request.clone());
-        }
-        let package_id = request
-            .package
-            .as_ref()
-            .ok_or_else(|| "demo package identity missing".to_string())?
-            .id
-            .clone();
-        let package_root = fixture.join(&package_id).join("payload");
-        let manifest_path = package_root.join("manifest.json");
-        let target = verify_demo_package(&root, &fixture, &package_id, None, None)?;
-        package_manager::install(
-            &root,
-            &manifest_path,
-            &package_root,
-            &target,
-            TrustContext::community_signed(),
-            package_manager::TransactionOptions::default(),
-        )
-        .map_err(|_| format!("{} package installation failed", entry.id))?;
-        let mut first = request.clone();
-        first.request_id = format!("{}-fresh", entry.id);
-        first.resume_mode = launch_contract::ResumeMode::Fresh;
-        let result = broker.launch(
-            first,
-            launch_catalog.clone(),
-            &entry.id,
-            RunMode::Success,
-            Fault::None,
-        );
-        if !result.accepted || result.reason != "success" || !result.restored {
-            return Err(format!("{} did not complete through the broker", entry.id));
-        }
-        let mut resume = request;
-        resume.request_id = format!("{}-resume", entry.id);
-        resume.resume_mode = launch_contract::ResumeMode::Resume;
-        let result = broker.launch(
-            resume,
-            launch_catalog.clone(),
-            &format!("{}-resume", entry.id),
-            RunMode::Success,
-            Fault::None,
-        );
-        if !result.accepted
-            || !result.resume_published
-            || result.reason != "success"
-            || !result.restored
-        {
-            return Err(format!("{} did not restore its synthetic save", entry.id));
-        }
-        let marker = root.join(format!(
-            ".brickpro/packages/{}/1.0.0/runtime/lib/session.marker",
-            package_id
-        ));
-        if fs::read_to_string(marker)
-            .map_err(|_| format!("{} runtime was not executed", entry.id))?
-            .trim()
-            != format!("{}-resumed", package_id)
-        {
-            return Err(format!("{} runtime identity was not distinct", entry.id));
-        }
-        for (directory, suffix, expected) in [
-            ("saves", "save", format!("{}-save-v1", package_id)),
-            ("states", "state", format!("{}-state-v1", package_id)),
-        ] {
-            let path = root.join(format!("data/{directory}/{}.{}", package_id, suffix));
-            if fs::read_to_string(path)
-                .map_err(|_| format!("{} synthetic {} missing", entry.id, suffix))?
-                .trim()
-                != expected
-            {
-                return Err(format!(
-                    "{} synthetic {} was not preserved",
-                    entry.id, suffix
-                ));
-            }
-        }
-        portmaster_packages += 1;
-        portmaster_launches += 1;
-    }
-    if platform_games != 2
-        || platform_systems.len() != 2
-        || portmaster_packages != 2
-        || portmaster_launches != 2
-        || ids.len() != 4
-        || protected_before != protected_demo_bytes(&root)?
-    {
-        return Err("demo identity or protected synthetic content check failed".to_string());
-    }
-    let settings = root.join("data/settings/demo-settings.json");
-    let save = root.join("data/saves/orbit-garden.save");
-    let state = root.join("data/states/orbit-garden.state");
-    package_manager::uninstall(
-        &root,
-        "orbit-garden",
-        package_manager::TransactionOptions::default(),
-    )
-    .map_err(|_| "PortMaster uninstall failed".to_string())?;
-    if root.join(".brickpro/packages/orbit-garden").exists()
-        || !settings.is_file()
-        || !save.is_file()
-        || !state.is_file()
-        || protected_before != protected_demo_bytes(&root)?
-    {
-        return Err("PortMaster uninstall did not preserve protected data".to_string());
-    }
-    let seed =
-        negative_seed.ok_or_else(|| "demo catalog did not select Orbit Garden".to_string())?;
-    let rejected = demo_negative_journeys(&fixture, &root, &launch_catalog, &seed)?;
-    if rejected != 9 {
-        return Err("demo journey coverage is incomplete".to_string());
-    }
-    let distinct_platforms = platform_systems.len();
-    let unique_ids = ids.len();
-    let _ = fs::remove_dir_all(&root);
-    println!("{{\"journey\":\"synthetic-demo-content\",\"platformGames\":{platform_games},\"distinctPlatforms\":{distinct_platforms},\"portmasterPackages\":{portmaster_packages},\"portmasterLaunches\":{portmaster_launches},\"uniqueIds\":{unique_ids},\"negativeRejections\":{rejected},\"result\":\"pass\"}}");
-    Ok(())
-}
-
-struct DemoPlatform {
-    logical: state::LogicalPlatform,
-    events: Vec<ButtonEvent>,
-    event_index: usize,
-    logical_time_ms: u64,
-}
-
-impl DemoPlatform {
-    fn new(selected_index: usize) -> Self {
-        let mut events = vec![
-            ButtonEvent {
-                at_ms: 0,
-                button: Button::Start,
-                action: ButtonAction::Press,
-            },
-            ButtonEvent {
-                at_ms: 1,
-                button: Button::Down,
-                action: ButtonAction::Press,
-            },
-        ];
-        for index in 0..selected_index {
-            events.push(ButtonEvent {
-                at_ms: 2 + index as u64,
-                button: Button::Down,
-                action: ButtonAction::Press,
-            });
-        }
-        events.push(ButtonEvent {
-            at_ms: 2 + selected_index as u64,
-            button: Button::Primary,
-            action: ButtonAction::Press,
-        });
-        Self {
-            logical: state::LogicalPlatform::new(),
-            events,
-            event_index: 0,
-            logical_time_ms: 0,
-        }
-    }
-}
-
-impl Platform for DemoPlatform {
-    fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>> {
-        let Some(event) = self.events.get(self.event_index).copied() else {
-            return Ok(None);
-        };
-        self.event_index += 1;
-        self.logical_time_ms = event.at_ms;
-        Ok(Some(event))
-    }
-
-    fn present(&mut self, _screen: &Screen) -> PlatformResult<()> {
-        Ok(())
-    }
-
-    fn capture_png(&mut self, path: &Path) -> PlatformResult<()> {
-        fs::write(path, b"synthetic logical frame")
-            .map_err(|error| PlatformError::Backend(error.to_string()))
-    }
-
-    fn logical_time_ms(&self) -> u64 {
-        self.logical_time_ms
-    }
-
-    fn snapshot(&self) -> PlatformResult<PlatformSnapshot> {
-        let state = self.logical.snapshot();
-        Ok(PlatformSnapshot {
-            battery_level_percent: state.battery.percent,
-            charging: state.battery.charging,
-            led_on: state.leds.on,
-            audio_enabled: state.audio.enabled,
-            radio_enabled: state.radios.wifi.enabled,
-            suspended: matches!(
-                state.suspend.0,
-                sim_platform_contract::SuspendState::Suspended
-            ),
-        })
-    }
-
-    fn platform_state(&self) -> PlatformResult<PlatformState> {
-        Ok(self.logical.snapshot())
-    }
-
-    fn hardware_state(&self) -> PlatformResult<HardwareState> {
-        let state = self.logical.snapshot();
-        Ok(HardwareState {
-            battery_percent: state.battery.percent,
-            charging: state.battery.charging,
-            storage_mode: state.storage,
-            radio_enabled: state.radios.wifi.enabled,
-            radio_connected: state.radios.wifi.connected,
-            suspend_state: state.suspend.0,
-            suspend_result: state.suspend.1,
-        })
-    }
-
-    fn mutate_hardware(
-        &mut self,
-        _changes: sim_platform_contract::HardwareChanges,
-    ) -> PlatformResult<()> {
-        Ok(())
-    }
-}
-
-fn launcher_selected_request(
-    fixture: &Path,
-    entry_index: usize,
-    entry: &sim_domain::CatalogEntry,
-) -> Result<LaunchRequest, String> {
-    let evidence = temp_root(&format!("demo-launcher-{}", entry.id));
-    let _ = fs::remove_dir_all(&evidence);
-    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    sim_launcher::run(
-        &fixture.join("catalog.json"),
-        &evidence,
-        false,
-        &stop,
-        || Ok(DemoPlatform::new(entry_index)),
-    )
-    .map_err(|_| format!("{} launcher journey failed", entry.id))?;
-    let bytes = fs::read(evidence.join("launch-request.json"))
-        .map_err(|_| format!("{} launcher request missing", entry.id))?;
-    let request = parse_request_json(&bytes)
-        .map_err(|_| format!("{} launcher request malformed", entry.id))?;
-    let _ = fs::remove_dir_all(evidence);
-    if request.content_id != entry.id {
-        return Err(format!("{} launcher selected the wrong request", entry.id));
-    }
-    Ok(request)
-}
-
-fn verify_demo_package(
-    root: &Path,
-    fixture: &Path,
-    id: &str,
-    root_override: Option<&[u8]>,
-    target_override: Option<&[u8]>,
-) -> Result<VerifiedTarget, String> {
-    let repository = fixture.join("repository");
-    let manifest = match target_override {
-        Some(bytes) => bytes.to_vec(),
-        None => fs::read(fixture.join(id).join("payload/manifest.json"))
-            .map_err(|_| "demo manifest unavailable".to_string())?,
-    };
-    let root_bytes = match root_override {
-        Some(bytes) => bytes.to_vec(),
-        None => fs::read(repository.join("root.json"))
-            .map_err(|_| "trust root unavailable".to_string())?,
-    };
-    let state = root.join(format!(".brickpro/demo-trust-{id}.json"));
-    let timestamp = fs::read(repository.join("timestamp.json"))
-        .map_err(|_| "trust metadata unavailable".to_string())?;
-    let snapshot = fs::read(repository.join("snapshot.json"))
-        .map_err(|_| "trust metadata unavailable".to_string())?;
-    let targets = fs::read(repository.join("targets.json"))
-        .map_err(|_| "trust metadata unavailable".to_string())?;
-    let delegated = fs::read(repository.join("packages.json"))
-        .map_err(|_| "trust metadata unavailable".to_string())?;
-    let target_path = format!("packages/{id}/manifest.json");
-    let report = package_trust::TrustStore::new(&state)
-        .verify_repository(
-            package_trust::RepositoryMetadata {
-                root_bytes: &root_bytes,
-                root_updates: &[],
-                timestamp_bytes: &timestamp,
-                snapshot_bytes: &snapshot,
-                targets_bytes: &targets,
-                delegated_role: "packages",
-                delegated_bytes: &delegated,
-                target_bytes: &manifest,
-            },
-            &target_path,
-            package_trust::VerificationTime {
-                now_rfc3339: "2030-01-01T00:00:00Z",
-                uncertainty_seconds: 0,
-            },
-        )
-        .map_err(|_| "package trust rejected synthetic target".to_string())?;
-    Ok(report.target)
-}
-
-fn validate_demo_mapping(
-    id: &str,
-    system: &str,
-    request: &LaunchRequest,
-    catalog: &Catalog,
-    fixture_root: &Path,
-) -> Result<(), String> {
-    validate_host_fixture(request, catalog, fixture_root)
-        .map_err(|_| "demo request failed typed validation".to_string())?;
-    let platform = matches!(id, "nebula-nes" | "mirror-ps1");
-    let expected = match (id, system) {
-        ("nebula-nes", "nes") | ("mirror-ps1", "ps1") => (
-            LaunchKind::Libretro,
-            "generated-libretro",
-            None,
-            Some("generated-core"),
-        ),
-        ("orbit-garden", "portmaster") | ("signal-workshop", "portmaster") => (
-            LaunchKind::Portmaster,
-            "generated-portmaster",
-            Some(id),
-            None,
-        ),
-        _ => return Err("selected demo does not map to a stable identity".to_string()),
-    };
-    let package = request.package.as_ref();
-    let core = request.core.as_ref();
-    if request.content_id != id
-        || request.kind != expected.0
-        || request.runner.id != expected.1
-        || request.runner.version != "1.0.0"
-        || package.map(|value| value.id.as_str()) != expected.2
-        || package.map(|value| value.version.as_str()) != expected.2.map(|_| "1.0.0")
-        || core.map(|value| value.id.as_str()) != expected.3
-        || core.map(|value| value.version.as_str()) != expected.3.map(|_| "1.0.0")
-        || request.profile_id
-            != if platform {
-                "default"
-            } else {
-                "generated-default"
-            }
-        || request.content_path.relative != format!("{id}.synthetic")
-        || request.save_path.relative != format!("{id}.save")
-        || request.state_path.relative != format!("{id}.state")
-        || platform != (request.kind == LaunchKind::Libretro)
-    {
-        return Err("selected demo does not map to its approved request".to_string());
-    }
-    Ok(())
-}
-
-fn demo_negative_journeys(
-    fixture: &Path,
-    root: &Path,
-    catalog: &Catalog,
-    seed: &LaunchRequest,
-) -> Result<usize, String> {
-    let protected_before = protected_demo_bytes(root)?;
-    let resume_before = fs::read(root.join("data/activity/resume.json"))
-        .map_err(|_| "resume evidence unavailable".to_string())?;
-    let valid = fs::read(fixture.join("orbit-garden/payload/manifest.json"))
-        .map_err(|_| "demo manifest unavailable".to_string())?;
-    let mut corrupt_root: Value = serde_json::from_slice(
-        &fs::read(fixture.join("repository/root.json"))
-            .map_err(|_| "trust root unavailable".to_string())?,
-    )
-    .map_err(|_| "trust root unavailable".to_string())?;
-    corrupt_root["signatures"] = Value::Array(Vec::new());
-    let corrupt_root =
-        serde_json::to_vec(&corrupt_root).map_err(|_| "trust root unavailable".to_string())?;
-    if verify_demo_package(root, fixture, "orbit-garden", Some(&corrupt_root), None).is_ok() {
-        return Err("unsigned trust root was accepted".to_string());
-    }
-    let mut corrupted = valid.clone();
-    corrupted.push(b'!');
-    if verify_demo_package(root, fixture, "orbit-garden", None, Some(&corrupted)).is_ok() {
-        return Err("corrupted signed target was accepted".to_string());
-    }
-    let mismatch = verify_demo_package(root, fixture, "orbit-garden", None, None)?;
-    if package_manager::install(
-        root,
-        &fixture.join("signal-workshop/payload/manifest.json"),
-        &fixture.join("signal-workshop/payload"),
-        &mismatch,
-        TrustContext::community_signed(),
-        package_manager::TransactionOptions::default(),
-    )
-    .is_ok()
-    {
-        return Err("package identity mismatch was accepted".to_string());
-    }
-    let mut version = seed.clone();
-    let Some(package) = version.package.as_mut() else {
-        return Err("demo package identity missing".to_string());
-    };
-    package.version = "9.9.9".to_string();
-    if validate_demo_mapping("orbit-garden", "portmaster", &version, catalog, root).is_ok() {
-        return Err("package version mismatch was accepted".to_string());
-    }
-    let mut tampered: Value =
-        serde_json::from_slice(&valid).map_err(|_| "demo manifest unavailable".to_string())?;
-    tampered["entrypoints"][0]["path"] = Value::String("immutable/port/injected.sh".to_string());
-    let tampered_path = root.join("tampered-manifest.json");
-    fs::write(
-        &tampered_path,
-        serde_json::to_vec(&tampered).map_err(|_| "demo manifest unavailable".to_string())?,
-    )
-    .map_err(|_| "tampered manifest fixture unavailable".to_string())?;
-    let tampered_result = package_manager::install(
-        root,
-        &tampered_path,
-        &fixture.join("orbit-garden/payload"),
-        &mismatch,
-        TrustContext::community_signed(),
-        package_manager::TransactionOptions::default(),
-    );
-    fs::remove_file(&tampered_path)
-        .map_err(|_| "tampered manifest fixture unavailable".to_string())?;
-    if tampered_result.is_ok() {
-        return Err("injected entrypoint was accepted".to_string());
-    }
-    let mut shaped: Value =
-        serde_json::to_value(seed).map_err(|_| "request encoding failed".to_string())?;
-    shaped["command"] = Value::String("/bin/sh".to_string());
-    if parse_request_json(
-        &serde_json::to_vec(&shaped).map_err(|_| "request encoding failed".to_string())?,
-    )
-    .is_ok()
-    {
-        return Err("command-shaped request was accepted".to_string());
-    }
-    let mut traversal = seed.clone();
-    traversal.content_path.relative = "../outside.synthetic".to_string();
-    if validate_host_fixture(&traversal, catalog, root).is_ok() {
-        return Err("traversal request was accepted".to_string());
-    }
-    #[cfg(unix)]
-    {
-        let content = root.join("roms/orbit-garden.synthetic");
-        let saved = root.join("roms/orbit-garden.safe");
-        let outside = root
-            .parent()
-            .unwrap_or(root)
-            .join("demo-content-outside.synthetic");
-        fs::rename(&content, &saved).map_err(|_| "symlink fixture unavailable".to_string())?;
-        fs::write(&outside, b"outside synthetic")
-            .map_err(|_| "symlink fixture unavailable".to_string())?;
-        std::os::unix::fs::symlink(&outside, &content)
-            .map_err(|_| "symlink fixture unavailable".to_string())?;
-        let escaped = validate_host_fixture(seed, catalog, root).is_ok();
-        fs::remove_file(&content).map_err(|_| "symlink fixture unavailable".to_string())?;
-        fs::rename(&saved, &content).map_err(|_| "symlink fixture unavailable".to_string())?;
-        let _ = fs::remove_file(&outside);
-        if escaped {
-            return Err("demo symlink escape was accepted".to_string());
-        }
-    }
-    let mut mapping = seed.clone();
-    let Some(package) = mapping.package.as_mut() else {
-        return Err("demo package identity missing".to_string());
-    };
-    package.id = "signal-workshop".to_string();
-    if validate_demo_mapping("orbit-garden", "portmaster", &mapping, catalog, root).is_ok() {
-        return Err("invalid selected mapping was accepted".to_string());
-    }
-    if protected_before != protected_demo_bytes(root)?
-        || resume_before
-            != fs::read(root.join("data/activity/resume.json"))
-                .map_err(|_| "resume evidence unavailable".to_string())?
-        || root
-            .join(".brickpro/package-state/rejected-demo.json")
-            .exists()
-        || root.join(".brickpro/packages/rejected-demo").exists()
-    {
-        return Err("negative demo mutated activation, protected data, or resume".to_string());
-    }
-    Ok(9)
-}
-
-fn protected_demo_bytes(root: &Path) -> Result<Vec<Vec<u8>>, String> {
-    [
-        "roms/nebula-nes.synthetic",
-        "roms/mirror-ps1.synthetic",
-        "roms/orbit-garden.synthetic",
-        "roms/signal-workshop.synthetic",
-        "data/settings/demo-settings.json",
-    ]
-    .into_iter()
-    .map(|path| {
-        fs::read(root.join(path)).map_err(|_| "protected demo content unavailable".to_string())
-    })
-    .collect()
 }
 
 fn install_portmaster_fixture(root: &Path) -> Result<(), String> {
@@ -1010,7 +427,7 @@ impl Broker {
         journey: &str,
         mode: RunMode,
         fault: Fault,
-    ) -> journal::SessionResult {
+    ) -> SessionResult {
         if self.phase != Phase::Idle {
             return rejection_as_session(journey, "busy");
         }
@@ -1277,7 +694,7 @@ impl Broker {
         confirms_save: bool,
         cleanup_ok: bool,
         outcome: Outcome,
-    ) -> journal::SessionResult {
+    ) -> SessionResult {
         self.phase = Phase::Finalizing;
         record.phase = journal::JournalPhase::Finalizing;
         record.pid = None;
@@ -1298,28 +715,17 @@ impl Broker {
         }
         let fields = outcome.finish_fields();
         let save_ok = if fields.reason == "success" && confirms_save {
-            let save_path = resolve_path_unchecked(&self.fixture_root, &request.save_path);
-            if save_path.is_file() {
-                fs::read(&save_path).is_ok()
-            } else {
-                write_file_sync(&save_path, b"generated-session-save-v1").is_ok()
-            }
-        } else {
-            false
-        };
-        let state_ok = if fields.reason == "success" && confirms_save {
-            let state_path = resolve_path_unchecked(&self.fixture_root, &request.state_path);
-            if state_path.is_file() {
-                fs::read(&state_path).is_ok()
-            } else {
-                write_file_sync(&state_path, b"generated-session-state-v1").is_ok()
-            }
+            write_file_sync(
+                &resolve_path_unchecked(&self.fixture_root, &request.save_path),
+                b"generated-session-save-v1",
+            )
+            .is_ok()
         } else {
             false
         };
         let activity = self.fixture_root.join("data/activity");
         let metadata_ok = append_metadata(&activity, request, adapter, fields.duration_ms);
-        let mut result = journal::SessionResult {
+        let mut result = SessionResult {
             result_type: "SessionResult",
             journey: journey.to_string(),
             accepted: true,
@@ -1329,7 +735,7 @@ impl Broker {
             duration_ms: fields.duration_ms,
             restored,
             safe_default,
-            persistence_status: if finalizing_ok && metadata_ok && state_ok {
+            persistence_status: if finalizing_ok && metadata_ok {
                 "durable"
             } else {
                 "failed"
@@ -1343,7 +749,6 @@ impl Broker {
         let resume_allowed = result_ok
             && metadata_ok
             && save_ok
-            && state_ok
             && confirms_save
             && request.resume_mode != launch_contract::ResumeMode::Fresh
             && result.reason == "success";
@@ -1421,7 +826,7 @@ impl Broker {
         Ok(())
     }
 
-    fn recover(&mut self, journey: &str) -> journal::SessionResult {
+    fn recover(&mut self, journey: &str) -> SessionResult {
         let sessions = self.fixture_root.join("data/activity/sessions");
         let mut needed = false;
         let mut invalid = false;
@@ -1472,7 +877,7 @@ impl Broker {
                 }
             }
         }
-        let result = journal::SessionResult {
+        let result = SessionResult {
             result_type: "SessionResult",
             journey: journey.to_string(),
             accepted: false,
@@ -1503,7 +908,7 @@ impl Broker {
         if result_ok {
             result
         } else {
-            journal::SessionResult {
+            SessionResult {
                 persistence_status: "failed",
                 ..result
             }
@@ -1571,8 +976,8 @@ impl Fields {
     }
 }
 
-fn rejection_as_session(journey: &str, reason: &str) -> journal::SessionResult {
-    journal::SessionResult {
+fn rejection_as_session(journey: &str, reason: &str) -> SessionResult {
+    SessionResult {
         result_type: "SessionResult",
         journey: journey.to_string(),
         accepted: false,

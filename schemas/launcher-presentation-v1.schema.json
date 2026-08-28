@@ -4,7 +4,7 @@
   "title": "Generated Artbook launcher presentation",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp"],
+  "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp", "index", "boundaries"],
   "properties": {
     "schema": {"const": "launcher-presentation/v1"},
     "identity": {"const": "Artbook"},
@@ -26,7 +26,7 @@
     "modal": {"oneOf": [{"type": "null"}, {"type": "string", "maxLength": 128}]},
     "splash": {"type": "string", "minLength": 1, "maxLength": 80},
     "affordances": {"$ref": "#/$defs/affordances"},
-    "controllerHelp": {"type": "array", "maxItems": 16, "items": {"type": "object", "additionalProperties": false, "required": ["button", "label"], "properties": {"button": {"enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"]}, "label": {"type": "string", "maxLength": 64}}}}
+    "controllerHelp": {"type": "array", "maxItems": 16, "items": {"type": "object", "additionalProperties": false, "required": ["button", "label"], "properties": {"button": {"enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"]}, "label": {"type": "string", "maxLength": 64}}}}, "index": {"type": "object", "additionalProperties": false, "required": ["status", "entryCount", "visibleRows", "searchResults", "queueDepth"], "properties": {"status": {"type": "string"}, "entryCount": {"type": "integer"}, "visibleRows": {"type": "integer"}, "searchResults": {"type": "integer"}, "queueDepth": {"type": "integer"}}}, "boundaries": {"type": "object", "additionalProperties": false, "required": ["metadataScraper", "mediaCache", "wifiController", "themeGarden", "updateAgent"], "properties": {"metadataScraper": {"$ref": "#/$defs/boundary"}, "mediaCache": {"$ref": "#/$defs/boundary"}, "wifiController": {"$ref": "#/$defs/boundary"}, "themeGarden": {"$ref": "#/$defs/boundary"}, "updateAgent": {"$ref": "#/$defs/boundary"}}}
   },
   "$defs": {
     "item": {"type": "object", "additionalProperties": false, "required": ["id", "label", "selected", "enabled"], "properties": {"id": {"type": "string", "maxLength": 128}, "label": {"type": "string", "maxLength": 128}, "selected": {"type": "boolean"}, "enabled": {"type": "boolean"}}},
@@ -36,6 +36,7 @@
     "color": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 0, "maximum": 255}, {"type": "integer", "minimum": 0, "maximum": 255}, {"type": "integer", "minimum": 0, "maximum": 255}, {"const": 255}], "minItems": 4, "maxItems": 4},
     "game": {"type": "object", "additionalProperties": false, "required": ["id", "title", "description", "rating", "releaseDate", "boxArt", "screenshot", "favorite"], "properties": {"id": {"type": "string", "pattern": "^generated-[a-z0-9-]+$"}, "title": {"type": "string"}, "description": {"type": "string"}, "rating": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 100}]}, "releaseDate": {"oneOf": [{"type": "null"}, {"type": "string"}]}, "boxArt": {"$ref": "#/$defs/asset"}, "screenshot": {"$ref": "#/$defs/asset"}, "favorite": {"type": "boolean"}}},
     "scraper": {"type": "object", "additionalProperties": false, "required": ["route", "status", "queueCount", "progressPercent", "paused", "ambiguousCandidates"], "properties": {"route": {"type": "string"}, "status": {"type": "string"}, "queueCount": {"type": "integer", "minimum": 0}, "progressPercent": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 100}]}, "paused": {"type": "boolean"}, "ambiguousCandidates": {"type": "array", "maxItems": 16, "items": {"type": "string"}}}},
-    "affordances": {"type": "object", "additionalProperties": false, "required": ["clock", "batteryPercent", "charging"], "properties": {"clock": {"type": "string", "maxLength": 32}, "batteryPercent": {"type": "integer", "minimum": 0, "maximum": 100}, "charging": {"type": "boolean"}}}
+    "affordances": {"type": "object", "additionalProperties": false, "required": ["clock", "batteryPercent", "charging"], "properties": {"clock": {"type": "string", "maxLength": 32}, "batteryPercent": {"type": "integer", "minimum": 0, "maximum": 100}, "charging": {"type": "boolean"}}},
+    "boundary": {"type": "object", "additionalProperties": false, "required": ["available", "state"], "properties": {"available": {"type": "boolean"}, "state": {"type": "string"}}}
   }
 }

@@ -50,14 +50,15 @@ path-bearing or shell-like fields. With the repository's available validator,
 an `exec` or path-bearing request fails.
 
 `state` returns `sim-state/v1` semantic state: current `library`, `systems`,
-or `games` route, selected synthetic demo ID, active fake session and result,
+or `games` route, selected synthetic demo ID, active broker session and result,
 modal/status, readiness generation, session frame step, typed virtual hardware,
 enabled named faults, and a `launcher-presentation/v1` Artbook screen. The screen
 is built from generated `ui-model`, Artbook theme, `settings-ui`, and Wi-Fi
-controller projections. `presentation --action` accepts only the generated
-route/workflow allowlist and carries no values or secrets. The state object is
-also written beside each requested artifact. Validate it with the `state`
-definition in `control.schema.json`; no pixels are inspected.
+controller projections, including bounded ROM-index status and persisted recent
+entries. `presentation --action` accepts only the generated route/workflow
+allowlist and carries no values or secrets. The state object is also written
+beside each requested artifact. Validate it with the `state` definition in
+`control.schema.json`; no pixels are inspected.
 
 ## Current supported flow and limits
 
@@ -66,13 +67,14 @@ four visible entries: `nebula-nes` on stable system `nes`, `mirror-ps1` on stabl
 system `ps1`, and the separately browsable PortMaster entries `orbit-garden` and
 `signal-workshop`. `start` advances Library to Systems, `down` advances Systems
 to Games, further directional presses select an entry, and `primary` strictly
-validates and emits a typed `launch-contract::LaunchRequest` before starting the
-fake session. Platform entries use simulator-owned generated runner/core metadata;
-no real ROM/core compatibility is claimed. The request is written to
-`launch-request.json`; adapter completion or failure is reflected in `state`,
-`session.json`, and JSONL events. Settings, search, favorites, themes, updater
-behavior, VNC/noVNC, real emulation, and real hardware are not implemented or
-claimed.
+validates and emits a typed `launch-contract::LaunchRequest` through the broker
+boundary before starting a session. Platform entries use simulator-owned
+generated runner/core metadata; no real ROM/core compatibility is claimed. The
+request is written to `launch-request.json`; broker completion or failure is
+reflected in `state`, `session.json`, and JSONL events. Settings, search, and
+favorites are exposed only as generated controller/persistence projections;
+themes, updater behavior, VNC/noVNC, real emulation, and real hardware are not
+implemented or claimed.
 
 Every screenshot or checkpoint creates a nonempty PNG and paired semantic JSON
 under `$RUN/screenshots` or `$RUN/checkpoints`. The JSONL log contains only

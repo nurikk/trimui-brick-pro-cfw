@@ -19,7 +19,7 @@ The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, sem
 ./scripts/sim stop --run-dir "$RUN"
 ```
 
-Use `--backend=x11` to exercise SDL through Xvfb inside the container; no host display forwarding is required. `clean-run` removes only the simulator's known artifacts in the external run directory before starting a new run. `run` rejects any existing managed evidence and structurally validates readiness and the first-frame event before returning success.
+Use `--backend=x11` to exercise SDL through Xvfb inside the container; no host display forwarding is required. `clean-run` removes the simulator's known artifacts, including durable state/index data, in the external run directory before starting a new run. `run` rejects any existing managed evidence and structurally validates readiness and the first-frame event before returning success.
 
 ## Contract and boundaries
 
@@ -61,6 +61,7 @@ if ./scripts/sim run --backend=dummy --run-dir "$STALE" --wait-ready 30; then
   exit 1
 fi
 ./scripts/sim clean-run --backend=dummy --run-dir "$STALE" --wait-ready 30
+./scripts/sim lifecycle-journey
 
 dash -n scripts/sim
 busybox ash -n scripts/sim

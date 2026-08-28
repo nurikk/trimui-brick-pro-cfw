@@ -4,13 +4,13 @@ The clean-room journey exercises four distinct project-authored identities: two 
 
 The PortMaster entries are browsed as separate `portmaster` catalog items, installed from signed repository metadata, launched through their private runtimes and immutable entrypoints, resumed, and independently identified. The journey uninstalls `orbit-garden` and verifies that synthetic saves, state, settings, and all four content files remain protected.
 
-Run the broker journey with:
+Run the broker package journeys with:
 
 ```sh
-cargo run --locked --release -p session-broker -- demo-content
+cargo run --locked --release -p session-broker -- simulate --journeys portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero
 ```
 
-The bounded output reports `platformGames:2`, `distinctPlatforms:2`, `portmasterPackages:2`, `portmasterLaunches:2`, `uniqueIds:4`, and the negative rejection count. It validates launcher-derived typed requests, input-driven sessions, save/state restoration, package trust/install/uninstall, and fail-closed signature, version, command-shape, traversal, symlink, mapping, and entrypoint-tamper cases.
+The bounded output validates typed requests, package trust and private entrypoint handling, session completion, persistence, and fail-closed rejection cases without exposing paths or payloads.
 
 For headed 1024x768 X11 evidence, run:
 

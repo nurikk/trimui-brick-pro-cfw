@@ -315,6 +315,19 @@
       ]
     },
     {
+      "id": "power-battery.bounded-sleep-duration",
+      "category": "bounded-sleep",
+      "capabilities": {"cap.power.bounded-sleep": "supported"},
+      "initial": {"current": {"power.maximum-sleep-duration-minutes": 5}, "pending": {}},
+      "steps": [
+        {"operation": "read", "expect": {"result": "ok", "current-value": 5, "options": [1, 5, 10, 15, 30, 60], "pending": {}}},
+        {"operation": "propose-change", "field": "power.maximum-sleep-duration-minutes", "value": 1, "expect": {"result": "pending", "current-value": 5, "pending-value": 1}},
+        {"operation": "propose-change", "field": "power.maximum-sleep-duration-minutes", "value": 0, "expect": {"result": "rejected", "reason": "invalid", "current-value": 5}},
+        {"operation": "confirm", "field": "power.maximum-sleep-duration-minutes", "expect": {"result": "applied", "current-value": 1, "pending": {}}},
+        {"operation": "reset", "field": "power.maximum-sleep-duration-minutes", "expect": {"result": "pending", "pending-value": 5}}
+      ]
+    },
+    {
       "id": "power-battery.reset-to-domain-defaults",
       "category": "reset",
       "capabilities": {

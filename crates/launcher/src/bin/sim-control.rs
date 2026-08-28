@@ -9,6 +9,7 @@ use serde_json::{json, Map, Value};
 
 const VERSION: &str = "sim-control/v1";
 const MAX_FRAME: usize = 8192;
+const MAX_RESPONSE_FRAME: usize = MAX_FRAME * 8;
 const MAX_NAME: usize = 48;
 
 fn main() {
@@ -61,7 +62,7 @@ fn run() -> Result<(), (&'static str, String)> {
     stream
         .read_to_end(&mut response)
         .map_err(|_| ("transport", "control response timed out".into()))?;
-    if response.len() > MAX_FRAME * 2 {
+    if response.len() > MAX_RESPONSE_FRAME {
         return Err(("transport", "control response is too large".into()));
     }
     let value: Value = serde_json::from_slice(&response)
@@ -143,6 +144,7 @@ fn command_args<'a>(
         }
         "autosave" => Ok(("autosave", autosave_args(args)?)),
         "resume" => Ok(("resume", resume_args(args)?)),
+        "clock" => Ok(("clock", clock_args(args)?)),
         "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
     }
@@ -218,7 +220,10 @@ fn hardware_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             ("battery", "percent") => json!(value
                 .parse::<u8>()
                 .map_err(|_| ("usage", "battery.percent must be 0-100".into()))?),
-            ("battery", "charging") | ("radio", "enabled") | ("radio", "connected") => {
+            ("battery", "charging")
+            | ("battery", "externalPower")
+            | ("radio", "enabled")
+            | ("radio", "connected") => {
                 json!(parse_bool(value)?)
             }
             ("storage", "mode") => {
@@ -361,9 +366,36 @@ fn autosave_args(args: &[String]) -> Result<Value, (&'static str, String)> {
     Ok(value)
 }
 
-fn lifecycle_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+fn clock_args(args: &[String]) -> Result<Value, (&'static str, String)> {
     if args.len() != 3
-        || !["suspend", "resume"].contains(&args[0].as_str())
+        || !["advance", "jump"].contains(&args[0].as_str())
+        || !["--minutes", "--milliseconds"].contains(&args[1].as_str())
+    {
+        return Err((
+            "usage",
+            "clock advance|jump --minutes N or --milliseconds N is required".into(),
+        ));
+    }
+    let amount = args[2]
+        .parse::<u64>()
+        .map_err(|_| ("usage", "clock amount must be an integer".into()))?;
+    let milliseconds = if args[1] == "--minutes" {
+        amount.saturating_mul(60_000)
+    } else {
+        amount
+    };
+    if milliseconds > 3_600_000 {
+        return Err((
+            "usage",
+            "clock advance must be at most 3600000 milliseconds".into(),
+        ));
+    }
+    Ok(json!({"operation": args[0], "monotonicMs": milliseconds, "wallClockMs": milliseconds}))
+}
+
+fn lifecycle_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() < 3
+        || !["suspend", "resume", "shutdown"].contains(&args[0].as_str())
         || args[1] != "--timeout"
     {
         return Err((
@@ -380,7 +412,33 @@ fn lifecycle_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             "lifecycle timeout must be between 1 and 30 seconds".into(),
         ));
     }
-    Ok(json!({"operation": args[0], "timeoutMs": seconds * 1000}))
+    let mut value = json!({"operation": args[0], "timeoutMs": seconds * 1000});
+    let mut index = 3;
+    while index < args.len() {
+        if index + 1 >= args.len() {
+            return Err(("usage", "lifecycle option requires a value".into()));
+        }
+        match args[index].as_str() {
+            "--duration-minutes" => {
+                let duration = args[index + 1]
+                    .parse::<u16>()
+                    .map_err(|_| ("usage", "duration must be 1, 5, 10, 15, 30, or 60".into()))?;
+                if ![1, 5, 10, 15, 30, 60].contains(&duration) {
+                    return Err(("usage", "duration must be 1, 5, 10, 15, 30, or 60".into()));
+                }
+                value["durationMinutes"] = json!(duration);
+            }
+            "--source" => {
+                if !["user", "deadline", "stale-alarm"].contains(&args[index + 1].as_str()) {
+                    return Err(("usage", "wake source is not allowlisted".into()));
+                }
+                value["wakeSource"] = json!(args[index + 1]);
+            }
+            _ => return Err(("usage", "unknown lifecycle option".into())),
+        }
+        index += 2;
+    }
+    Ok(value)
 }
 
 fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {

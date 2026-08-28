@@ -88,7 +88,7 @@ validate_hardware() {
         battery.percent)
             case "$value" in ''|*[!0-9]*) usage ;; esac
             [ "$value" -le 100 ] || usage ;;
-        battery.charging|radio.enabled|radio.connected) validate_bool "$value" ;;
+        battery.charging|battery.externalPower|radio.enabled|radio.connected) validate_bool "$value" ;;
         storage.mode) case "$value" in available|full) ;; *) usage ;; esac ;;
         *) usage ;;
     esac
@@ -114,7 +114,7 @@ validate_command() {
         fault)
             [ "$#" -eq 2 ] || usage
             case "$1" in set|clear) ;; *) usage ;; esac
-            case "$2" in adapter-fail|adapter-crash|input-drop|suspend-fail|checkpoint-fail|quiesce-audio-fail|quiesce-input-fail|quiesce-radios-fail|resume-radios-fail|resume-input-fail|resume-audio-fail|hal-loss|deadline) ;; *) usage ;; esac ;;
+            case "$2" in adapter-fail|adapter-crash|input-drop|suspend-fail|checkpoint-fail|quiesce-audio-fail|quiesce-input-fail|quiesce-radios-fail|resume-radios-fail|resume-input-fail|resume-audio-fail|hal-loss|arm-fail|verify-fail|clear-fail|crash-before-suspend|crash-armed-journal|shutdown-fail|deadline) ;; *) usage ;; esac ;;
         adapter)
             case "$1" in complete|fail|exit|crash) ;; *) usage ;; esac
             shift
@@ -166,11 +166,26 @@ validate_command() {
                 esac
                 shift 2
             done ;;
-        lifecycle)
-            [ "$#" -eq 3 ] && [ "$2" = --timeout ] || usage
-            case "$1" in suspend|resume) ;; *) usage ;; esac
+        clock)
+            [ "$#" -eq 3 ] && { [ "$2" = --minutes ] || [ "$2" = --milliseconds ]; } || usage
+            case "$1" in advance|jump) ;; *) usage ;; esac
             case "$3" in ''|*[!0-9]*) usage ;; esac
-            [ "$3" -gt 0 ] && [ "$3" -le 30 ] || usage ;;
+            if [ "$2" = --minutes ]; then [ "$3" -le 60 ] || usage; else [ "$3" -le 3600000 ] || usage; fi ;;
+        lifecycle)
+            [ "$#" -ge 3 ] && [ "$2" = --timeout ] || usage
+            case "$1" in suspend|resume|shutdown) ;; *) usage ;; esac
+            case "$3" in ''|*[!0-9]*) usage ;; esac
+            [ "$3" -gt 0 ] && [ "$3" -le 30 ] || usage
+            shift 3
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] || usage
+                case "$1" in
+                    --duration-minutes) case "$2" in 1|5|10|15|30|60) ;; *) usage ;; esac ;;
+                    --source) case "$2" in user|deadline|stale-alarm) ;; *) usage ;; esac ;;
+                    *) usage ;;
+                esac
+                shift 2
+            done ;;
         *) usage ;;
     esac
 }

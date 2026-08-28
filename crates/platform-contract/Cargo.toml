@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+hex.workspace = true
 serde = { version = "1.0", features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
 sim-domain = { path = "../domain" }
 launcher-presentation = { path = "../launcher-presentation" }

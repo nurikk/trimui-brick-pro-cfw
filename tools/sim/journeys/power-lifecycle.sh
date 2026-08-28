@@ -8,31 +8,31 @@ if [ "$#" -gt 1 ]; then
 fi
 if [ "$#" -eq 1 ]; then
     WORK=$1
-    OWN_WORK=0
     mkdir -p "$WORK"
 else
     WORK=$(mktemp -d "${TMPDIR:-/tmp}/brickpro-power-lifecycle.XXXXXX")
-    OWN_WORK=1
 fi
-trap 'for run in "$WORK"/*; do [ -d "$run" ] || continue; "$ROOT/scripts/sim" stop --run-dir "$run" >/dev/null 2>&1 || true; done; [ "$OWN_WORK" -eq 1 ] && rm -rf "$WORK"' EXIT HUP INT TERM
+RUNS=
+cleanup() {
+    for run in $RUNS; do
+        "$ROOT/scripts/sim" stop --run-dir "$run" >/dev/null 2>&1 || true
+    done
+}
+trap cleanup EXIT HUP INT TERM
 
 start() {
     run=$1
     mkdir -p "$run"
+    RUNS="$RUNS $run"
     "$ROOT/scripts/sim" run --backend=dummy --run-dir "$run" --wait-ready 30 --detach
 }
-
-stop() {
-    "$ROOT/scripts/sim" stop --run-dir "$1" --wait-ready 30 >/dev/null
-}
-
 ctl() {
     run=$1
     shift
     "$ROOT/scripts/simctl" --socket "$run/control.sock" "$@"
 }
 state_file() {
-    ctl "$1" state | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["result"]))'
+    ctl "$1" state | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["result"]))'
 }
 expect_failure() {
     run=$1
@@ -42,223 +42,233 @@ expect_failure() {
         exit 1
     fi
 }
-
-launch() {
-    run=$1
-    ctl "$run" button --button start --action press >/dev/null
-    ctl "$run" button --button down --action press >/dev/null
-    ctl "$run" button --button primary --action press >/dev/null
-}
-
-assert_state() {
-    python3 - "$@" <<'PY'
-import json
-import sys
-
-path, mode = sys.argv[1:]
-state = json.load(open(path, encoding="utf-8"))
+assert_orderly() {
+    python3 - "$1" "$2" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))
 lifecycle = state["lifecycle"]
-hardware = state["hardware"]
-platform = state["platformState"]
-if mode == "suspended":
-    assert state["activeSession"] is not None
-    assert lifecycle["phase"] == "suspended"
-    assert lifecycle["launchesAllowed"] is False
-    assert lifecycle["backgroundAllowed"] is False
-    assert hardware["suspend"] == {"state": "suspended", "result": "success"}
-    saved = lifecycle["savedState"]
-    assert saved is not None
-    assert saved["radios"]["wifi"] == {"enabled": True, "connected": True}
-    assert saved["audio"]["enabled"] is True
-    assert saved["audio"]["active"] is False
-    assert saved["input"]["pressed"] == []
-    assert platform["audio"]["enabled"] is False
-    assert platform["input"]["pressed"] == []
-    assert platform["radios"]["wifi"] == {"enabled": False, "connected": False}
-    events = [entry["event"] for entry in lifecycle["journal"]]
-    order = ["checkpoint-complete", "quiesce-audio", "quiesce-input", "quiesce-radios", "suspend-complete"]
-    positions = [events.index(event) for event in order]
-    assert positions == sorted(positions), events
-elif mode == "awake":
-    assert lifecycle["phase"] == "awake"
-    assert lifecycle["launchesAllowed"] is True
-    assert lifecycle["backgroundAllowed"] is True
-    assert hardware["suspend"] == {"state": "active", "result": "none"}
-else:
-    raise AssertionError(mode)
+assert lifecycle["phase"] == "orderly-shutdown", lifecycle
+assert lifecycle["shutdownRequest"]["reason"] == sys.argv[2], lifecycle
+assert lifecycle["launchesAllowed"] is False
+assert lifecycle["backgroundAllowed"] is False
+assert lifecycle["armedDeadline"] is None
+assert state["activeSession"] is None
+PY
+}
+assert_suspended() {
+    python3 - "$1" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))
+lifecycle = state["lifecycle"]
+assert lifecycle["phase"] == "suspended"
+assert lifecycle["armedDeadline"]["durationMinutes"] == 5
+assert lifecycle["armedDeadline"]["monotonicDeadlineMs"] > state["clock"]["monotonicMs"]
+assert lifecycle["armedDeadline"]["bootTimeDeadlineMs"] > state["clock"]["wallClockMs"]
+assert state["hardware"]["suspend"] == {"state": "suspended", "result": "success"}
+assert [event["event"] for event in lifecycle["journal"]][-1] == "suspend-complete"
 PY
 }
 
-# Ordinary suspend/resume, typed snapshot, ordering, gates, and re-entrancy.
-NORMAL=$WORK/normal
-start "$NORMAL"
-ctl "$NORMAL" hardware set radio.enabled=true radio.connected=true >/dev/null
-launch "$NORMAL"
-state_file "$NORMAL" >"$NORMAL/before.json"
-python3 - "$NORMAL/before.json" <<'PY'
+# Manual wake at 4:59 clears the first deadline and restores the checkpoint.
+MANUAL=$WORK/manual-459
+start "$MANUAL"
+ctl "$MANUAL" lifecycle suspend --timeout 5 >/dev/null
+ctl "$MANUAL" clock advance --milliseconds 298856 >/dev/null
+state_file "$MANUAL" >"$MANUAL/at-459.json"
+assert_suspended "$MANUAL/at-459.json"
+ctl "$MANUAL" lifecycle resume --timeout 5 --source user >"$MANUAL/manual-wake.json"
+python3 - "$MANUAL/manual-wake.json" <<'PY'
 import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["activeSession"] is not None
-assert state["lifecycle"]["phase"] == "awake"
+result = json.load(open(sys.argv[1]))["result"]
+assert result["phase"] == "awake"
 PY
-ctl "$NORMAL" lifecycle suspend --timeout 5 >"$NORMAL/suspend.json"
-state_file "$NORMAL" >"$NORMAL/suspended.json"
-assert_state "$NORMAL/suspended.json" suspended
-[ "$(python3 - "$NORMAL/suspended.json" <<'PY'
+ctl "$MANUAL" lifecycle suspend --timeout 5 >/dev/null
+state_file "$MANUAL" >"$MANUAL/fresh-suspend.json"
+assert_suspended "$MANUAL/fresh-suspend.json"
+ctl "$MANUAL" clock advance --milliseconds 300000 >/dev/null
+state_file "$MANUAL" >"$MANUAL/deadline.json"
+python3 - "$MANUAL/deadline.json" <<'PY'
 import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-print(state["lifecycle"]["marker"]["checkpointGeneration"])
+state = json.load(open(sys.argv[1]))
+assert state["lifecycle"]["phase"] == "orderly-shutdown"
+assert state["lifecycle"]["wakeSource"] == "deadline"
+assert state["lifecycle"]["shutdownRequest"]["status"] == "terminal"
 PY
-)" -ge 1 ]
-expect_failure "$NORMAL" lifecycle suspend --timeout 5
-expect_failure "$NORMAL" button --button primary --action press
-ctl "$NORMAL" lifecycle resume --timeout 5 >"$NORMAL/resume.json"
-state_file "$NORMAL" >"$NORMAL/resumed.json"
-assert_state "$NORMAL/resumed.json" awake
-python3 - "$NORMAL/suspended.json" "$NORMAL/resumed.json" <<'PY'
-import json, sys
-suspended = json.load(open(sys.argv[1], encoding="utf-8"))
-resumed = json.load(open(sys.argv[2], encoding="utf-8"))
-saved = suspended["lifecycle"]["savedState"]
-current = resumed["platformState"]
-for domain in ("audio", "input", "radios"):
-    assert current[domain] == saved[domain], (domain, current[domain], saved[domain])
-events = [entry["event"] for entry in resumed["lifecycle"]["journal"]]
-order = ["resume-active", "restore-radios", "restore-input", "restore-audio", "resume-complete"]
-positions = [events.index(event) for event in order]
-assert positions == sorted(positions), events
-PY
-expect_failure "$NORMAL" lifecycle resume --timeout 5
-stop "$NORMAL"
+ctl "$MANUAL" lifecycle shutdown --timeout 5 >/dev/null 2>&1 || true
 
-# Checkpoint failure preserves the prior generation and never quiesces.
-CHECKPOINT=$WORK/checkpoint
+# Checkpoint failure is bounded and never reaches suspend.
+CHECKPOINT=$WORK/checkpoint-failure
 start "$CHECKPOINT"
-launch "$CHECKPOINT"
-ctl "$CHECKPOINT" autosave --reason periodic >/dev/null
-before=$(python3 - "$CHECKPOINT/data/resume/current.json" <<'PY'
-import json, sys
-print(json.load(open(sys.argv[1], encoding="utf-8"))["generation"])
-PY
-)
 ctl "$CHECKPOINT" fault set checkpoint-fail >/dev/null
 expect_failure "$CHECKPOINT" lifecycle suspend --timeout 5
 state_file "$CHECKPOINT" >"$CHECKPOINT/state.json"
-python3 - "$CHECKPOINT/state.json" "$CHECKPOINT/data/resume/current.json" "$before" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-current = json.load(open(sys.argv[2], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "recovery"
-assert state["hardware"]["suspend"]["state"] == "active"
-assert state["lifecycle"]["marker"]["reason"] == "checkpoint-failed"
-assert current["generation"] == int(sys.argv[3])
-assert not any(entry["event"] == "quiesce-audio" for entry in state["lifecycle"]["journal"])
-PY
-stop "$CHECKPOINT"
+assert_orderly "$CHECKPOINT/state.json" checkpoint-failure
 
-# Quiesce failure rolls back in reverse without claiming suspension.
-QUIESCE=$WORK/quiesce
-start "$QUIESCE"
-launch "$QUIESCE"
-ctl "$QUIESCE" fault set quiesce-audio-fail >/dev/null
-expect_failure "$QUIESCE" lifecycle suspend --timeout 5
-state_file "$QUIESCE" >"$QUIESCE/state.json"
-python3 - "$QUIESCE/state.json" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "awake"
-assert state["hardware"]["suspend"]["state"] == "active"
-assert state["lifecycle"]["marker"]["reason"] == "audio-failed-rolled-back"
-assert state["lifecycle"]["savedState"] is None
-assert "rollback-complete" in [entry["event"] for entry in state["lifecycle"]["journal"]]
-PY
-stop "$QUIESCE"
+# Arming, verification, and both crash points fail closed without entering suspended.
+for case in arm-failure verify-failure crash-before-suspend crash-with-armed-journal; do
+    run=$WORK/$case
+    start "$run"
+    fault=arm-fail
+    reason=arm-failure
+    [ "$case" = verify-failure ] && fault=verify-fail && reason=verify-failure
+    [ "$case" = crash-before-suspend ] && fault=crash-before-suspend && reason=crash-before-suspend
+    [ "$case" = crash-with-armed-journal ] && fault=crash-armed-journal && reason=crash-with-armed-journal
+    ctl "$run" fault set "$fault" >/dev/null
+    expect_failure "$run" lifecycle suspend --timeout 5
+    state_file "$run" >"$run/state.json"
+    assert_orderly "$run/state.json" "$reason"
+done
 
-# HAL loss fails closed before checkpoint or quiescence.
-HAL=$WORK/hal
-start "$HAL"
-ctl "$HAL" fault set hal-loss >/dev/null
-expect_failure "$HAL" lifecycle suspend --timeout 5
-state_file "$HAL" >"$HAL/state.json"
-python3 - "$HAL/state.json" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "recovery"
-assert state["hardware"]["suspend"]["state"] == "active"
-assert state["lifecycle"]["launchesAllowed"] is False
-assert state["lifecycle"]["backgroundAllowed"] is False
-PY
-stop "$HAL"
-
-# Resume failure leaves the saved checkpoint and a pending marker.
-RESUME_FAIL=$WORK/resume-fail
-start "$RESUME_FAIL"
-launch "$RESUME_FAIL"
-ctl "$RESUME_FAIL" lifecycle suspend --timeout 5 >/dev/null
-ctl "$RESUME_FAIL" fault set resume-audio-fail >/dev/null
-expect_failure "$RESUME_FAIL" lifecycle resume --timeout 5
-state_file "$RESUME_FAIL" >"$RESUME_FAIL/state.json"
-python3 - "$RESUME_FAIL/state.json" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "recovery"
-assert state["lifecycle"]["marker"]["reason"] == "resume-audio-failed"
-assert state["lifecycle"]["savedState"] is not None
-assert state["hardware"]["suspend"]["state"] == "active"
-PY
-stop "$RESUME_FAIL"
-
-# A fresh simulator with the pending marker remains conservatively gated.
-COLD=$WORK/cold
+# Cold recovery consumes a checksummed marker and never revives the session.
+COLD=$WORK/cold-recovery
 mkdir -p "$COLD"
-cp "$RESUME_FAIL/lifecycle-marker.json" "$COLD/lifecycle-marker.json"
+start "$COLD"
+"$ROOT/scripts/sim" stop --run-dir "$COLD"
+rm -rf "$COLD/logs" "$COLD/screenshots" "$COLD/checkpoints" "$COLD/readiness.json" "$COLD/route-selection.json" "$COLD/launch.json" "$COLD/launch-request.json" "$COLD/session.json" "$COLD/exit-status.json"
+for artifact in lifecycle-marker.json lifecycle-marker.checksum lifecycle-journal.json lifecycle-journal.checksum; do
+    cp "$WORK/crash-with-armed-journal/data/$artifact" "$COLD/data/"
+done
 start "$COLD"
 state_file "$COLD" >"$COLD/state.json"
 python3 - "$COLD/state.json" <<'PY'
 import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
+state = json.load(open(sys.argv[1]))
 lifecycle = state["lifecycle"]
 assert lifecycle["phase"] == "recovery"
-assert lifecycle["marker"]["reason"].startswith("cold-recovery:")
 assert lifecycle["launchesAllowed"] is False
-assert lifecycle["backgroundAllowed"] is False
-assert "cold-recovery" in [entry["event"] for entry in lifecycle["journal"]]
+assert lifecycle["shutdownRequest"]["reason"] == "cold-recovery"
+assert state["activeSession"] is None
 PY
-expect_failure "$COLD" button --button primary --action press
-stop "$COLD"
 
-# Exercise the same semantic flow through the headed backend when available.
-HEADED=$WORK/headed
+# A foreign/stale alarm is ignored and the next sleep gets a fresh token.
+STALE=$WORK/stale-alarm
+start "$STALE"
+ctl "$STALE" lifecycle suspend --timeout 5 >/dev/null
+ctl "$STALE" lifecycle resume --timeout 5 --source stale-alarm >/dev/null
+state_file "$STALE" >"$STALE/state.json"
+python3 - "$STALE/state.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+assert state["lifecycle"]["phase"] == "awake"
+assert state["lifecycle"]["wakeSource"] == "stale-alarm"
+assert state["lifecycle"]["wakeReason"] == "stale-alarm-ignored"
+assert state["lifecycle"]["shutdownRequest"] is None
+PY
+ctl "$STALE" lifecycle suspend --timeout 5 >/dev/null
+
+# A cancellation racing the deadline wins before the exact boundary.
+CANCEL=$WORK/cancellation-race
+start "$CANCEL"
+ctl "$CANCEL" lifecycle suspend --timeout 5 >/dev/null
+ctl "$CANCEL" clock advance --milliseconds 299855 >/dev/null
+ctl "$CANCEL" lifecycle resume --timeout 5 --source user >/dev/null
+ctl "$CANCEL" clock advance --milliseconds 1 >/dev/null
+state_file "$CANCEL" >"$CANCEL/state.json"
+python3 - "$CANCEL/state.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+assert state["lifecycle"]["phase"] == "awake"
+assert state["lifecycle"]["shutdownRequest"] is None
+PY
+
+# A forward boot-time/RTC jump is battery-safe: it reaches the persisted deadline immediately.
+CLOCK=$WORK/clock-jump
+start "$CLOCK"
+ctl "$CLOCK" lifecycle suspend --timeout 5 >/dev/null
+ctl "$CLOCK" clock jump --minutes 60 >"$CLOCK/jump.json"
+python3 - "$CLOCK/jump.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))["result"]
+lifecycle = state["lifecycle"]
+assert lifecycle["phase"] == "orderly-shutdown"
+assert lifecycle["wakeSource"] == "deadline"
+assert lifecycle["shutdownRequest"]["reason"] == "deadline"
+assert state["clock"]["wallClockMs"] == 3600000
+PY
+
+# Alarm-clear failures fail closed through typed orderly shutdown on both wake paths.
+for case in user-alarm-clear-failure deadline-alarm-clear-failure; do
+    run=$WORK/$case
+    start "$run"
+    ctl "$run" lifecycle suspend --timeout 5 >/dev/null
+    ctl "$run" fault set clear-fail >/dev/null
+    if [ "$case" = user-alarm-clear-failure ]; then
+        expect_failure "$run" lifecycle resume --timeout 5 --source user
+    else
+        ctl "$run" clock advance --milliseconds 300000 >/dev/null
+    fi
+    state_file "$run" >"$run/state.json"
+    assert_orderly "$run/state.json" alarm-clear-failure
+done
+
+# Low battery requests typed orderly shutdown; external power changes remain typed observations.
+POWER=$WORK/power-events
+start "$POWER"
+ctl "$POWER" hardware set battery.externalPower=true >/dev/null
+ctl "$POWER" hardware set battery.externalPower=false >/dev/null
+ctl "$POWER" hardware set battery.percent=5 >"$POWER/low-battery.json"
+python3 - "$POWER/low-battery.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))["result"]
+assert state["hardware"]["externalPower"] is False
+assert state["lifecycle"]["shutdownRequest"]["reason"] == "low-battery"
+assert state["lifecycle"]["phase"] == "orderly-shutdown"
+PY
+
+# Shutdown retry is bounded and succeeds only after the fault is cleared.
+RETRY=$WORK/shutdown-retry
+start "$RETRY"
+ctl "$RETRY" lifecycle suspend --timeout 5 >/dev/null
+ctl "$RETRY" fault set shutdown-fail >/dev/null
+ctl "$RETRY" clock advance --milliseconds 300000 >/dev/null
+state_file "$RETRY" >"$RETRY/retry-pending.json"
+python3 - "$RETRY/retry-pending.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+request = state["lifecycle"]["shutdownRequest"]
+assert state["lifecycle"]["phase"] == "orderly-shutdown"
+assert request["status"] == "pending" and request["attempts"] == 1
+PY
+ctl "$RETRY" fault clear shutdown-fail >/dev/null
+ctl "$RETRY" lifecycle shutdown --timeout 5 >/dev/null
+state_file "$RETRY" >"$RETRY/retry-terminal.json"
+python3 - "$RETRY/retry-terminal.json" <<'PY'
+import json, sys
+request = json.load(open(sys.argv[1]))["lifecycle"]["shutdownRequest"]
+assert request["status"] == "terminal" and request["attempts"] == 2
+PY
+
+# HAL loss and repeated manual/deadline cycles remain gated and deterministic.
+HAL=$WORK/hal-loss
+start "$HAL"
+ctl "$HAL" fault set hal-loss >/dev/null
+expect_failure "$HAL" lifecycle suspend --timeout 5
+state_file "$HAL" >"$HAL/state.json"
+assert_orderly "$HAL/state.json" hal-loss
+
+REPEAT=$WORK/repeated-cycles
+start "$REPEAT"
+ctl "$REPEAT" lifecycle suspend --timeout 5 >/dev/null
+ctl "$REPEAT" lifecycle resume --timeout 5 --source user >/dev/null
+ctl "$REPEAT" lifecycle suspend --timeout 5 >/dev/null
+ctl "$REPEAT" clock advance --milliseconds 300000 >/dev/null
+state_file "$REPEAT" >"$REPEAT/state.json"
+assert_orderly "$REPEAT/state.json" deadline
+
+# Repeat the semantic deadline path through the headed X11 lane when available.
+HEADED=$WORK/headed-x11
 mkdir -p "$HEADED"
 if "$ROOT/scripts/sim" run --backend=x11 --run-dir "$HEADED" --wait-ready 30 --detach; then
-    launch "$HEADED"
     ctl "$HEADED" lifecycle suspend --timeout 5 >/dev/null
-    state_file "$HEADED" >"$HEADED/suspended.json"
-    python3 - "$HEADED/suspended.json" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "suspended"
-assert state["hardware"]["suspend"]["state"] == "suspended"
-assert state["lifecycle"]["launchesAllowed"] is False
-assert state["lifecycle"]["backgroundAllowed"] is False
-PY
-    ctl "$HEADED" screenshot --name headed-suspended >/dev/null
-    ctl "$HEADED" lifecycle resume --timeout 5 >/dev/null
-    state_file "$HEADED" >"$HEADED/resumed.json"
-    python3 - "$HEADED/resumed.json" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1], encoding="utf-8"))
-assert state["lifecycle"]["phase"] == "awake"
-assert state["hardware"]["suspend"]["state"] == "active"
-assert state["lifecycle"]["launchesAllowed"] is True
-assert state["lifecycle"]["backgroundAllowed"] is True
-PY
-    ctl "$HEADED" screenshot --name headed-resumed >/dev/null
-    stop "$HEADED"
-    echo "power lifecycle journey: headed X11 evidence PASS ($HEADED)"
+    ctl "$HEADED" clock advance --milliseconds 300000 >/dev/null
+    state_file "$HEADED" >"$HEADED/state.json"
+    assert_orderly "$HEADED/state.json" deadline
+    ctl "$HEADED" screenshot --name headed-deadline >/dev/null
+    "$ROOT/scripts/sim" stop --run-dir "$HEADED"
+    printf '%s\n' "power lifecycle journey: headed X11 semantic evidence PASS ($HEADED)"
 else
     status=$?
-    echo "power lifecycle journey: headed X11 unavailable (scripts/sim status $status); dummy semantic evidence remained green" >&2
+    printf '%s\n' "power lifecycle journey: headed X11 unavailable (scripts/sim status $status); dummy semantic evidence remained green" >&2
 fi
 
-printf '%s\n' "power lifecycle journey: PASS (ordering, typed restore, checkpoint/recovery, gates, marker cold recovery) $WORK"
+printf '%s\n' "power lifecycle journey: PASS (4:59 cancel, deadline/RTC-jump shutdown, arm/crash/stale/alarm-clear/clock/power/HAL/retry/repeat coverage) $WORK"

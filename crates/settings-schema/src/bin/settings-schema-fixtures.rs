@@ -41,9 +41,12 @@ fn fixture() -> Result<Registry, String> {
 
 fn check_projection(registry: &Registry) -> Result<(), String> {
     let mut context = ProjectionContext::default();
-    context
-        .capabilities
-        .extend(["audio".into(), "theme-engine".into(), "wifi".into()]);
+    context.capabilities.extend([
+        "audio".into(),
+        "theme-engine".into(),
+        "wifi".into(),
+        "cap.power.bounded-sleep".into(),
+    ]);
     let model = registry
         .project(&context)
         .map_err(|error| format!("projection failed: {error}"))?;
@@ -53,10 +56,23 @@ fn check_projection(registry: &Registry) -> Result<(), String> {
         .map(|section| section.id.as_str())
         .collect();
     let expected = [
-        "display", "audio", "input", "scraper", "theme", "system", "network", "wifi",
+        "display", "audio", "input", "scraper", "theme", "system", "network", "wifi", "power",
     ];
     if section_ids != expected {
         return Err(format!("projection order was {section_ids:?}"));
+    }
+    let bounded_sleep = control(&model, "core.power.maximum-sleep-duration-minutes")?;
+    if !bounded_sleep.enabled
+        || bounded_sleep.default != Some(SettingValue::EnumSingle("5".into()))
+        || bounded_sleep.constraints.as_ref().map(|constraints| {
+            constraints
+                .options
+                .iter()
+                .map(|option| option.value.as_str())
+                .collect::<Vec<_>>()
+        }) != Some(vec!["1", "5", "10", "15", "30", "60"])
+    {
+        return Err("bounded sleep setting is not the exact supported policy".into());
     }
     let json = model
         .to_canonical_json()

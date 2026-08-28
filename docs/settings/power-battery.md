@@ -7,12 +7,13 @@ observations may be unavailable. The fixture uses synthetic, non-physical data.
 
 ## Field contract
 
-`power.*` IDs are stable semantic ID suggestions. `cap.power.*` names are
+`power.*` IDs are stable semantic ID suggestions. Bounded sleep is a controller policy only: the RTC is a Linux-resume mechanism, not a shutdown decision or physical-power evidence. `cap.power.*` names are
 power-domain capability-gate expectations, not a global registry.
 
 | Stable semantic ID suggestion | Purpose | Field kind | Default | Constraints/options | Scope | Apply semantics | Sensitivity | Capability gate | Visibility rule | Failure behavior |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `power.sleep-timeout-seconds` | Idle time before sleep policy is eligible | Mutable policy | `300` seconds | Integer; `0` disables; `30..86400` otherwise | Device policy | Valid change becomes pending; confirm applies it; cancel discards it; reset proposes `300` | Low | `cap.power.sleep-policy` | Visible only when supported; hidden when unsupported | Invalid or unsupported change is rejected and current/pending values stay unchanged |
+| `power.maximum-sleep-duration-minutes` | Maximum bounded sleep duration before deadline resume and orderly shutdown | Mutable policy | `5` minutes | Exactly `1`, `5`, `10`, `15`, `30`, or `60`; no indefinite value | Device policy | Valid change becomes pending; confirm applies it; cancel discards it; reset proposes `5` | Low | `cap.power.bounded-sleep` | Visible only when supported; hidden when unsupported | Invalid or unsupported change is rejected and current/pending values stay unchanged |
 | `power.auto-shutdown-timeout-seconds` | Idle time before auto-shutdown policy is eligible | Mutable policy | `1800` seconds | Integer; `0` disables; `60..172800` otherwise | Device policy | Valid change becomes pending; confirm applies it; cancel discards it; reset proposes `1800` | Low | `cap.power.shutdown-policy` | Visible only when supported; hidden when unsupported | Invalid or unsupported change is rejected and current/pending values stay unchanged |
 | `power.low-battery-warning-threshold-percent` | Charge level at which the warning policy becomes eligible | Mutable policy | `20` percent | Integer `1..50` | Device policy | Valid change becomes pending; confirm applies it; cancel discards it; reset proposes `20` | Low | `cap.power.low-battery-policy` | Visible only when supported; hidden when unsupported | Invalid or unsupported change is rejected and current/pending values stay unchanged |
 | `power.low-battery-save-exit-policy` | Policy for saving and leaving a session at low battery | Mutable policy | `warn-only` | Exactly `warn-only`, `save-and-exit`, or `exit-without-save` | Device policy | Valid change becomes pending; confirm applies it; cancel discards it; reset proposes `warn-only` | Low | `cap.power.low-battery-policy` | Visible only when supported; hidden when unsupported | Invalid or unsupported change is rejected and current/pending values stay unchanged |
@@ -40,3 +41,5 @@ power-domain capability-gate expectations, not a global registry.
 - `power.performance-profile` is a policy label only. This contract includes no
   frequency, governor, thermal, suspend, shutdown, charging, or other physical
   operation and makes no hardware-behavior claim.
+- The bounded flow is `awake → preparing-suspend → suspended → resumed-by-user | resumed-for-deadline → orderly-shutdown`. Before suspend it checkpoints, persists a bounded SHA-256 checksummed marker/journal, clears stale alarm state, arms and verifies one typed deadline, and fails closed to typed orderly shutdown if arming, verification, or alarm clearing fails.
+- The host simulator proves only deterministic controller state, persisted boot-time/RTC deadline semantics, forward-clock-jump safety, typed request ordering, and redacted evidence. It does not prove TG4040 RTC/PMIC wake, `mem` suspend, current draw, clock drift, power-button behavior, save integrity, or physical power-off; those remain HIL-only after separate authorization.

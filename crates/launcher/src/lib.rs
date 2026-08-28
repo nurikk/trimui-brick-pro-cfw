@@ -38,7 +38,8 @@ use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
 use sim_platform_contract::{
     lifecycle::{
-        CheckpointHook, LifecycleController, LifecycleFault, LifecycleMarker, LifecyclePhase,
+        CheckpointHook, LifecycleClock, LifecycleController, LifecycleFault, LifecycleMarker,
+        LifecyclePhase, ResumeRequest, SuspendRequest, WakeSource, DEFAULT_SLEEP_DURATION_MINUTES,
     },
     Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, StorageMode,
 };
@@ -77,6 +78,12 @@ const FAULTS: &[&str] = &[
     "resume-input-fail",
     "resume-audio-fail",
     "hal-loss",
+    "arm-fail",
+    "verify-fail",
+    "clear-fail",
+    "crash-before-suspend",
+    "crash-armed-journal",
+    "shutdown-fail",
     "deadline",
 ];
 
@@ -200,6 +207,7 @@ impl PresentationState {
             "theme-engine".into(),
             "wifi".into(),
             "scraper".into(),
+            "cap.power.bounded-sleep".into(),
         ]);
         let settings =
             SettingsUi::new(registry, context).map_err(|error| anyhow!(error.to_string()))?;
@@ -297,6 +305,8 @@ struct WaitArgs {
 struct BatteryChanges {
     percent: Option<u8>,
     charging: Option<bool>,
+    #[serde(rename = "externalPower")]
+    external_power: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -377,6 +387,20 @@ struct LifecycleArgs {
     operation: String,
     #[serde(rename = "timeoutMs")]
     timeout_ms: u64,
+    #[serde(default, rename = "durationMinutes")]
+    duration_minutes: Option<u16>,
+    #[serde(default, rename = "wakeSource")]
+    wake_source: Option<WakeSource>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClockArgs {
+    operation: String,
+    #[serde(rename = "monotonicMs")]
+    monotonic_ms: u64,
+    #[serde(rename = "wallClockMs")]
+    wall_clock_ms: u64,
 }
 
 const MAX_ADAPTER_VALUE: i32 = 1_000_000;
@@ -804,6 +828,13 @@ fn run_session<P: Platform>(
     if state.active_session.is_some() || state.last_session.is_some() {
         write_session(&evidence.root, session_state(&state))?;
     }
+    if state.lifecycle.terminal_shutdown() {
+        platform
+            .clear_wake_deadline()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        sync_lifecycle_marker(&evidence.root, &LifecycleController::new())
+            .map_err(|error| anyhow!(error))?;
+    }
     log.emit("clean_shutdown", platform.logical_time_ms(), Map::new())?;
     write_json(
         evidence.root.join("exit-status.json"),
@@ -889,8 +920,53 @@ fn handle_request<P: Platform>(
             if let Some(reason) = checkpoint_reason {
                 let _ = state.broker.checkpoint(reason, CommitFault::None);
                 refresh_resume_projection(state, catalog, launch_catalog)?;
+                let _ = state.lifecycle.low_battery(platform);
+                sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
+                if !state.lifecycle.is_awake() {
+                    state.active_session = None;
+                    state.last_session = None;
+                    state.route = Route::Library;
+                    write_session(&evidence.root, SessionState::Aborted)
+                        .map_err(|error| error.to_string())?;
+                }
             }
             refresh_presentation_affordances(&mut state.presentation, platform)?;
+            state_json(platform, evidence, log, catalog, state)
+        }),
+        "clock" => parse::<ClockArgs>(request.args).and_then(|args| {
+            if !["advance", "jump"].contains(&args.operation.as_str()) {
+                return Err("clock operation must be advance or jump".into());
+            }
+            let (monotonic_ms, wall_clock_ms) = if args.operation == "jump" {
+                (platform.logical_time_ms(), args.wall_clock_ms)
+            } else {
+                (
+                    platform.logical_time_ms().saturating_add(args.monotonic_ms),
+                    platform.wall_clock_ms().saturating_add(args.wall_clock_ms),
+                )
+            };
+            platform
+                .semantic_clock(monotonic_ms, wall_clock_ms)
+                .map_err(|error| error.to_string())?;
+            if state.lifecycle.deadline_due(LifecycleClock {
+                monotonic_ms: platform.logical_time_ms(),
+                boot_time_ms: platform.wall_clock_ms(),
+            }) {
+                let _ = lifecycle_control(
+                    platform,
+                    evidence,
+                    log,
+                    catalog,
+                    launch_catalog,
+                    state,
+                    LifecycleArgs {
+                        operation: "resume".into(),
+                        timeout_ms: 5_000,
+                        duration_minutes: None,
+                        wake_source: Some(WakeSource::Deadline),
+                    },
+                );
+            }
             state_json(platform, evidence, log, catalog, state)
         }),
         "lifecycle" => parse::<LifecycleArgs>(request.args).and_then(|args| {
@@ -1669,18 +1745,49 @@ fn lifecycle_control<P: Platform>(
                 fault: checkpoint_fault,
             };
             let now_ms = platform.logical_time_ms();
-            state
-                .lifecycle
-                .suspend(platform, &mut checkpoint, timeout, now_ms, fault)
+            let wall_clock_ms = platform.wall_clock_ms();
+            state.lifecycle.suspend(
+                platform,
+                &mut checkpoint,
+                SuspendRequest {
+                    timeout,
+                    clock: LifecycleClock {
+                        monotonic_ms: now_ms,
+                        boot_time_ms: wall_clock_ms,
+                    },
+                    duration_minutes: args
+                        .duration_minutes
+                        .unwrap_or(DEFAULT_SLEEP_DURATION_MINUTES),
+                    fault,
+                },
+            )
         }
-        "resume" => {
-            let now_ms = platform.logical_time_ms();
-            state.lifecycle.resume(platform, timeout, now_ms, fault)
-        }
-        _ => return Err("lifecycle operation must be suspend or resume".into()),
+        "resume" => state.lifecycle.resume(
+            platform,
+            ResumeRequest {
+                timeout,
+                clock: LifecycleClock {
+                    monotonic_ms: platform.logical_time_ms(),
+                    boot_time_ms: platform.wall_clock_ms(),
+                },
+                source: args.wake_source,
+                fault,
+            },
+        ),
+        "shutdown" => state.lifecycle.retry_shutdown(platform, fault),
+        _ => return Err("lifecycle operation must be suspend, resume, or shutdown".into()),
     };
     sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
     let phase = state.lifecycle.phase();
+    if matches!(
+        phase,
+        LifecyclePhase::ResumedForDeadline | LifecyclePhase::OrderlyShutdown
+    ) {
+        state.active_session = None;
+        state.last_session = None;
+        state.route = Route::Library;
+        write_session(&evidence.root, SessionState::Aborted).map_err(|error| error.to_string())?;
+    }
     let details = json_map([
         ("operation", json!(args.operation)),
         ("phase", json!(phase)),
@@ -1719,6 +1826,10 @@ fn apply_hardware<P: Platform>(
         }
         if let Some(value) = battery.charging {
             changes.charging = Some(value);
+            changed = true;
+        }
+        if let Some(value) = battery.external_power {
+            changes.external_power = Some(value);
             changed = true;
         }
     }
@@ -2093,48 +2204,143 @@ fn state_json<P: Platform>(
         "platformState": platform.platform_state().map_err(|error| error.to_string())?,
         "faults": state.faults,
         "lifecycle": state.lifecycle.evidence(),
+        "clock": {"monotonicMs": platform.logical_time_ms(), "wallClockMs": platform.wall_clock_ms()},
         "saveVault": save_vault_json(state),
         "presentation": presentation,
     }))
 }
 
 fn load_lifecycle(root: &Path) -> LifecycleController {
-    let path = root.join("lifecycle-marker.json");
-    match fs::read(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => LifecycleController::new(),
-        Ok(bytes) => match serde_json::from_slice::<LifecycleMarker>(&bytes) {
-            Ok(marker) => LifecycleController::from_pending_marker(marker),
-            Err(_) => LifecycleController::from_pending_marker(LifecycleMarker {
-                phase: LifecyclePhase::Recovery,
-                reason: "invalid-lifecycle-marker".into(),
-                checkpoint_generation: None,
-                deadline_ms: 0,
-            }),
-        },
-        Err(_) => LifecycleController::from_pending_marker(LifecycleMarker {
-            phase: LifecyclePhase::Recovery,
-            reason: "unreadable-lifecycle-marker".into(),
-            checkpoint_generation: None,
-            deadline_ms: 0,
-        }),
+    let data = root.join("data");
+    let marker_path = data.join("lifecycle-marker.json");
+    let journal_path = data.join("lifecycle-journal.json");
+    let marker_bytes = match fs::read(&marker_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let orphaned = [
+                data.join("lifecycle-marker.checksum"),
+                journal_path,
+                data.join("lifecycle-journal.checksum"),
+            ]
+            .iter()
+            .any(|path| path.exists());
+            return if orphaned {
+                LifecycleController::from_pending_marker(recovery_marker(
+                    "orphaned-lifecycle-journal",
+                ))
+            } else {
+                LifecycleController::new()
+            };
+        }
+        Err(_) => {
+            return LifecycleController::from_pending_marker(recovery_marker(
+                "unreadable-lifecycle-marker",
+            ));
+        }
+    };
+    let marker: LifecycleMarker = match serde_json::from_slice(&marker_bytes) {
+        Ok(marker) => marker,
+        Err(_) => {
+            return LifecycleController::from_pending_marker(recovery_marker(
+                "invalid-lifecycle-marker",
+            ));
+        }
+    };
+    let marker_checksum = match fs::read_to_string(data.join("lifecycle-marker.checksum")) {
+        Ok(checksum) => checksum,
+        Err(_) => {
+            return LifecycleController::from_pending_marker(recovery_marker(
+                "missing-lifecycle-checksum",
+            ));
+        }
+    };
+    if marker_checksum.trim() != sim_platform_contract::lifecycle::marker_checksum(&marker) {
+        return LifecycleController::from_pending_marker(recovery_marker(
+            "invalid-lifecycle-checksum",
+        ));
+    }
+    let journal: Vec<sim_platform_contract::lifecycle::LifecycleJournalEntry> =
+        match fs::read(&journal_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        {
+            Some(journal) => journal,
+            None => {
+                return LifecycleController::from_pending_marker(recovery_marker(
+                    "invalid-lifecycle-journal",
+                ));
+            }
+        };
+    let journal_checksum = match fs::read_to_string(data.join("lifecycle-journal.checksum")) {
+        Ok(checksum) => checksum,
+        Err(_) => {
+            return LifecycleController::from_pending_marker(recovery_marker(
+                "missing-lifecycle-journal-checksum",
+            ));
+        }
+    };
+    if journal_checksum.trim() != sim_platform_contract::lifecycle::journal_checksum(&journal) {
+        return LifecycleController::from_pending_marker(recovery_marker(
+            "invalid-lifecycle-journal-checksum",
+        ));
+    }
+    LifecycleController::from_pending_marker(marker)
+}
+
+fn recovery_marker(reason: &str) -> LifecycleMarker {
+    LifecycleMarker {
+        phase: LifecyclePhase::Recovery,
+        reason: reason.into(),
+        checkpoint_generation: None,
+        deadline_ms: 0,
+        armed_deadline: None,
+        wake_source: None,
     }
 }
 
 fn sync_lifecycle_marker(root: &Path, lifecycle: &LifecycleController) -> Result<(), String> {
-    let path = root.join("lifecycle-marker.json");
-    match lifecycle.evidence().marker {
-        Some(marker) => write_json(path, &marker).map_err(|error| error.to_string()),
-        None => match fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.to_string()),
-        },
+    let data = root.join("data");
+    fs::create_dir_all(&data).map_err(|error| error.to_string())?;
+    let marker_path = data.join("lifecycle-marker.json");
+    let marker_checksum_path = data.join("lifecycle-marker.checksum");
+    let journal_path = data.join("lifecycle-journal.json");
+    let journal_checksum_path = data.join("lifecycle-journal.checksum");
+    let evidence = lifecycle.evidence();
+    match evidence.marker {
+        Some(marker) => {
+            let marker_checksum = sim_platform_contract::lifecycle::marker_checksum(&marker);
+            write_json(marker_path, &marker).map_err(|error| error.to_string())?;
+            write_bytes(marker_checksum_path, marker_checksum.as_bytes())
+                .map_err(|error| error.to_string())?;
+            let journal_checksum =
+                sim_platform_contract::lifecycle::journal_checksum(&evidence.journal);
+            write_json(journal_path, &evidence.journal).map_err(|error| error.to_string())?;
+            write_bytes(journal_checksum_path, journal_checksum.as_bytes())
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        None => {
+            for path in [
+                marker_path,
+                marker_checksum_path,
+                journal_path,
+                journal_checksum_path,
+            ] {
+                match fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            Ok(())
+        }
     }
 }
 
 fn hardware_json(hardware: &sim_platform_contract::HardwareState) -> Value {
     json!({
         "battery": {"percent": hardware.battery_percent, "charging": hardware.charging},
+        "externalPower": hardware.external_power,
         "storage": {"mode": hardware.storage_mode},
         "radio": {"enabled": hardware.radio_enabled, "connected": hardware.radio_connected},
         "suspend": {"state": hardware.suspend_state, "result": hardware.suspend_result},

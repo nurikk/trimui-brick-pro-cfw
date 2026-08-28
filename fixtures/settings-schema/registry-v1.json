@@ -10,7 +10,8 @@
     {"id": "theme", "labelKey": "settings.theme.label", "descriptionKey": "settings.theme.description", "order": 50},
     {"id": "system", "labelKey": "settings.system.label", "descriptionKey": "settings.system.description", "order": 60},
     {"id": "network", "labelKey": "settings.network.label", "descriptionKey": "settings.network.description", "order": 70},
-    {"id": "wifi", "labelKey": "settings.wifi.label", "descriptionKey": "settings.wifi.description", "order": 80}
+    {"id": "wifi", "labelKey": "settings.wifi.label", "descriptionKey": "settings.wifi.description", "order": 80},
+    {"id": "power", "labelKey": "settings.power.label", "descriptionKey": "settings.power.description", "order": 90}
   ],
   "settings": [
     {
@@ -124,6 +125,22 @@
       "labelKey": "settings.network.state.label", "descriptionKey": "settings.network.state.description", "kind": "status",
       "default": null, "current": {"kind": "text", "value": "offline"}, "pending": null, "constraints": null, "units": null, "display": {"unit": null, "format": "status", "redact": false}, "scope": "system", "apply": ["immediate"],
       "requiresCapabilities": ["network"], "unsupportedReason": "Network support is not available in this fixture", "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.power.maximum-sleep-duration-minutes", "namespace": "core", "section": "power", "group": "sleep", "order": 10,
+      "labelKey": "settings.power.maximumSleepDuration.label", "descriptionKey": "settings.power.maximumSleepDuration.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "5"}, "current": {"kind": "enum-single", "value": "5"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "1", "labelKey": "settings.power.maximumSleepDuration.1"},
+        {"value": "5", "labelKey": "settings.power.maximumSleepDuration.5"},
+        {"value": "10", "labelKey": "settings.power.maximumSleepDuration.10"},
+        {"value": "15", "labelKey": "settings.power.maximumSleepDuration.15"},
+        {"value": "30", "labelKey": "settings.power.maximumSleepDuration.30"},
+        {"value": "60", "labelKey": "settings.power.maximumSleepDuration.60"}
+      ]},
+      "units": "minutes", "display": {"unit": "minutes", "format": "select", "redact": false}, "scope": "system", "apply": ["on-confirm"],
+      "requiresCapabilities": ["cap.power.bounded-sleep"], "unsupportedReason": "Bounded sleep is unavailable until the platform capability is validated", "visibility": null, "enabledIf": null, "redacted": false,
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {

@@ -2,8 +2,9 @@
 
 The host-native TG4040 simulator exposes one semantic control socket per run at
 `$RUN/control.sock`. The socket is a versioned newline-delimited JSON protocol
-(`sim-control/v1`), specified by `sim/contracts/control.schema.json`. Frames are
-limited to 8192 bytes; each request read has a 500 ms total deadline and client responses have bounded waits.
+(`sim-control/v1`), specified by `sim/contracts/control.schema.json`. Request
+frames are limited to 8192 bytes; responses are limited to 65536 bytes. Each
+request read has a 500 ms total deadline and client responses have bounded waits.
 Requests are typed JSON only: there is no shell, exec, subprocess, environment,
 mount, source-path, catalog-path, or content-path operation.
 
@@ -25,20 +26,30 @@ scripts/simctl --socket "$RUN/control.sock" hardware set battery.percent=5 stora
 scripts/simctl --socket "$RUN/control.sock" presentation --action settings-form
 scripts/simctl --socket "$RUN/control.sock" presentation --action wifi-password
 scripts/simctl --socket "$RUN/control.sock" presentation --action scraper-ambiguity
-scripts/simctl --socket "$RUN/control.sock" fault set adapter-fail
-scripts/simctl --socket "$RUN/control.sock" fault clear adapter-fail
+scripts/simctl --socket "$RUN/control.sock" lifecycle suspend --timeout 5
+scripts/simctl --socket "$RUN/control.sock" clock advance --milliseconds 299000
+scripts/simctl --socket "$RUN/control.sock" lifecycle resume --timeout 5 --source user
+scripts/simctl --socket "$RUN/control.sock" fault set arm-fail
+scripts/simctl --socket "$RUN/control.sock" fault clear arm-fail
 scripts/simctl --socket "$RUN/control.sock" screenshot --name low-battery
 scripts/simctl --socket "$RUN/control.sock" checkpoint --name after-launch
 ```
 
 `button` accepts `up`, `down`, `left`, `right`, `primary`, `secondary`,
 `start`, `select`, and `menu`, with `press` or `release`. Hardware assignments
-are limited to typed battery percent/charging, storage `available|full`, radio
-enabled/connected, and suspend `active|suspended` plus result
-`none|success|failed`. Faults are the fixed allowlist `adapter-fail`,
-`adapter-crash`, `input-drop`, and `suspend-fail`. Adapter actions are
-`complete`, `fail`, `exit`, or `crash`, with integer status `0..255` and signed
-integer value. Artifact names are safe basenames only.
+are limited to typed battery percent/charging/external-power, storage
+`available|full`, radio enabled/connected, and suspend `active|suspended` plus
+result `none|success|failed`. `clock advance` changes semantic monotonic and
+boot time; `clock jump` changes only semantic boot/RTC time while retaining
+monotonic time. Lifecycle compares the persisted boot-time deadline, not the
+wake-source label; a forward clock jump at or beyond it terminates orderly.
+Lifecycle sleep options are exactly `1`, `5`, `10`, `15`, `30`, and `60` minutes,
+defaulting to `5`. Faults are the fixed allowlist `adapter-fail`,
+`adapter-crash`, `input-drop`, `suspend-fail`, `checkpoint-fail`, `arm-fail`,
+`verify-fail`, `clear-fail`, `crash-before-suspend`, `crash-armed-journal`,
+`shutdown-fail`, and `hal-loss`.
+Adapter actions are `complete`, `fail`, `exit`, or `crash`, with integer status
+`0..255` and signed integer value. Artifact names are safe basenames only.
 
 Successful CLI calls print exactly one JSON response on stdout. The response
 has `version`, `id`, `ok`, `result`, and `error`; rejected requests have
@@ -53,7 +64,9 @@ an `exec` or path-bearing request fails.
 `state` returns `sim-state/v1` semantic state: current `library`, `systems`,
 or `games` route, selected synthetic demo ID, active broker session and result,
 modal/status, readiness generation, session frame step, typed virtual hardware,
-enabled named faults, and a `launcher-presentation/v1` Artbook screen. The screen
+semantic monotonic/wall clock, enabled named faults, and lifecycle evidence
+including the armed deadline, wake source/reason, and typed orderly-shutdown
+request. It also includes a `launcher-presentation/v1` Artbook screen. The screen
 is built from generated `ui-model`, Artbook theme, `settings-ui`, and Wi-Fi
 controller projections, including bounded ROM-index status and persisted recent
 entries. `presentation --action` accepts only the generated route/workflow

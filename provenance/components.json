@@ -4855,6 +4855,132 @@
       ],
       "status": "approved",
       "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/bin/brickpro-launcher-aarch64-journey",
+      "id": "artifact-baseline-usr-bin-brickpro-launcher-aarch64-journey",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/bin/package-manager",
+      "id": "artifact-baseline-usr-bin-package-manager",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/bin/session-broker",
+      "id": "artifact-baseline-usr-bin-session-broker",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/bin/session-broker-helper",
+      "id": "artifact-baseline-usr-bin-session-broker-helper",
+      "linkTarget": null,
+      "mode": "0755",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/share/trimui/bootstrap-supported.tar",
+      "id": "artifact-baseline-usr-share-trimui-bootstrap-supported-tar",
+      "linkTarget": null,
+      "mode": "0644",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/share/trimui/packages.tar",
+      "id": "artifact-baseline-usr-share-trimui-packages-tar",
+      "linkTarget": null,
+      "mode": "0644",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
+    },
+    {
+      "buildSourceRelationship": "exact project-authored baseline payload bytes built from the local clean-room checkout",
+      "candidateId": "project-authored-baseline-payload",
+      "destinationPath": "usr/share/trimui/session-broker-generated-v1.tar",
+      "id": "artifact-baseline-usr-share-trimui-session-broker-generated-v1-tar",
+      "linkTarget": null,
+      "mode": "0644",
+      "obligations": [
+        {
+          "detail": "Retain the applicable license and attribution notice before redistribution.",
+          "kind": "license-notice",
+          "paths": ["THIRD_PARTY_NOTICES.md"],
+          "required": true
+        }
+      ],
+      "status": "approved",
+      "type": "regular"
     }
   ],
   "lockfile": {

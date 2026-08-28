@@ -39,6 +39,18 @@ fn main() {
 
 fn run() -> Result<()> {
     let mut args = env::args().skip(1);
+    if args.next().as_deref() == Some("--simulation-fixture-root") {
+        let root = args
+            .next()
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .ok_or_else(|| anyhow!("expected simulation fixture root"))?;
+        if args.next().is_some() {
+            bail!("unexpected simulation arguments")
+        }
+        return simulation_handoff(&root);
+    }
+    let mut args = env::args().skip(1);
     if args.next().as_deref() == Some("--child") {
         if args.next().is_none() || args.next().is_some() {
             bail!("child mode requires one service name")
@@ -71,13 +83,34 @@ fn child_mode() -> Result<()> {
     Ok(())
 }
 
+fn simulation_handoff(root: &Path) -> Result<()> {
+    if !root.is_absolute() || root == Path::new("/") || root.to_string_lossy().contains("/dev/") {
+        bail!("simulation root must be an absolute fixture root")
+    }
+    let state = root.join(".brickpro/data/update");
+    fs::create_dir_all(&state)?;
+    fs::write(
+        state.join("supervisor-handoff.json"),
+        br#"{"schema":"brickpro-supervisor-handoff/v1","mode":"synthetic","handoff":"accepted","activating":false}"#,
+    )?;
+    println!("simulation handoff accepted");
+    Ok(())
+}
+
 fn spawn_service(
     name: &'static str,
     services: &mut Vec<Service>,
     trace: &mut Vec<String>,
 ) -> Result<()> {
     let executable = env::current_exe()?;
-    let child = Command::new(executable)
+    let mut command = if let Some(qemu) = env::var_os("BRICKPRO_QEMU_USER") {
+        let mut command = Command::new(qemu);
+        command.arg(&executable);
+        command
+    } else {
+        Command::new(&executable)
+    };
+    let child = command
         .args(["--child", name])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

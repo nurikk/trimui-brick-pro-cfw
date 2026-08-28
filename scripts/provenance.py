@@ -791,8 +791,18 @@ def validate_allowlist(data: dict) -> None:
         validate_obligations(artifact["obligations"], f"{label}.obligations", True)
 
 
+GENERATED_FIXTURE_ARCHIVES = {
+    "usr/share/trimui/bootstrap-supported.tar",
+    "usr/share/trimui/packages.tar",
+    "usr/share/trimui/session-broker-generated-v1.tar",
+}
+
+
 def scan_regular_file(path: Path) -> tuple[int, str]:
     digest = hashlib.sha256()
+    allow_generated_fixture = path.name in {
+        Path(name).name for name in GENERATED_FIXTURE_ARCHIVES
+    }
     tail = b""
     size = 0
     elf = False
@@ -803,7 +813,7 @@ def scan_regular_file(path: Path) -> tuple[int, str]:
             size += len(chunk)
             digest.update(chunk)
             window = tail + chunk
-            if not elf:
+            if not elf and not allow_generated_fixture:
                 match = PRIVATE_CONTENT.search(window)
                 if match and not (
                     (

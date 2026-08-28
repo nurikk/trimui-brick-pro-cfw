@@ -37,5 +37,9 @@ name = "launcher-presentation-journey"
 path = "src/bin/launcher-presentation-journey.rs"
 
 [[bin]]
+name = "aarch64-semantic-journey"
+path = "src/bin/aarch64-semantic-journey.rs"
+
+[[bin]]
 name = "compatibility-recipe-launcher-fixtures"
 path = "src/bin/compatibility-recipe-launcher-fixtures.rs"

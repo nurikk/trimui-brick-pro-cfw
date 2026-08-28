@@ -1,0 +1,421 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+IMAGE=trimui-brick-pro-cfw-qemu:local
+BASE_IMAGE=debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
+LOCK=$ROOT/containers/qemu/versions.lock
+EPOCH=${SOURCE_DATE_EPOCH-}
+WORK=
+REPORT=
+
+fail() {
+    printf '%s\n' "qemu-aarch64: $*" >&2
+    exit 2
+}
+
+cleanup() {
+    if [ -n "${WORK:-}" ]; then
+        chmod -R a+rwX "$WORK" 2>/dev/null || :
+        rm -rf -- "$WORK"
+    fi
+}
+trap cleanup EXIT HUP INT TERM
+
+lock_sha256() {
+    sha256sum "$LOCK" | awk '{print $1}'
+}
+
+qemu_run() {
+    docker run --rm --network none --read-only --cap-drop=ALL \
+        --security-opt=no-new-privileges --user "$(id -u):$(id -g)" \
+        --mount "type=bind,src=$SYSTEM,dst=/system,readonly" \
+        --mount "type=bind,src=$DATA,dst=/data" \
+        --tmpfs /tmp:rw,exec,nosuid,nodev --workdir /data \
+        --entrypoint /usr/bin/qemu-aarch64-static "$IMAGE" "$@"
+}
+
+qemu_nested_run() {
+    docker run --rm --network none --read-only --cap-drop=ALL \
+        --security-opt=no-new-privileges --user "$(id -u):$(id -g)" \
+        --env BRICKPRO_QEMU_USER=/usr/bin/qemu-aarch64-static \
+        --env BRICKPRO_SIMULATION_PROBE="${BRICKPRO_SIMULATION_PROBE-}" \
+        --env BRICKPRO_SIMULATION_RECOVERY="${BRICKPRO_SIMULATION_RECOVERY-}" \
+        --env BRICKPRO_SIMULATION_SUPERVISOR="${BRICKPRO_SIMULATION_SUPERVISOR-}" \
+        --mount "type=bind,src=$SYSTEM,dst=/system,readonly" \
+        --mount "type=bind,src=$DATA,dst=/data" \
+        --tmpfs /tmp:rw,exec,nosuid,nodev --workdir /data \
+        --entrypoint /usr/bin/qemu-aarch64-static "$IMAGE" "$@"
+}
+
+busybox_run() {
+    qemu_run /usr/bin/busybox ash "$@"
+}
+
+busybox_nested_run() {
+    qemu_nested_run /usr/bin/busybox ash "$@"
+}
+
+if [ "$#" -eq 1 ] && [ "$1" = image ]; then
+    command -v docker >/dev/null 2>&1 || fail "docker is required"
+    command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+    QEMU_LOCK_SHA256=$(lock_sha256)
+    docker build --platform linux/amd64 \
+        --build-arg "QEMU_LOCK_SHA256=$QEMU_LOCK_SHA256" \
+        -f "$ROOT/containers/qemu/Dockerfile" -t "$IMAGE" "$ROOT"
+    printf '%s\n' "qemu image ready: $IMAGE"
+    exit 0
+fi
+
+[ "$#" -eq 3 ] || fail "usage: ./scripts/qemu-aarch64 image | run --report ABSOLUTE_EXTERNAL_JSON"
+[ "$1" = run ] || fail "unknown command: $1"
+[ "$2" = --report ] || fail "unknown argument: $2"
+REPORT=$3
+[ -n "$REPORT" ] || fail "--report requires a path"
+case "$REPORT" in
+    /*) ;;
+    *) fail "--report must be an absolute path" ;;
+esac
+[ "$REPORT" != / ] || fail "--report cannot be /"
+REPORT_DIR=$(dirname -- "$REPORT")
+[ -d "$REPORT_DIR" ] || fail "report parent must exist"
+case "$REPORT" in
+    "$ROOT"|"$ROOT"/*) fail "report must be outside the repository" ;;
+esac
+[ -e "$REPORT" ] && [ ! -L "$REPORT" ] && fail "report already exists"
+case "$EPOCH" in
+    ''|*[!0-9]*) fail "SOURCE_DATE_EPOCH must be a positive integer" ;;
+esac
+[ "$EPOCH" -gt 0 ] || fail "SOURCE_DATE_EPOCH must be a positive integer"
+
+for command in docker python3 dash file readelf sha256sum jq tar; do
+    command -v "$command" >/dev/null 2>&1 || fail "$command is required"
+done
+LOCK_SHA256=$(lock_sha256)
+IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro.qemu.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro.qemu.lock-sha256" }}' 2>/dev/null) \
+    || fail "qemu image is missing; run ./scripts/qemu-aarch64 image"
+[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$LOCK_SHA256" ] \
+    || fail "qemu image is stale or missing its exact lock label; run ./scripts/qemu-aarch64 image"
+
+TMP_BASE=${TMPDIR:-/tmp}
+case "$TMP_BASE" in
+    "$ROOT"|"$ROOT"/*) fail "TMPDIR must be outside the repository" ;;
+esac
+WORK=$(mktemp -d "$TMP_BASE/trimui-tg4040-qemu.XXXXXX")
+RELEASE=$WORK/release
+SYSTEM=$WORK/system
+DATA=$WORK/data
+RESULTS=$WORK/results
+mkdir -m 0700 "$RELEASE" "$SYSTEM" "$DATA" "$RESULTS"
+
+SOURCE_DATE_EPOCH=$EPOCH "$ROOT/scripts/build" release --out "$RELEASE" >"$RESULTS/release.log"
+(cd "$RELEASE" && sha256sum -c SHA256SUMS >"$RESULTS/checksums.txt")
+
+ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" python3 - <<'PY'
+import hashlib
+import json
+import os
+import stat
+import subprocess
+import tarfile
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+release = Path(os.environ["RELEASE"])
+system = Path(os.environ["SYSTEM"])
+manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+if manifest["targetSku"] != "TG4040" or manifest["platform"]["architecture"] != "aarch64":
+    raise SystemExit("release is not TG4040 aarch64")
+if any("TG3040" in path for path in [str(path) for path in release.iterdir()]):
+    raise SystemExit("TG3040 release artifact")
+if b"TG3040" in (release / "manifest.json").read_bytes():
+    raise SystemExit("TG3040 manifest label")
+
+payload = {item["path"]: item for item in manifest["payload"]}
+with tarfile.open(release / "trimui-brick-pro-cfw-baseline.tar") as archive:
+    members = archive.getmembers()
+    regular = {}
+    for member in members:
+        name = member.name
+        if not name or name.startswith("/") or ".." in Path(name).parts or "TG3040" in name:
+            raise SystemExit(f"unsafe or forbidden archive path: {name}")
+        if not (member.isdir() or member.isreg()):
+            raise SystemExit(f"unsupported archive member: {name}")
+        if member.isfile():
+            regular[name] = member
+    if set(regular) != set(payload):
+        raise SystemExit("archive and manifest payload closure differ")
+    archive.extractall(system)
+
+for name in (
+    "usr/share/trimui/bootstrap-supported.tar",
+    "usr/share/trimui/packages.tar",
+    "usr/share/trimui/session-broker-generated-v1.tar",
+):
+    path = system / name
+    if not path.is_file():
+        raise SystemExit(f"missing packaged generated input: {name}")
+    with tarfile.open(path) as archive:
+        for member in archive.getmembers():
+            if not member.name or member.name.startswith("/") or ".." in Path(member.name).parts or "TG3040" in member.name:
+                raise SystemExit(f"unsafe generated input path: {member.name}")
+            if not (member.isdir() or member.isreg()):
+                raise SystemExit(f"unsupported generated input member: {member.name}")
+        destination = system / name.removesuffix(".tar")
+        destination.mkdir(parents=True)
+        archive.extractall(destination)
+
+elfs = []
+for path, item in sorted(payload.items()):
+    if not path.startswith("usr/bin/") or item["type"] != "regular":
+        continue
+    binary = system / path
+    file_output = subprocess.run(["file", str(binary)], capture_output=True, text=True, check=True).stdout.strip()
+    header = subprocess.run(["readelf", "-h", str(binary)], capture_output=True, text=True, check=True).stdout
+    program = subprocess.run(["readelf", "-l", str(binary)], capture_output=True, text=True, check=True).stdout
+    dynamic = subprocess.run(["readelf", "-d", str(binary)], capture_output=True, text=True).stdout
+    if "ELF" not in file_output or "aarch64" not in file_output.lower():
+        raise SystemExit(f"non-AArch64 target ELF: {path}")
+    if "Class:" not in header or "ELF64" not in header or "Machine:" not in header or "AArch64" not in header:
+        raise SystemExit(f"invalid target ELF header: {path}")
+    interpreter = "INTERP" in program
+    needed = [line.strip() for line in dynamic.splitlines() if "(NEEDED)" in line]
+    rpaths = [line.strip() for line in dynamic.splitlines() if "(RPATH)" in line or "(RUNPATH)" in line]
+    if interpreter or needed or rpaths:
+        raise SystemExit(f"dynamic or host-searching target ELF: {path}")
+    mode = stat.S_IMODE(binary.stat().st_mode)
+    if not mode & 0o111:
+        raise SystemExit(f"target ELF is not executable: {path}")
+    elfs.append({
+        "path": path,
+        "class": "ELF64",
+        "machine": "AArch64",
+        "static": True,
+        "interpreter": None,
+        "needed": [],
+        "rpath": None,
+        "runpath": None,
+        "hostLibraryFallback": False,
+    })
+if not elfs:
+    raise SystemExit("release contains no target ELF")
+(Path(os.environ["RELEASE"]) / "elf.json").write_text(json.dumps(elfs, sort_keys=True) + "\n", encoding="utf-8")
+(Path(os.environ["RELEASE"]) / "elf-names").write_text("".join(item["path"] + "\n" for item in elfs), encoding="utf-8")
+PY
+
+# The extracted system is immutable; generated shell inputs and all runtime state are writable data.
+for script in "$SYSTEM/bootstrap/boot.sh" "$SYSTEM/bootstrap/recovery.sh"; do
+    dash -n "$script"
+done
+chmod -R a-w "$SYSTEM"
+chmod -R a+rX "$SYSTEM"
+chmod 0555 "$SYSTEM"
+mkdir -p "$DATA/bootstrap-supported" "$DATA/recovery-supported"
+tar -xf "$SYSTEM/usr/share/trimui/bootstrap-supported.tar" -C "$DATA/bootstrap-supported"
+tar -xf "$SYSTEM/usr/share/trimui/bootstrap-supported.tar" -C "$DATA/recovery-supported"
+chmod -R a+rwX "$DATA"
+printf '%s\n' 'generated-data-boundary' >"$DATA/boundary.sentinel"
+chmod 0755 "$DATA/boundary.sentinel"
+cat >"$DATA/qemu-probe" <<'EOF'
+#!/bin/sh
+exec /usr/bin/qemu-aarch64-static /system/usr/bin/brickpro-bootstrap-probe "$@"
+EOF
+cat >"$DATA/qemu-recovery" <<'EOF'
+#!/bin/sh
+exec /usr/bin/qemu-aarch64-static /system/usr/bin/brickpro-recovery "$@"
+EOF
+cat >"$DATA/qemu-supervisor" <<'EOF'
+#!/bin/sh
+exec /usr/bin/qemu-aarch64-static /system/usr/bin/brickpro-userspace-supervisor "$@"
+EOF
+chmod 0755 "$DATA/qemu-probe" "$DATA/qemu-recovery" "$DATA/qemu-supervisor"
+
+for script in boot.sh recovery.sh; do
+    busybox_run -n "/system/bootstrap/$script"
+done
+
+: >"$RESULTS/elf-results"
+for path in $(cat "$RELEASE/elf-names"); do
+    name=$(basename "$path")
+    if qemu_run "/system/$path" >"$RESULTS/elf-$name.txt" 2>&1; then
+        code=0
+    else
+        code=$?
+    fi
+    case "$code" in 126|127) fail "QEMU could not start target ELF: $path" ;; esac
+    if grep -Eiq 'invalid elf|no such file|error while loading|could not open' "$RESULTS/elf-$name.txt"; then
+        fail "QEMU reported a target ELF startup failure: $path"
+    fi
+    printf '%s|%s\n' "$path" "$code" >>"$RESULTS/elf-results"
+done
+
+qemu_run /system/usr/bin/brickpro-launcher-aarch64-journey >"$RESULTS/launcher.json"
+qemu_nested_run /system/usr/bin/session-broker simulate \
+    --fixture-root /system/usr/share/trimui/session-broker-generated-v1 \
+    --journeys success,standalone,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero,nonzero,command-shaped \
+    >"$RESULTS/session-broker.jsonl"
+qemu_run /system/usr/bin/package-manager demo /system/usr/share/trimui/packages >"$RESULTS/package-manager.txt"
+
+BRICKPRO_SIMULATION_PROBE=/data/qemu-probe \
+BRICKPRO_SIMULATION_RECOVERY=/data/qemu-recovery \
+BRICKPRO_SIMULATION_SUPERVISOR=/data/qemu-supervisor \
+busybox_nested_run /system/bootstrap/boot.sh --simulation-fixture-root /data/bootstrap-supported >"$RESULTS/boot.json"
+BRICKPRO_SIMULATION_PROBE=/data/qemu-probe \
+BRICKPRO_SIMULATION_RECOVERY=/data/qemu-recovery \
+BRICKPRO_SIMULATION_SUPERVISOR=/data/qemu-supervisor \
+busybox_nested_run /system/bootstrap/recovery.sh --simulation-fixture-root /data/recovery-supported --select safe-mode >"$RESULTS/recovery.json"
+
+ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" DATA="$DATA" RESULTS="$RESULTS" REPORT="$REPORT" LOCK="$LOCK" IMAGE="$IMAGE" BASE_IMAGE="$BASE_IMAGE" LOCK_SHA256="$LOCK_SHA256" python3 - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+release = Path(os.environ["RELEASE"])
+system = Path(os.environ["SYSTEM"])
+data = Path(os.environ["DATA"])
+results = Path(os.environ["RESULTS"])
+report = Path(os.environ["REPORT"])
+
+def load(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+def digest(path):
+    return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size}
+
+launcher = load(results / "launcher.json")
+if launcher.get("result") != "pass" or launcher.get("entryPoint") != "project-authored-launcher-presentation":
+    raise SystemExit("launcher semantic journey failed")
+if launcher.get("routes") != ["home", "systems", "games", "games"] or launcher.get("screenCount") != 4:
+    raise SystemExit("launcher route journey is incomplete")
+
+broker = [json.loads(line) for line in (results / "session-broker.jsonl").read_text().splitlines() if line]
+if len(broker) != 10 or not any(item.get("accepted") and item.get("restored") for item in broker):
+    raise SystemExit("session-broker accepted journey is missing")
+if not any(not item.get("accepted") and item.get("reason") for item in broker):
+    raise SystemExit("session-broker rejection journey is missing")
+for item in broker:
+    item.pop("durationMs", None)
+
+package_lines = (results / "package-manager.txt").read_text().splitlines()
+package_checks = [
+    "PASS signed delegated package target progression",
+    "PASS blocked core-pack rejected before installation",
+    "PASS install promoted immutable activation demo-theme 1.0.0",
+    "PASS uninstall preserves ROM/save/state bytes",
+    "PASS interrupted install leaves no activation",
+    "PASS interrupted uninstall preserves protected data",
+]
+if any(check not in package_lines for check in package_checks):
+    raise SystemExit("package-manager semantic boundary is incomplete")
+
+boot_text = (results / "boot.json").read_text()
+recovery = load(results / "recovery.json")
+if "simulation handoff accepted" not in boot_text or recovery.get("selected") != "safe-mode":
+    raise SystemExit("bootstrap/recovery semantic journey failed")
+if (data / "boundary.sentinel").read_text() != "generated-data-boundary\n":
+    raise SystemExit("writable data boundary was not preserved")
+if any(path.stat().st_mode & 0o222 for path in system.rglob("*")):
+    raise SystemExit("system layout is writable")
+
+elfs = load(release / "elf.json")
+report_data = {
+    "schema": "trimui-tg4040-qemu-aarch64-evidence/v1",
+    "result": "pass",
+    "targetSku": "TG4040",
+    "lane": "QEMU-user aarch64 compatibility",
+    "release": {
+        "archive": digest(release / "trimui-brick-pro-cfw-baseline.tar"),
+        "manifest": digest(release / "manifest.json"),
+        "checksums": digest(release / "SHA256SUMS"),
+        "buildInfo": digest(release / "build-info.json"),
+        "manifestPayloadCount": len(load(release / "manifest.json")["payload"]),
+        "archiveManifestClosure": True,
+        "tg3040Rejected": True,
+        "unlistedPayloadRejected": True,
+    },
+    "filesystem": {
+        "freshSystemLayout": True,
+        "systemReadOnly": True,
+        "separateWritableDataLayout": True,
+        "dataBoundarySentinelPreserved": True,
+        "packagedGeneratedInputs": [
+            "bootstrap-supported.tar",
+            "packages.tar",
+            "session-broker-generated-v1.tar",
+        ],
+    },
+    "elf": elfs,
+    "shell": {
+        "hostDashSyntax": True,
+        "targetBusyboxAshSyntax": True,
+        "bootSelfCheck": "simulation handoff accepted",
+        "recoverySelfCheck": "safe-mode",
+        "nonHardwareOnly": True,
+    },
+    "journeys": {
+        "launcher": launcher,
+        "sessionBroker": {"journeys": broker, "allPackaged": True},
+        "packageManager": {"checks": package_checks, "allPassed": True},
+    },
+    "container": {
+        "image": os.environ["IMAGE"],
+        "baseImage": os.environ["BASE_IMAGE"],
+        "lockFile": "containers/qemu/versions.lock",
+        "lockSha256": os.environ["LOCK_SHA256"],
+        "toolchain": [],
+    },
+    "cleanup": {
+        "temporaryReleaseExtractionAndContainerRunMaterialRemoved": True,
+        "callerSelectedReportRetained": True,
+        "worktreeMaterialRetained": False,
+    },
+    "evidenceScope": {
+        "proven": "QEMU user mode here proves aarch64 ISA/ABI process startup or static behavior, userspace filesystem/package/shell boundary and project semantic journeys.",
+        "nonFidelity": {
+            "gpuPowerVR": False,
+            "displayFramebuffer": False,
+            "physicalInput": False,
+            "pmic": False,
+            "radioXradio": False,
+            "suspendResume": False,
+            "thermal": False,
+            "timing": False,
+            "performance": False,
+        },
+        "qemuSystem": {"inScope": False, "reason": "No concrete init or mount requirement is covered by this userspace lane."},
+    },
+}
+execution = {}
+for line in (results / "elf-results").read_text().splitlines():
+    path, code = line.split("|", 1)
+    execution[path] = int(code)
+for item in elfs:
+    item["qemuUserExecution"] = True
+    item["started"] = True
+    item["qemuExitCode"] = execution[item["path"]]
+
+# The image's version file is copied into the report by the shell wrapper below.
+(report.with_name(report.name + ".tmp")).write_text(json.dumps(report_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+
+# Capture pinned container tool versions without adding them to the system layout.
+docker run --rm --network none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+    --entrypoint /bin/sh "$IMAGE" -eu -c 'cat /usr/share/trimui-qemu-version.txt' >"$WORK/toolchain.txt"
+REPORT_TMP=$REPORT.tmp
+python3 - "$REPORT_TMP" "$REPORT" "$WORK/toolchain.txt" <<'PY'
+import json
+import sys
+source, destination, toolchain = sys.argv[1:]
+data = json.load(open(source, encoding="utf-8"))
+data["container"]["toolchain"] = open(toolchain, encoding="utf-8").read().splitlines()
+with open(destination, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
+rm -f "$REPORT_TMP"
+cleanup
+WORK=
+trap - EXIT HUP INT TERM
+printf '%s\n' "qemu-aarch64 verification passed: $REPORT"

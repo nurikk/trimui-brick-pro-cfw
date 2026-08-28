@@ -533,6 +533,11 @@ impl Platform for HostPlatform {
         Ok(self.state.input.clone())
     }
 
+    fn set_input(&mut self, state: InputState) -> PlatformResult<()> {
+        self.state.input = state;
+        Ok(())
+    }
+
     fn hall_calibration_state(&self) -> PlatformResult<HallCalibrationState> {
         Ok(self.state.hall_calibration)
     }

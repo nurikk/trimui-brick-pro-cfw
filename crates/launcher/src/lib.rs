@@ -37,8 +37,10 @@ use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
 use sim_platform_contract::{
+    lifecycle::{
+        CheckpointHook, LifecycleController, LifecycleFault, LifecycleMarker, LifecyclePhase,
+    },
     Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, StorageMode,
-    SuspendResult, SuspendState,
 };
 use ui_model::{Action as UiAction, PlatformCapabilities as UiCapabilities};
 use wifi_manager::{GeneratedWifiBackend, WifiManager};
@@ -67,6 +69,15 @@ const FAULTS: &[&str] = &[
     "adapter-crash",
     "input-drop",
     "suspend-fail",
+    "checkpoint-fail",
+    "quiesce-audio-fail",
+    "quiesce-input-fail",
+    "quiesce-radios-fail",
+    "resume-radios-fail",
+    "resume-input-fail",
+    "resume-audio-fail",
+    "hal-loss",
+    "deadline",
 ];
 
 struct Evidence {
@@ -120,6 +131,7 @@ struct AppState {
     persisted: launcher_state::State,
     presentation: PresentationState,
     session_step: u32,
+    lifecycle: LifecycleController,
 }
 
 struct PresentationState {
@@ -263,18 +275,10 @@ struct RadioChanges {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SuspendChanges {
-    state: Option<SuspendState>,
-    result: Option<SuspendResult>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct HardwareArgs {
     battery: Option<BatteryChanges>,
     storage: Option<StorageChanges>,
     radio: Option<RadioChanges>,
-    suspend: Option<SuspendChanges>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -326,6 +330,14 @@ struct ResumeArgs {
 #[serde(deny_unknown_fields)]
 struct PresentationArgs {
     action: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifecycleArgs {
+    operation: String,
+    #[serde(rename = "timeoutMs")]
+    timeout_ms: u64,
 }
 
 const MAX_ADAPTER_VALUE: i32 = 1_000_000;
@@ -609,6 +621,7 @@ fn run_session<P: Platform>(
         persisted,
         presentation,
         session_step: 0,
+        lifecycle: load_lifecycle(&evidence.root),
     };
     launcher_state::save(&state_root, &state.persisted)
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -678,7 +691,10 @@ fn run_session<P: Platform>(
             break;
         }
         let mut did_work = false;
-        if state.active_session.is_some() && Instant::now() >= periodic_deadline {
+        if state.lifecycle.is_awake()
+            && state.active_session.is_some()
+            && Instant::now() >= periodic_deadline
+        {
             let _ = state
                 .broker
                 .checkpoint(CheckpointReason::Periodic, CommitFault::None);
@@ -691,16 +707,24 @@ fn run_session<P: Platform>(
                 .next_button_event()
                 .map_err(|error| anyhow!(error))?
             {
-                handle_button(
-                    &mut platform,
-                    evidence,
-                    log,
-                    &catalog,
-                    &launch_catalog,
-                    &mut state,
-                    event,
-                    &identity.target_sku,
-                )?;
+                if state.lifecycle.is_awake() {
+                    handle_button(
+                        &mut platform,
+                        evidence,
+                        log,
+                        &catalog,
+                        &launch_catalog,
+                        &mut state,
+                        event,
+                        &identity.target_sku,
+                    )?;
+                } else {
+                    log.emit(
+                        "input_blocked",
+                        event.at_ms,
+                        json_map([("phase", json!(state.lifecycle.phase()))]),
+                    )?;
+                }
                 did_work = true;
             } else {
                 fixture_done = true;
@@ -804,22 +828,13 @@ fn handle_request<P: Platform>(
             .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
-            let checkpoint_reason = if args
-                .suspend
-                .as_ref()
-                .is_some_and(|change| change.state == Some(SuspendState::Suspended))
-            {
-                Some(CheckpointReason::PreSuspend)
-            } else if args
+            state.lifecycle.gate("hardware mutation")?;
+            let checkpoint_reason = args
                 .battery
                 .as_ref()
                 .and_then(|change| change.percent)
-                .is_some_and(|percent| percent <= 10)
-            {
-                Some(CheckpointReason::LowBattery)
-            } else {
-                None
-            };
+                .filter(|percent| *percent <= 10)
+                .map(|_| CheckpointReason::LowBattery);
             apply_hardware(platform, log, args)?;
             if let Some(reason) = checkpoint_reason {
                 let _ = state.broker.checkpoint(reason, CommitFault::None);
@@ -827,6 +842,17 @@ fn handle_request<P: Platform>(
             }
             refresh_presentation_affordances(&mut state.presentation, platform)?;
             state_json(platform, evidence, log, catalog, state)
+        }),
+        "lifecycle" => parse::<LifecycleArgs>(request.args).and_then(|args| {
+            lifecycle_control(
+                platform,
+                evidence,
+                log,
+                catalog,
+                launch_catalog,
+                state,
+                args,
+            )
         }),
         "fault.set" => parse::<FaultArgs>(request.args).and_then(|args| {
             set_fault(log, state, args)?;
@@ -1229,6 +1255,7 @@ fn resume_control(
     launch_catalog: &LaunchCatalog,
     args: ResumeArgs,
 ) -> Result<Value, String> {
+    state.lifecycle.gate("launch")?;
     let decision = match args.decision.as_str() {
         "resume" => ResumeDecision::Resume,
         "retained-matching-core" => ResumeDecision::RetainedMatchingCore,
@@ -1363,6 +1390,82 @@ fn wait_ready(args: Value) -> Result<Value, String> {
     Ok(json!({"ready": true, "generation": 1}))
 }
 
+struct BrokerCheckpoint<'a> {
+    broker: &'a mut dyn SessionBrokerClient,
+    fault: CommitFault,
+}
+
+impl CheckpointHook for BrokerCheckpoint<'_> {
+    fn checkpoint(&mut self) -> Result<u64, String> {
+        self.broker
+            .checkpoint(CheckpointReason::PreSuspend, self.fault)
+            .map(|record| record.generation)
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn lifecycle_control<P: Platform>(
+    platform: &mut P,
+    evidence: &Evidence,
+    log: &mut EventLog,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    state: &mut AppState,
+    args: LifecycleArgs,
+) -> Result<Value, String> {
+    if args.timeout_ms == 0 || args.timeout_ms > control::MAX_TIMEOUT_MS {
+        return Err("lifecycle timeoutMs must be between 1 and 30000".into());
+    }
+    let timeout = Duration::from_millis(args.timeout_ms);
+    let fault = state
+        .faults
+        .iter()
+        .find_map(|name| LifecycleFault::from_name(name));
+    let result = match args.operation.as_str() {
+        "suspend" => {
+            let checkpoint_fault = if state.faults.iter().any(|fault| fault == "checkpoint-fail") {
+                CommitFault::Artifact
+            } else {
+                CommitFault::None
+            };
+            let mut checkpoint = BrokerCheckpoint {
+                broker: state.broker.as_mut(),
+                fault: checkpoint_fault,
+            };
+            let now_ms = platform.logical_time_ms();
+            state
+                .lifecycle
+                .suspend(platform, &mut checkpoint, timeout, now_ms, fault)
+        }
+        "resume" => {
+            let now_ms = platform.logical_time_ms();
+            state.lifecycle.resume(platform, timeout, now_ms, fault)
+        }
+        _ => return Err("lifecycle operation must be suspend or resume".into()),
+    };
+    sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
+    let phase = state.lifecycle.phase();
+    let details = json_map([
+        ("operation", json!(args.operation)),
+        ("phase", json!(phase)),
+        (
+            "lifecycle",
+            serde_json::to_value(state.lifecycle.evidence()).map_err(|error| error.to_string())?,
+        ),
+    ]);
+    log.emit("lifecycle", platform.logical_time_ms(), details)
+        .map_err(|error| error.to_string())?;
+    match result {
+        Ok(()) => {
+            if phase == LifecyclePhase::Suspended {
+                refresh_resume_projection(state, catalog, launch_catalog)?;
+            }
+            Ok(json!({"accepted": true, "operation": args.operation, "phase": phase}))
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 fn apply_hardware<P: Platform>(
     platform: &mut P,
     log: &mut EventLog,
@@ -1394,16 +1497,6 @@ fn apply_hardware<P: Platform>(
         }
         if let Some(value) = radio.connected {
             changes.radio_connected = Some(value);
-            changed = true;
-        }
-    }
-    if let Some(suspend) = args.suspend {
-        if let Some(value) = suspend.state {
-            changes.suspend_state = Some(value);
-            changed = true;
-        }
-        if let Some(value) = suspend.result {
-            changes.suspend_result = Some(value);
             changed = true;
         }
     }
@@ -1459,6 +1552,7 @@ fn adapter_result(
     if args.value.abs_diff(0) > MAX_ADAPTER_VALUE as u32 {
         return Err("adapter value must be between -1000000 and 1000000".to_string());
     }
+    state.lifecycle.gate("background session completion")?;
     if state.active_session.is_none() {
         return Err("no active session".to_string());
     }
@@ -1542,6 +1636,10 @@ fn handle_button<P: Platform>(
     event: ButtonEvent,
     target_sku: &str,
 ) -> Result<()> {
+    state
+        .lifecycle
+        .gate("input")
+        .map_err(|error| anyhow!(error))?;
     log.emit(
         "control",
         event.at_ms,
@@ -1753,9 +1851,45 @@ fn state_json<P: Platform>(
         "readinessGeneration": state.readiness_generation,
         "sessionStep": state.session_step,
         "hardware": hardware_json(&platform.hardware_state().map_err(|error| error.to_string())?),
+        "platformState": platform.platform_state().map_err(|error| error.to_string())?,
         "faults": state.faults,
+        "lifecycle": state.lifecycle.evidence(),
         "presentation": presentation,
     }))
+}
+
+fn load_lifecycle(root: &Path) -> LifecycleController {
+    let path = root.join("lifecycle-marker.json");
+    match fs::read(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => LifecycleController::new(),
+        Ok(bytes) => match serde_json::from_slice::<LifecycleMarker>(&bytes) {
+            Ok(marker) => LifecycleController::from_pending_marker(marker),
+            Err(_) => LifecycleController::from_pending_marker(LifecycleMarker {
+                phase: LifecyclePhase::Recovery,
+                reason: "invalid-lifecycle-marker".into(),
+                checkpoint_generation: None,
+                deadline_ms: 0,
+            }),
+        },
+        Err(_) => LifecycleController::from_pending_marker(LifecycleMarker {
+            phase: LifecyclePhase::Recovery,
+            reason: "unreadable-lifecycle-marker".into(),
+            checkpoint_generation: None,
+            deadline_ms: 0,
+        }),
+    }
+}
+
+fn sync_lifecycle_marker(root: &Path, lifecycle: &LifecycleController) -> Result<(), String> {
+    let path = root.join("lifecycle-marker.json");
+    match lifecycle.evidence().marker {
+        Some(marker) => write_json(path, &marker).map_err(|error| error.to_string()),
+        None => match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        },
+    }
 }
 
 fn hardware_json(hardware: &sim_platform_contract::HardwareState) -> Value {

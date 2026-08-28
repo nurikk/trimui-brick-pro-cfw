@@ -303,7 +303,7 @@ package_checks = [
     "PASS signed delegated package target progression",
     "PASS blocked core-pack rejected before installation",
     "PASS install promoted immutable activation demo-theme 1.0.0",
-    "PASS uninstall preserves ROM/save/state bytes",
+    "PASS uninstall preserves ROM/save/state/resume bytes",
     "PASS interrupted install leaves no activation",
     "PASS interrupted uninstall preserves protected data",
 ]

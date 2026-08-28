@@ -25,7 +25,7 @@ Startup recovery accepts only valid checksummed broker-owned journals. Invalid r
 Run the complete deterministic journey set with:
 
 ```text
-cargo run --locked -p session-broker --release -- simulate --journeys success,standalone,portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero,nonzero,signal,timeout,cancel,grandchild,restart,marker-mismatch,start-time-mismatch,publication-failure,crash-before-publish,crash-after-publish,crash-after-release,result-fsync-failure
+cargo run --locked -p session-broker --release -- simulate --journeys success,standalone,standalone-sram-only,standalone-undeclared,resume-production-mode,resume-symlink,resume-mode,resume-concurrent,portmaster,portmaster-success,portmaster-rejection,portmaster-mismatch,portmaster-symlink,portmaster-injection,portmaster-nonzero,nonzero,signal,timeout,cancel,grandchild,restart,marker-mismatch,start-time-mismatch,publication-failure,crash-before-publish,crash-after-publish,crash-after-release,result-fsync-failure
 ```
 
 Each JSON line is one typed result and exposes `restored: true`. The generated fixture is synthetic and is copied to a temporary root before execution. No hardware, private corpus, live service, or real `/data` path is used.

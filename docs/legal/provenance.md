@@ -6,8 +6,10 @@ lowercase identifiers so their SPDX projections cannot collapse distinct IDs.
 It records candidate component families and the
 separate `distributedArtifacts` list. A **candidate** is evidence about a
 possible source or component; it does not authorize shipping bytes. A
-**distributed artifact** is one exact staged path with its type, mode, size,
-hash or symlink target, source relationship, obligations, and approval.
+**distributed artifact** is one exact staged path with its type, mode, symlink
+target, source relationship, obligations, and approval. Exact candidate output
+size and hash identity is recorded in the candidate manifest and candidate SPDX
+output.
 
 Only an artifact whose record and candidate both have `status: approved` and
 whose candidate has `redistributionStatus: permitted` is projected into:
@@ -35,19 +37,23 @@ python3 -m json.tool provenance/components.json >/dev/null
 python3 -m json.tool policy/distribution-allowlist.json >/dev/null
 python3 -m json.tool provenance/brickpro-cfw.spdx.json >/dev/null
 scripts/audit-dist /path/to/disposable/staged-root \
-  policy/distribution-allowlist.json --inventory provenance/components.json
+  policy/distribution-allowlist.json --inventory provenance/components.json \
+  --manifest /path/to/release/manifest.json \
+  --spdx /path/to/release/brickpro-cfw.spdx.json \
+  --checksums /path/to/release/SHA256SUMS
 scripts/test-provenance
 ```
 
 The generator is the sole writer of the allowlist, SPDX document, and notices.
 `check` validates the inventory and fails if any generated output has drifted.
 `audit-dist` is read-only and binds the supplied allowlist bytes to the
-validated inventory projection before scanning. Required artifact obligations
+validated inventory projection, then binds the candidate manifest and SPDX
+identity to the checksum package before scanning. Required artifact obligations
 must name staged paths; it fails closed for unlisted files or links,
 metadata/hash mismatches, escaping links, missing artifacts, unmet declared
 notice/source paths, non-TG4040 identifiers, and recognizable private
-ROM/BIOS/PortMaster paths or content signatures. An empty root with the
-current empty allowlist is valid.
+ROM/BIOS/PortMaster paths or content signatures. A candidate audit also
+requires the manifest, candidate SPDX document, and checksum package.
 
 ## Updating the record
 
@@ -63,8 +69,8 @@ current empty allowlist is valid.
 3. Do not add an artifact for an unbuilt, private, vendor, firmware-only,
    ROM/BIOS, PortMaster, font/theme/artwork, or otherwise unresolved item.
 4. For a genuinely approved staged file or symlink, record its exact path,
-   mode, size, SHA-256 or link target, and obligations (including required
-   staged paths), then run the generator
+   mode, type, link target where applicable, and obligations (including
+   required staged paths), then run the generator
    and the audit/self-test checks.
 
 This engineering record is not legal advice and does not grant permission to

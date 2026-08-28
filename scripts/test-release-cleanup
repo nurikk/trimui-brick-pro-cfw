@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+OUTPUT_TEMPLATE=/tmp/trimui-brick-pro-release-cleanup-long-output.XXXXXX
+SUPERVISOR_TEMPLATE=/tmp/trimui-brick-pro-supervisor.*
+EPOCH=1700000000
+OUT=
+
+cleanup() {
+    [ -z "${OUT:-}" ] || rm -rf -- "$OUT"
+}
+trap cleanup EXIT HUP INT TERM
+
+roots() {
+    for path in $SUPERVISOR_TEMPLATE; do
+        [ -d "$path" ] || continue
+        basename "$path"
+    done | sort
+}
+
+assert_no_new_roots() {
+    current=$(roots)
+    [ "$current" = "$1" ] || {
+        printf '%s\n' "release cleanup: supervisor roots leaked" >&2
+        printf '%s\n' "$current" >&2
+        exit 1
+    }
+    for path in $SUPERVISOR_TEMPLATE; do
+        [ -d "$path" ] || continue
+        sockets=$(find "$path" -type s -print -quit)
+        [ -z "$sockets" ] || {
+            printf '%s\n' "release cleanup: supervisor socket leaked: $sockets" >&2
+            exit 1
+        }
+    done
+    orphan_processes=$(ps -eo args= | grep -F '/tmp/trimui-brick-pro-supervisor.' | grep -v grep || true)
+    [ -z "$orphan_processes" ] || {
+        printf '%s\n' "release cleanup: supervisor process survived:\n$orphan_processes" >&2
+        exit 1
+    }
+}
+
+before=$(roots)
+OUT=$(mktemp -d "$OUTPUT_TEMPLATE")
+SOURCE_DATE_EPOCH=$EPOCH "$ROOT/scripts/build" release --out "$OUT" >/dev/null
+test -f "$OUT/SHA256SUMS"
+assert_no_new_roots "$before"
+rm -rf -- "$OUT"
+OUT=
+
+before=$(roots)
+OUT=$(mktemp -d "$OUTPUT_TEMPLATE")
+if TRIMUI_BUILD_INJECT_FAILURE=after-supervisor SOURCE_DATE_EPOCH=$EPOCH \
+    "$ROOT/scripts/build" release --out "$OUT" >/dev/null 2>&1; then
+    printf '%s\n' "release cleanup: injected build unexpectedly succeeded" >&2
+    exit 1
+fi
+assert_no_new_roots "$before"
+
+printf '%s\n' "release cleanup journey passed: long output success and injected cleanup"

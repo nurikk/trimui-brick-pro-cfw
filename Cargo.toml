@@ -6,6 +6,7 @@ members = [
     "crates/launcher",
     "crates/storage-layout",
     "crates/save-vault",
+    "crates/save-sync",
     "crates/bootstrap-probe",
     "crates/brick-recovery",
     "crates/brick-diagnostics",

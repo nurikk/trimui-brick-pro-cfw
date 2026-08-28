@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf, process};
 
-use launcher_presentation::build;
+use launcher_presentation::{build_with_sync, SaveSyncCandidateView, SaveSyncView};
 use launcher_theme::safe_artbook;
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
@@ -36,6 +36,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut wifi = wifi()?;
     wifi.scan()?;
     let wifi_snapshot = wifi.snapshot();
+    let save_sync = sync_fixture();
 
     let initial = UiState::generated();
     let splash = initial.clone();
@@ -145,12 +146,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     for pass in 0..2 {
         let mut platform = HostPlatform::new(&profile, Backend::Dummy)?;
         for (name, state) in &states {
-            let screen = build(
+            let screen = build_with_sync(
                 state,
                 &theme,
                 (*name == "recovery").then_some(launcher_theme::Reason::MissingTheme),
                 Some(&settings),
                 Some(&wifi_snapshot),
+                &launcher_presentation::IndexView::default(),
+                &[],
+                Some(&save_sync),
             );
             assert_contract(&screen, name)?;
             if *name == "scraper-progress-2"
@@ -174,6 +178,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             if *name == "scraper-complete" && screen.scraper.progress_percent != Some(100) {
                 return Err("completed scraper popup did not reach 100 percent".into());
+            }
+            let sync = screen.save_sync.as_ref().ok_or("save sync view missing")?;
+            if sync.local.device_name != "Brick A"
+                || sync.remote.device_name != "Brick B"
+                || sync.local.hash_prefix.len() != 12
+                || sync.remote.hash_prefix.len() != 12
+                || sync.local.size != 18
+                || sync.remote.size != 19
+                || sync.actions != ["keep-local", "keep-remote", "keep-both"]
+            {
+                return Err("save sync presentation contract is incomplete".into());
             }
             if *name == "splash" && screen.splash != "artbook-generated-splash" {
                 return Err("splash semantic state is missing".into());
@@ -330,6 +345,36 @@ fn settings() -> Result<settings_ui::Scene, Box<dyn std::error::Error>> {
     ]);
     let ui = SettingsUi::new(registry, context)?;
     Ok(ui.scene()?)
+}
+
+fn sync_fixture() -> SaveSyncView {
+    let candidate =
+        |device_id: &str, device_name: &str, hash_prefix: &str, size: u64| SaveSyncCandidateView {
+            logical_id: "generated-save".into(),
+            content_id: "generated-content".into(),
+            device_id: device_id.into(),
+            device_name: device_name.into(),
+            generation: 1,
+            hash_prefix: hash_prefix.into(),
+            parent_hash_prefix: Some("0123456789ab".into()),
+            ancestry: vec!["0123456789ab".into()],
+            save_kind: "save".into(),
+            timestamp_ms: 1,
+            size,
+            status: "conflict".into(),
+            deleted: false,
+        };
+    SaveSyncView {
+        local: candidate("brick-a", "Brick A", "0123456789ab", 18),
+        remote: candidate("brick-b", "Brick B", "abcdef012345", 19),
+        state: "conflict".into(),
+        transport_outcome: "quarantined".into(),
+        actions: vec![
+            "keep-local".into(),
+            "keep-remote".into(),
+            "keep-both".into(),
+        ],
+    }
 }
 
 fn wifi() -> Result<WifiSettingsController, Box<dyn std::error::Error>> {

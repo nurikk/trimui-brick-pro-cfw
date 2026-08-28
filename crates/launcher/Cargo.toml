@@ -32,6 +32,8 @@ wifi-settings-controller = { path = "../wifi-settings-controller" }
 metadata-scraper = { path = "../metadata-scraper" }
 media-cache = { path = "../media-cache" }
 save-vault = { path = "../save-vault" }
+save-sync = { path = "../save-sync" }
+sha2.workspace = true
 
 [[bin]]
 name = "launcher-presentation-journey"

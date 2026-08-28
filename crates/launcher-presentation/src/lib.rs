@@ -150,6 +150,34 @@ impl Default for IndexView {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SaveSyncCandidateView {
+    pub logical_id: String,
+    pub content_id: String,
+    pub device_id: String,
+    pub device_name: String,
+    pub generation: u64,
+    pub hash_prefix: String,
+    pub parent_hash_prefix: Option<String>,
+    pub ancestry: Vec<String>,
+    pub save_kind: String,
+    pub timestamp_ms: u64,
+    pub size: u64,
+    pub status: String,
+    pub deleted: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSyncView {
+    pub local: SaveSyncCandidateView,
+    pub remote: SaveSyncCandidateView,
+    pub state: String,
+    pub transport_outcome: String,
+    pub actions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Screen {
     pub schema: &'static str,
     pub identity: &'static str,
@@ -175,6 +203,7 @@ pub struct Screen {
     pub controller_help: Vec<ui_model::HelpBinding>,
     pub index: IndexView,
     pub boundaries: BoundaryViews,
+    pub save_sync: Option<SaveSyncView>,
 }
 
 pub fn build(
@@ -362,7 +391,23 @@ pub fn build_with_recent(
                 state: "unavailable".into(),
             },
         },
+        save_sync: None,
     }
+}
+
+pub fn build_with_sync(
+    state: &UiState,
+    theme: &ValidatedTheme,
+    theme_fallback: Option<ThemeReason>,
+    settings: Option<&settings_ui::Scene>,
+    wifi: Option<&wifi_settings_controller::Snapshot>,
+    index: &IndexView,
+    recent: &[String],
+    save_sync: Option<&SaveSyncView>,
+) -> Screen {
+    let mut screen = build_with_recent(state, theme, theme_fallback, settings, wifi, index, recent);
+    screen.save_sync = save_sync.cloned();
+    screen
 }
 
 fn settings_view(scene: &settings_ui::Scene) -> SettingsView {

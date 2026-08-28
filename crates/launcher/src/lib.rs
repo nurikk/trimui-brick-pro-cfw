@@ -131,6 +131,7 @@ struct AppState {
     selected_index: usize,
     broker: Box<dyn SessionBrokerClient>,
     save_vault: SaveVaultUi,
+    save_sync: Option<launcher_presentation::SaveSyncView>,
     active_session: Option<SessionHandle>,
     last_session: Option<SessionResult>,
     modal: Option<String>,
@@ -273,7 +274,37 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         screen.title = entry.title.clone();
         screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
     }
+    screen.save_sync = state.save_sync.clone();
     Ok(screen)
+}
+
+fn sync_view(status: save_sync::SyncStatus) -> launcher_presentation::SaveSyncView {
+    let view = |candidate: save_sync::CandidateView| launcher_presentation::SaveSyncCandidateView {
+        logical_id: candidate.logical_id,
+        content_id: candidate.content_id,
+        device_id: candidate.device_id,
+        device_name: candidate.device_name,
+        generation: candidate.generation,
+        hash_prefix: candidate.hash_prefix,
+        parent_hash_prefix: candidate.parent_hash_prefix,
+        ancestry: candidate.ancestry,
+        save_kind: format!("{:?}", candidate.save_kind).to_ascii_lowercase(),
+        timestamp_ms: candidate.timestamp_ms,
+        size: candidate.size,
+        status: format!("{:?}", candidate.status).to_ascii_lowercase(),
+        deleted: candidate.deleted,
+    };
+    launcher_presentation::SaveSyncView {
+        local: view(status.local),
+        remote: view(status.remote),
+        state: status.state,
+        transport_outcome: status.transport_outcome,
+        actions: status
+            .actions
+            .into_iter()
+            .map(|action| format!("{:?}", action).to_ascii_lowercase())
+            .collect(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,6 +315,12 @@ struct EmptyArgs {}
 #[serde(deny_unknown_fields)]
 struct SaveVaultRestoreArgs {
     confirmed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveSyncResolveArgs {
+    action: save_sync::ResolutionAction,
 }
 
 #[derive(Debug, Deserialize)]
@@ -687,6 +724,7 @@ fn run_session<P: Platform>(
         selected_index: 0,
         broker,
         save_vault: SaveVaultUi::default(),
+        save_sync: None,
         active_session: None,
         last_session: None,
         modal: None,
@@ -703,6 +741,9 @@ fn run_session<P: Platform>(
         .map_err(|error| anyhow!(error))?;
     refresh_presentation_affordances(&mut state.presentation, &platform)
         .map_err(|error| anyhow!(error))?;
+    if let Ok(status) = state.broker.save_sync_status() {
+        state.save_sync = Some(sync_view(status));
+    }
     let screen = screen_for_state(&state, &catalog)?;
 
     present(&mut platform, &screen)?;
@@ -1027,6 +1068,24 @@ fn handle_request<P: Platform>(
             state.save_vault.preview = Some(preview.clone());
             state.save_vault.screen = "preview".into();
             serde_json::to_value(preview).map_err(|error| error.to_string())
+        }),
+        "save-sync.status" => parse_empty(request.args).and_then(|_| {
+            let status = state
+                .broker
+                .save_sync_status()
+                .map_err(|error| error.to_string())?;
+            state.save_sync = Some(sync_view(status.clone()));
+            serde_json::to_value(status).map_err(|error| error.to_string())
+        }),
+        "save-sync.resolve" => parse::<SaveSyncResolveArgs>(request.args).and_then(|args| {
+            let receipt = state
+                .broker
+                .save_sync_resolve(args.action)
+                .map_err(|error| error.to_string())?;
+            if let Ok(status) = state.broker.save_sync_status() {
+                state.save_sync = Some(sync_view(status));
+            }
+            serde_json::to_value(receipt).map_err(|error| error.to_string())
         }),
         "save-vault.restore" => parse::<SaveVaultRestoreArgs>(request.args).and_then(|args| {
             if !args.confirmed {
@@ -1453,6 +1512,12 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
                 }),
             )
         }
+        "save-sync-status" => refresh_sync_view(state)?,
+        "save-sync-keep-local" => resolve_sync_view(state, save_sync::ResolutionAction::KeepLocal)?,
+        "save-sync-keep-remote" => {
+            resolve_sync_view(state, save_sync::ResolutionAction::KeepRemote)?
+        }
+        "save-sync-keep-both" => resolve_sync_view(state, save_sync::ResolutionAction::KeepBoth)?,
         "save-vault-history" => {
             let entries = state
                 .broker
@@ -1508,6 +1573,26 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
         _ => return Err("presentation action is not allowlisted".into()),
     }
     Ok(())
+}
+
+fn refresh_sync_view(state: &mut AppState) -> Result<(), String> {
+    let status = state
+        .broker
+        .save_sync_status()
+        .map_err(|error| error.to_string())?;
+    state.save_sync = Some(sync_view(status));
+    Ok(())
+}
+
+fn resolve_sync_view(
+    state: &mut AppState,
+    action: save_sync::ResolutionAction,
+) -> Result<(), String> {
+    state
+        .broker
+        .save_sync_resolve(action)
+        .map_err(|error| error.to_string())?;
+    refresh_sync_view(state)
 }
 
 fn resume_control(

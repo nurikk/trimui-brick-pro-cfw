@@ -6,7 +6,7 @@
   "controlKinds": ["boolean", "enum-single", "enum-multi", "integer", "decimal", "text", "secret", "action", "read-only", "status"],
   "journey": [
     {"step": "project", "asserts": ["ordered sections and groups", "selected help", "controller help strip", "restart-launcher badge", "reboot-candidate badge"]},
-    {"step": "synthetic-descriptor", "asserts": ["new validated descriptor projects by section/group/order without special mapping", "full regex alternation accepts beta and rejects gamma"]},
+    {"step": "synthetic-descriptor", "asserts": ["new validated descriptor projects by section/group/order without special mapping", "full regex alternation accepts beta and rejects gamma", "Scraper parallel jobs projects exactly 1/2/4 with default 2", "provider declarations project enabled, priority, credential requirement, configured status, and local limits generically"]},
     {"step": "controller-edit", "asserts": ["section-list to form", "boolean and enum selection", "integer numeric keyboard", "decimal controller stepping", "text keyboard invocation"]},
     {"step": "pending", "asserts": ["on-confirm pending summary", "validation errors", "cancel discards", "apply commits"]},
     {"step": "capability-disabled", "asserts": ["disabled control reason", "predicate-hidden section"]},

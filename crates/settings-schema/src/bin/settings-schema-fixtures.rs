@@ -23,7 +23,20 @@ fn run() -> Result<(), String> {
 }
 
 fn fixture() -> Result<Registry, String> {
-    Registry::from_json(FIXTURE).map_err(|error| format!("checked-in fixture rejected: {error}"))
+    let providers = metadata_scraper::registered_providers()
+        .into_iter()
+        .map(|provider| settings_schema::ProviderMetadata {
+            id: provider.id,
+            enabled: provider.enabled,
+            requires_credentials: provider.requires_credentials,
+            credential_configured: provider.credential_configured,
+            priority: provider.priority,
+            max_concurrency: provider.max_concurrency,
+        })
+        .collect::<Vec<_>>();
+    Registry::from_json(FIXTURE)
+        .and_then(|registry| registry.with_provider_metadata(&providers))
+        .map_err(|error| format!("checked-in fixture rejected: {error}"))
 }
 
 fn check_projection(registry: &Registry) -> Result<(), String> {
@@ -48,8 +61,45 @@ fn check_projection(registry: &Registry) -> Result<(), String> {
     let json = model
         .to_canonical_json()
         .map_err(|error| format!("canonical projection failed: {error}"))?;
-    if json.contains("wifi-password") || json.contains("scraper-api-key") {
+    if json.contains("wifi-password")
+        || json.contains("scraper-api-key")
+        || json.contains("credentialRef")
+    {
         return Err("canonical projection exposed a credential reference".into());
+    }
+    let parallel = control(&model, "core.scraper.parallel-jobs")?;
+    let options: Vec<_> = parallel
+        .constraints
+        .as_ref()
+        .ok_or("parallelism options missing")?
+        .options
+        .iter()
+        .map(|option| option.value.as_str())
+        .collect();
+    if options != ["1", "2", "4"] || parallel.value != Some(SettingValue::EnumSingle("2".into())) {
+        return Err("parallelism descriptor is not the generated 1/2/4 default-2 contract".into());
+    }
+    for id in [
+        "provider.scraper.fixture-primary-enabled",
+        "provider.scraper.fixture-secondary-enabled",
+        "provider.scraper.fixture-tertiary-enabled",
+        "provider.scraper.priority",
+        "provider.scraper.fixture-primary-credentials",
+        "provider.scraper.fixture-secondary-credentials",
+        "provider.scraper.fixture-tertiary-credentials",
+    ] {
+        control(&model, id)?;
+    }
+    for (id, expected) in [
+        ("provider.scraper.fixture-primary-limit", "1"),
+        ("provider.scraper.fixture-secondary-limit", "2"),
+        ("provider.scraper.fixture-tertiary-limit", "2"),
+    ] {
+        if control(&model, id)?.value != Some(SettingValue::Text(expected.into())) {
+            return Err(format!(
+                "provider limit metadata was not projected for {id}"
+            ));
+        }
     }
     let unavailable = registry
         .project(&ProjectionContext::default())

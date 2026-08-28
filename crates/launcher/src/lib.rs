@@ -179,7 +179,19 @@ impl PresentationState {
                 wifi: true,
             }),
         );
+        let providers = metadata_scraper::registered_providers()
+            .into_iter()
+            .map(|provider| settings_schema::ProviderMetadata {
+                id: provider.id,
+                enabled: provider.enabled,
+                requires_credentials: provider.requires_credentials,
+                credential_configured: provider.credential_configured,
+                priority: provider.priority,
+                max_concurrency: provider.max_concurrency,
+            })
+            .collect::<Vec<_>>();
         let registry = Registry::from_json(SETTINGS_REGISTRY_BYTES)
+            .and_then(|registry| registry.with_provider_metadata(&providers))
             .map_err(|error| anyhow!(error.to_string()))?;
         let mut context = ProjectionContext::default();
         context.capabilities.extend([
@@ -603,6 +615,16 @@ fn run_session<P: Platform>(
     )?;
     let persisted = launcher_state::load(&state_root);
     let mut presentation = PresentationState::new()?;
+    if let Some(progress) = persisted.scraper_progress.clone() {
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Scraper(ui_model::ScraperAction::OpenBulkQueue),
+        );
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Scraper(ui_model::ScraperAction::SetProgress(progress)),
+        );
+    }
     presentation.index = launcher_presentation::IndexView {
         status: index.report.status,
         entry_count: index.report.entry_count,
@@ -978,6 +1000,7 @@ fn handle_request<P: Platform>(
         _ => Err("unknown command".to_string()),
     };
     if result.is_ok() {
+        sync_scraper_persistence(state);
         launcher_state::save(&evidence.root.join("data"), &state.persisted)
             .map_err(|error| anyhow!(error.to_string()))?;
     }
@@ -1056,7 +1079,7 @@ fn refresh_presentation_affordances<P: Platform>(
 }
 
 fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(), String> {
-    use ui_model::{Action, AmbiguousChoice, GameId, ScraperAction, ScraperProgress, WifiAction};
+    use ui_model::{Action, AmbiguousChoice, GameId, ScraperAction, WifiAction};
 
     let action = args.action.as_str();
     match action {
@@ -1174,25 +1197,60 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
                 }),
             )
         }
-        "scraper-progress" => {
+        "scraper-progress"
+        | "scraper-progress-zero"
+        | "scraper-progress-2"
+        | "scraper-progress-4" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenBulkQueue),
+            );
+            let slots = if action.ends_with("-4") { 4 } else { 2 };
+            let completed = if action.ends_with("-zero") { 0 } else { 1 };
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::SetProgress(synthetic_progress(
+                    slots, completed,
+                ))),
+            )
+        }
+        "scraper-fallback" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
                 Action::Scraper(ScraperAction::OpenBulkQueue),
             );
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
-                Action::Scraper(ScraperAction::SetProgress(ScraperProgress {
-                    completed: 1,
-                    total: 3,
-                    paused: false,
-                })),
-            )
+                Action::Scraper(ScraperAction::SetProgress(synthetic_progress(2, 1))),
+            );
+        }
+        "scraper-background" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenBulkQueue),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::SetProgress(synthetic_progress(2, 1))),
+            );
+            state.presentation.ui =
+                ui_model::reduce(&state.presentation.ui, Action::Scraper(ScraperAction::Hide));
         }
         "scraper-paused" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
-                Action::Scraper(ScraperAction::Pause),
-            )
+                Action::Scraper(ScraperAction::OpenBulkQueue),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::SetProgress(synthetic_progress(2, 1))),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::PauseForGate {
+                    reason: "network".into(),
+                }),
+            );
         }
         "scraper-resumed" => {
             state.presentation.ui = ui_model::reduce(
@@ -1212,14 +1270,39 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
         "scraper-complete" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenBulkQueue),
+            );
+            let mut progress = synthetic_progress(2, 4);
+            progress.counts = ui_model::ScraperCounts {
+                succeeded: 2,
+                fallback: 1,
+                not_found: 1,
+                ..Default::default()
+            };
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::SetProgress(progress)),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
                 Action::Scraper(ScraperAction::Complete),
-            )
+            );
         }
         "scraper-cancel" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
                 Action::Scraper(ScraperAction::Cancel),
             )
+        }
+        "scraper-confirm-cancel" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::Cancel),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::ConfirmCancel),
+            );
         }
         "wifi-scan" => {
             state.presentation.wifi.scan().map_err(|e| e.to_string())?;
@@ -1453,6 +1536,57 @@ fn resume_control(
         "generation": result.generation,
         "usedSram": result.used_sram,
     }))
+}
+
+fn synthetic_progress(slots: u8, completed: u16) -> ui_model::ScraperProgress {
+    let titles = [
+        "Nebula Notes",
+        "Mirror Museum",
+        "Orbit Garden",
+        "Signal Workshop",
+    ];
+    let rows = titles
+        .iter()
+        .take(slots as usize)
+        .enumerate()
+        .map(|(index, title)| ui_model::ScraperRow {
+            game_id: ui_model::GameId::new(format!("generated-game-0{}", index + 1)),
+            title: (*title).into(),
+            provider: Some(
+                if index == 0 {
+                    "fixture-secondary"
+                } else {
+                    "fixture-tertiary"
+                }
+                .into(),
+            ),
+            phase: if index == 0 {
+                ui_model::ScraperPhase::FallingBack
+            } else {
+                ui_model::ScraperPhase::Searching
+            },
+            fallback_transition: (index == 0)
+                .then_some("fixture-primary: not found → fixture-secondary".into()),
+        })
+        .collect();
+    ui_model::ScraperProgress {
+        completed,
+        total: 4,
+        percent: ((u32::from(completed) * 100) / 4) as u8,
+        configured_slots: slots,
+        paused: false,
+        paused_reason: None,
+        background: false,
+        counts: ui_model::ScraperCounts {
+            succeeded: completed,
+            ..Default::default()
+        },
+        rows,
+    }
+}
+
+fn sync_scraper_persistence(state: &mut AppState) {
+    state.persisted.scraper_progress = state.presentation.ui.scraper.progress.clone();
 }
 
 fn reduce_route(state: &mut AppState, route: ui_model::Route) {

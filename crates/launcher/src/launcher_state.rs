@@ -5,7 +5,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use ui_model::UiPreferences;
+use ui_model::{ScraperProgress, UiPreferences};
 
 const SCHEMA_VERSION: u16 = 1;
 const IDENTITY: &str = "Artbook";
@@ -28,6 +28,8 @@ pub struct State {
     pub preferences: UiPreferences,
     pub favorites: Vec<String>,
     pub recent: Vec<RecentItem>,
+    #[serde(default)]
+    pub scraper_progress: Option<ScraperProgress>,
 }
 
 impl Default for State {
@@ -38,6 +40,7 @@ impl Default for State {
             preferences: UiPreferences::default(),
             favorites: Vec::new(),
             recent: Vec::new(),
+            scraper_progress: None,
         }
     }
 }
@@ -104,6 +107,65 @@ fn valid_state(state: &State) -> bool {
         && !state.favorites.windows(2).any(|ids| ids[0] >= ids[1])
         && state.favorites.iter().all(|id| valid_id(id))
         && state.recent.iter().all(|item| valid_id(&item.content_id))
+        && state
+            .scraper_progress
+            .as_ref()
+            .is_none_or(valid_scraper_progress)
+}
+
+fn valid_scraper_progress(progress: &ScraperProgress) -> bool {
+    let expected_percent = if progress.total == 0 {
+        progress.percent == 0 || progress.percent == 100
+    } else {
+        progress.percent
+            == ((u32::from(progress.completed) * 100) / u32::from(progress.total)) as u8
+    };
+    progress.total <= 256
+        && progress.completed <= progress.total
+        && expected_percent
+        && matches!(progress.configured_slots, 1 | 2 | 4)
+        && progress.rows.len() <= progress.configured_slots as usize
+        && progress
+            .paused_reason
+            .as_deref()
+            .is_none_or(valid_scraper_reason)
+        && progress.rows.iter().all(valid_scraper_row)
+}
+
+fn valid_scraper_row(row: &ui_model::ScraperRow) -> bool {
+    valid_id(&row.game_id.0)
+        && !row.title.is_empty()
+        && row.title.len() <= 128
+        && !row.title.chars().any(char::is_control)
+        && row.provider.as_deref().is_none_or(valid_scraper_id)
+        && row
+            .fallback_transition
+            .as_deref()
+            .is_none_or(valid_scraper_text)
+}
+
+fn valid_scraper_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || ".:_-".contains(character))
+}
+
+fn valid_scraper_reason(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+}
+
+fn valid_scraper_text(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.chars().any(char::is_control)
+        && !value.contains('/')
+        && !value.contains('\\')
 }
 
 fn valid_id(value: &str) -> bool {

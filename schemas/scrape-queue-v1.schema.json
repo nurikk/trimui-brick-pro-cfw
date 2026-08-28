@@ -16,13 +16,9 @@
       "additionalProperties": false,
       "required": ["request", "state", "attempts", "nextAttemptAt", "overwriteMetadata", "overwriteMedia", "result", "reason"],
       "properties": {
-        "request": {"type": "object", "additionalProperties": false, "required": ["contentId", "systemId", "romHash", "filename", "title", "manualQuery", "hashLookupConfigured", "regionPriority", "languagePriority"], "properties": {
+        "request": {"type": "object", "additionalProperties": false, "required": ["contentId", "systemId", "hashLookupConfigured", "regionPriority", "languagePriority"], "properties": {
           "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
           "systemId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
-          "romHash": {"type": ["string", "null"], "maxLength": 4096},
-          "filename": {"type": ["string", "null"], "maxLength": 4096},
-          "title": {"type": ["string", "null"], "maxLength": 4096},
-          "manualQuery": {"type": ["string", "null"], "maxLength": 4096},
           "hashLookupConfigured": {"type": "boolean"},
           "regionPriority": {"type": "array", "maxItems": 64, "items": {"enum": ["global", "north-america", "europe", "japan", "other"]}},
           "languagePriority": {"type": "array", "maxItems": 64, "items": {"enum": ["english", "japanese", "french", "german", "spanish", "other"]}}

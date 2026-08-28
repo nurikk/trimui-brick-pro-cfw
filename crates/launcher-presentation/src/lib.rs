@@ -63,8 +63,17 @@ pub struct ScraperView {
     pub route: String,
     pub status: String,
     pub queue_count: usize,
+    pub completed: u16,
+    pub total: u16,
     pub progress_percent: Option<u8>,
+    pub configured_slots: u8,
     pub paused: bool,
+    pub paused_reason: Option<String>,
+    pub background: bool,
+    pub counts: ui_model::ScraperCounts,
+    pub rows: Vec<ui_model::ScraperRow>,
+    pub actions: Vec<String>,
+    pub cancel_requested: bool,
     pub ambiguous_candidates: Vec<String>,
 }
 
@@ -495,22 +504,31 @@ fn modal_text(modal: &ui_model::ModalState) -> String {
 
 fn scraper_view(state: &UiState) -> ScraperView {
     let scraper = &state.scraper;
-    let progress_percent = scraper.progress.as_ref().map(|progress| {
-        if progress.total == 0 {
-            0
-        } else {
-            ((u32::from(progress.completed) * 100) / u32::from(progress.total)) as u8
-        }
-    });
+    let progress = scraper.progress.as_ref();
     ScraperView {
         route: format_debug(&scraper.route),
         status: format_debug(&scraper.status),
         queue_count: scraper.queue.len(),
-        progress_percent,
-        paused: scraper
-            .progress
-            .as_ref()
-            .is_some_and(|progress| progress.paused),
+        completed: progress.map_or(0, |value| value.completed),
+        total: progress.map_or(0, |value| value.total),
+        progress_percent: progress.map(|value| value.percent),
+        configured_slots: progress.map_or(0, |value| value.configured_slots),
+        paused: progress.is_some_and(|value| value.paused),
+        paused_reason: progress.and_then(|value| value.paused_reason.clone()),
+        background: progress.is_some_and(|value| value.background),
+        counts: progress.map_or_else(ui_model::ScraperCounts::default, |value| {
+            value.counts.clone()
+        }),
+        rows: progress.map_or_else(Vec::new, |value| value.rows.clone()),
+        actions: vec![
+            "hide".into(),
+            "pause".into(),
+            "resume".into(),
+            "cancel".into(),
+            "close".into(),
+            "inspect-results".into(),
+        ],
+        cancel_requested: scraper.cancel_requested,
         ambiguous_candidates: scraper
             .ambiguous_choice
             .as_ref()

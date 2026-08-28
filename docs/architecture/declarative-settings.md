@@ -8,7 +8,7 @@ Registry JSON uses strict structs and rejects unknown fields and duplicate JSON 
 
 Provider namespaces are explicitly listed in `allowedNamespaces`. A setting ID must be inside its namespace, and a provider cannot claim a `core.*` ID. Duplicate section, setting, option, capability, and migration IDs are rejected. Numeric ranges, text limits/patterns, enum options, typed values, and apply-mode cardinality are validated before projection. Actions use `external-operation`; read-only and status controls use `immediate`.
 
-Secret fields carry only a `credentialRef`; secret bytes are not a registry value. Secret and redacted controls expose no value or credential reference in projected canonical menu/form JSON. The Wi-Fi fixture is only a placeholder registry section: it stores credential references and does not implement network operations.
+The generic schema supports secret fields through an opaque `credentialRef`; secret bytes are never a registry value, and redacted controls expose neither value nor reference in projected menu/form JSON. The generated Scraper provider declarations use status controls for credential requirement/configuration and contain no credential reference. The Wi-Fi fixture remains a placeholder and performs no network operation.
 
 ## Versioning and canonicalization
 

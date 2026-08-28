@@ -1,0 +1,21 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-scrape-bulk-v1.schema.json",
+  "schema": "metadata-scraper-bulk/v1",
+  "synthetic": true,
+  "parallelJobs": 2,
+  "providers": [
+    {"id": "fixture-primary", "enabled": true, "requiresCredentials": true, "credentialConfigured": false, "priority": 1, "maxConcurrency": 1},
+    {"id": "fixture-secondary", "enabled": true, "requiresCredentials": false, "credentialConfigured": false, "priority": 2, "maxConcurrency": 2},
+    {"id": "fixture-tertiary", "enabled": true, "requiresCredentials": false, "credentialConfigured": false, "priority": 3, "maxConcurrency": 2}
+  ],
+  "journeys": [
+    {"contentId": "fallback-2", "expected": "fallback-1-to-2"},
+    {"contentId": "fallback-3", "expected": "fallback-1-to-2-to-3"},
+    {"contentId": "auth", "expected": "auth-batch-disable"},
+    {"contentId": "not-found", "expected": "exhausted"},
+    {"contentId": "absent-cover", "expected": "absent-cover-kind"},
+    {"contentId": "retry", "expected": "retry-after"},
+    {"contentId": "ambiguous", "expected": "ambiguous"},
+    {"contentId": "parallel-0", "expected": "parallel"}
+  ]
+}

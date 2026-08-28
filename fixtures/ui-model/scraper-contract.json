@@ -4,10 +4,12 @@
   "generated": true,
   "actions": [
     { "type": "scraper-queue", "target": "generated-game-01" },
-    { "type": "scraper-progress", "value": "1-of-1" },
-    { "type": "scraper-pause" },
+    { "type": "scraper-progress", "value": "0-of-4", "slots": 2, "rows": 2 },
+    { "type": "scraper-fallback", "value": "fixture-primary-to-fixture-secondary" },
+    { "type": "scraper-pause", "reason": "network" },
+    { "type": "scraper-hide-background" },
     { "type": "scraper-resume" },
-    { "type": "scraper-cancel" },
+    { "type": "scraper-cancel", "confirmation": true },
     { "type": "scraper-ambiguous-choice", "target": "generated-game-01" },
     { "type": "scraper-select-ambiguous-candidate", "target": "generated-candidate-b" },
     { "type": "scraper-non-blocking-error", "value": "generated-status" }
@@ -17,6 +19,6 @@
     "route": "scraper-settings",
     "selection": "generated-candidate-b",
     "status": "non-blocking-error",
-    "assertion": "Scraper state is a typed non-networking reservation for settings, queue, progress, ambiguity selection, pause, resume, cancel, and status."
+    "assertion": "Scraper state is a typed non-networking reservation for settings, queue, immutable 0-100 progress, bounded active rows, provider fallback, pause gates, background execution, cancellation confirmation, ambiguity selection, and status."
   }
 }

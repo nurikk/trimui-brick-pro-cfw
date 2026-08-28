@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-compat-recipe-journey-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "synthetic", "cases"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-compat-recipe-journey-v1.schema.json"},
+    "format": {"const": "trimui-compatibility-recipe-journey"},
+    "schemaVersion": {"const": 1},
+    "synthetic": {"const": true},
+    "cases": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"}}
+  }
+}

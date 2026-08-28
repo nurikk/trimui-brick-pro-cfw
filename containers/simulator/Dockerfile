@@ -19,6 +19,7 @@ COPY fixtures ./fixtures
 COPY schemas ./schemas
 COPY themes ./themes
 COPY sim ./sim
+COPY keys/update.pub ./keys/update.pub
 RUN cargo build --release --locked \
     && install -Dm755 target/release/sim-launcher /usr/local/bin/sim-launcher \
     && install -Dm755 target/release/sim-control /usr/local/bin/sim-control \

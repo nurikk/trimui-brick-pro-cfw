@@ -11,6 +11,10 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use compatibility_recipes::{
+    ApplyReceipt, AuthenticatedRecipe, LauncherAction, LauncherResponse, LocalOverrides, Preview,
+    ValidationContext,
+};
 use launch_contract::{
     validate as validate_launch_request, Catalog as LaunchCatalog, DisplaySettings, InputLayout,
     InputSettings, LaunchKind, LaunchRequest, LogicalPath, PathRoot, PowerSettings, ResumeMode,
@@ -18,6 +22,7 @@ use launch_contract::{
 };
 use launcher_presentation::Screen as PresentationScreen;
 use launcher_theme::ValidatedTheme;
+use package_trust::VerificationTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use settings_schema::{ProjectionContext, Registry};
@@ -275,6 +280,83 @@ struct PresentationArgs {
 }
 
 const MAX_ADAPTER_VALUE: i32 = 1_000_000;
+
+pub struct CompatibilityRecipeController {
+    root: PathBuf,
+    target_id: String,
+    authenticated: AuthenticatedRecipe,
+    context: ValidationContext,
+}
+
+pub enum CompatibilityRecipeAction {
+    Preview {
+        local_overrides: LocalOverrides,
+    },
+    Apply {
+        local_overrides: LocalOverrides,
+        replace_collisions: std::collections::BTreeSet<String>,
+    },
+    Rollback,
+}
+
+#[allow(clippy::large_enum_variant)]
+pub enum CompatibilityRecipeResult {
+    Preview(Preview),
+    Applied(ApplyReceipt),
+    RolledBack,
+}
+
+impl CompatibilityRecipeController {
+    pub fn new(
+        root: impl Into<PathBuf>,
+        repository: &Path,
+        state: &Path,
+        target_id: &str,
+        rom_sha256: &str,
+        context: ValidationContext,
+        time: VerificationTime<'_>,
+    ) -> Result<Self> {
+        let authenticated = compatibility_recipes::authenticate_and_match(
+            repository, state, target_id, rom_sha256, time, &context,
+        )
+        .map_err(|error| anyhow!(error.to_string()))?;
+        Ok(Self {
+            root: root.into(),
+            target_id: target_id.to_string(),
+            authenticated,
+            context,
+        })
+    }
+
+    pub fn dispatch(&self, action: CompatibilityRecipeAction) -> Result<CompatibilityRecipeResult> {
+        let action = match action {
+            CompatibilityRecipeAction::Preview { local_overrides } => {
+                LauncherAction::Preview { local_overrides }
+            }
+            CompatibilityRecipeAction::Apply {
+                local_overrides,
+                replace_collisions,
+            } => LauncherAction::Apply {
+                local_overrides,
+                replace_collisions,
+            },
+            CompatibilityRecipeAction::Rollback => LauncherAction::Rollback,
+        };
+        match compatibility_recipes::launcher_dispatch(
+            &self.root,
+            &self.authenticated,
+            &self.context,
+            &self.target_id,
+            action,
+        )
+        .map_err(|error| anyhow!(error.to_string()))?
+        {
+            LauncherResponse::Preview(value) => Ok(CompatibilityRecipeResult::Preview(value)),
+            LauncherResponse::Applied(value) => Ok(CompatibilityRecipeResult::Applied(value)),
+            LauncherResponse::RolledBack => Ok(CompatibilityRecipeResult::RolledBack),
+        }
+    }
+}
 
 pub fn run<P, F>(
     catalog_path: &Path,

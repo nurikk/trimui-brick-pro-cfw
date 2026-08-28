@@ -1,0 +1,30 @@
+{
+  "signatures": [
+    {
+      "keyid": "root-key",
+      "sig": "1b8c7bf3f00939874b8961acb4ca7161fd277796c3c2ec0ec99d71a314798fe904649767f88466e5fee9a6ee1eff1ee4bdf27b4abeadd2fd604a40e2367d5604"
+    }
+  ],
+  "signed": {
+    "_type": "snapshot",
+    "expires": "2031-01-01T00:00:00Z",
+    "meta": {
+      "recipes.json": {
+        "hashes": {
+          "sha256": "448a99179905cf948e51b8e008752b7e3af67decaca1b2c70fe9c1f9809eb99b"
+        },
+        "length": 1531,
+        "version": 1
+      },
+      "targets.json": {
+        "hashes": {
+          "sha256": "933296167299b002c7127106443d5060aae0ece95fe821c24b9da2f0c5e5e840"
+        },
+        "length": 884,
+        "version": 1
+      }
+    },
+    "spec_version": "1.0.0",
+    "version": 1
+  }
+}

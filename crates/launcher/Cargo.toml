@@ -10,6 +10,8 @@ host = ["dep:signal-hook", "dep:sim-host-platform"]
 [dependencies]
 anyhow.workspace = true
 launch-contract = { path = "../launch-contract" }
+compatibility-recipes = { path = "../compatibility-recipes" }
+package-trust = { path = "../package-trust" }
 signal-hook = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
@@ -29,3 +31,7 @@ wifi-settings-controller = { path = "../wifi-settings-controller" }
 [[bin]]
 name = "launcher-presentation-journey"
 path = "src/bin/launcher-presentation-journey.rs"
+
+[[bin]]
+name = "compatibility-recipe-launcher-fixtures"
+path = "src/bin/compatibility-recipe-launcher-fixtures.rs"

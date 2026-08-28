@@ -1,0 +1,22 @@
+[package]
+name = "compatibility-recipes"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "compatibility_recipes"
+path = "src/lib.rs"
+
+[[bin]]
+name = "compatibility-recipes-fixtures"
+path = "src/bin/compatibility-recipes-fixtures.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+package-trust = { path = "../package-trust" }
+emulator-catalog = { path = "../emulator-catalog" }
+display-profile = { path = "../display-profile" }
+input-profile = { path = "../input-profile" }
+settings-schema = { path = "../settings-schema" }

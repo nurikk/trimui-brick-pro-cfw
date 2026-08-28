@@ -103,6 +103,7 @@ fn settings() -> Result<settings_ui::Scene, Box<dyn std::error::Error>> {
         "theme-engine".into(),
         "wifi".into(),
         "scraper".into(),
+        "cap.power.bounded-sleep".into(),
     ]);
     let ui = SettingsUi::new(registry, context)?;
     Ok(ui.scene()?)

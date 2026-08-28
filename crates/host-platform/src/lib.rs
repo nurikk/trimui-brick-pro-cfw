@@ -172,6 +172,9 @@ pub struct HostPlatform {
     events: Vec<ButtonEvent>,
     event_index: usize,
     logical_time_ms: u64,
+    wall_clock_ms: u64,
+    wake_deadline: Option<sim_platform_contract::lifecycle::WakeDeadline>,
+    orderly_shutdown: Option<sim_platform_contract::lifecycle::ShutdownReason>,
     target_sku: String,
     initial_splash_pending: bool,
 }
@@ -309,6 +312,9 @@ impl HostPlatform {
             events,
             event_index: 0,
             logical_time_ms: profile.clock.start_ms,
+            wall_clock_ms: profile.clock.start_ms,
+            wake_deadline: None,
+            orderly_shutdown: None,
             target_sku: profile.target_sku,
             initial_splash_pending: true,
         })
@@ -473,6 +479,63 @@ impl Platform for HostPlatform {
         self.logical_time_ms
     }
 
+    fn wall_clock_ms(&self) -> u64 {
+        self.wall_clock_ms
+    }
+
+    fn semantic_clock(&mut self, monotonic_ms: u64, wall_clock_ms: u64) -> PlatformResult<()> {
+        if monotonic_ms < self.logical_time_ms {
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Power,
+                reason: "semantic monotonic clock cannot move backwards".into(),
+            });
+        }
+        self.logical_time_ms = monotonic_ms;
+        self.wall_clock_ms = wall_clock_ms;
+        Ok(())
+    }
+
+    fn arm_wake_deadline(
+        &mut self,
+        deadline: sim_platform_contract::lifecycle::WakeDeadline,
+    ) -> PlatformResult<()> {
+        if deadline.token == 0 || deadline.monotonic_deadline_ms < self.logical_time_ms {
+            return Err(PlatformError::Invalid {
+                domain: HardwareDomain::Suspend,
+                reason: "invalid semantic wake deadline".into(),
+            });
+        }
+        self.wake_deadline = Some(deadline);
+        Ok(())
+    }
+
+    fn verify_wake_deadline(
+        &self,
+        deadline: &sim_platform_contract::lifecycle::WakeDeadline,
+    ) -> PlatformResult<()> {
+        if self.wake_deadline.as_ref() == Some(deadline) {
+            Ok(())
+        } else {
+            Err(PlatformError::Invalid {
+                domain: HardwareDomain::Suspend,
+                reason: "semantic wake deadline mismatch".into(),
+            })
+        }
+    }
+
+    fn clear_wake_deadline(&mut self) -> PlatformResult<()> {
+        self.wake_deadline = None;
+        Ok(())
+    }
+
+    fn request_orderly_shutdown(
+        &mut self,
+        reason: sim_platform_contract::lifecycle::ShutdownReason,
+    ) -> PlatformResult<()> {
+        self.orderly_shutdown = Some(reason);
+        Ok(())
+    }
+
     fn snapshot(&self) -> PlatformResult<PlatformSnapshot> {
         Ok(PlatformSnapshot {
             battery_level_percent: self.state.battery.percent,
@@ -492,6 +555,7 @@ impl Platform for HostPlatform {
         Ok(HardwareState {
             battery_percent: self.state.battery.percent,
             charging: self.state.battery.charging,
+            external_power: self.state.power.external_power,
             storage_mode: self.state.storage.clone(),
             radio_enabled: self.state.radios.wifi.enabled,
             radio_connected: self.state.radios.wifi.connected,
@@ -506,6 +570,9 @@ impl Platform for HostPlatform {
         }
         if let Some(value) = changes.charging {
             self.state.battery.charging = value;
+        }
+        if let Some(value) = changes.external_power {
+            self.state.power.external_power = value;
         }
         if let Some(value) = changes.storage_mode {
             self.state.storage = value;

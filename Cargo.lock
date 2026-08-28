@@ -995,8 +995,11 @@ dependencies = [
 name = "sim-platform-contract"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "launcher-presentation",
  "serde",
+ "serde_json",
+ "sha2",
  "sim-domain",
 ]
 

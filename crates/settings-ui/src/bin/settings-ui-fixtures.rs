@@ -56,7 +56,7 @@ fn run() -> Result<(), String> {
         .collect();
     if section_ids
         != [
-            "display", "audio", "input", "scraper", "theme", "system", "network", "wifi",
+            "display", "audio", "input", "scraper", "theme", "system", "network", "wifi", "power",
         ]
     {
         return Err(format!("unexpected section order: {section_ids:?}"));

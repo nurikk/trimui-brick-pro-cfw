@@ -329,6 +329,7 @@ pub struct PlatformState {
 pub struct HardwareState {
     pub battery_percent: u8,
     pub charging: bool,
+    pub external_power: bool,
     pub storage_mode: StorageMode,
     pub radio_enabled: bool,
     pub radio_connected: bool,
@@ -340,6 +341,7 @@ pub struct HardwareState {
 pub struct HardwareChanges {
     pub battery_percent: Option<u8>,
     pub charging: Option<bool>,
+    pub external_power: Option<bool>,
     pub storage_mode: Option<StorageMode>,
     pub radio_enabled: Option<bool>,
     pub radio_connected: Option<bool>,
@@ -372,6 +374,42 @@ pub trait Platform {
     fn present(&mut self, screen: &Screen) -> PlatformResult<()>;
     fn capture_png(&mut self, path: &Path) -> PlatformResult<()>;
     fn logical_time_ms(&self) -> u64;
+    fn wall_clock_ms(&self) -> u64 {
+        self.logical_time_ms()
+    }
+    fn semantic_clock(&mut self, _monotonic_ms: u64, _wall_clock_ms: u64) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Power,
+            "set semantic clock",
+        ))
+    }
+    fn arm_wake_deadline(&mut self, _deadline: lifecycle::WakeDeadline) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Suspend,
+            "arm typed wake deadline",
+        ))
+    }
+    fn verify_wake_deadline(&self, _deadline: &lifecycle::WakeDeadline) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Suspend,
+            "verify typed wake deadline",
+        ))
+    }
+    fn clear_wake_deadline(&mut self) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Suspend,
+            "clear typed wake deadline",
+        ))
+    }
+    fn request_orderly_shutdown(
+        &mut self,
+        _reason: lifecycle::ShutdownReason,
+    ) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Power,
+            "request typed orderly shutdown",
+        ))
+    }
     fn snapshot(&self) -> PlatformResult<PlatformSnapshot>;
     fn platform_state(&self) -> PlatformResult<PlatformState>;
     fn hardware_state(&self) -> PlatformResult<HardwareState>;

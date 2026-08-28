@@ -125,6 +125,13 @@ pub trait CheckpointHook {
     fn checkpoint(&mut self) -> Result<u64, String>;
 }
 
+struct QuiesceRollback<'a> {
+    snapshot: &'a PlatformState,
+    touched_audio: bool,
+    touched_input: bool,
+    touched_radios: bool,
+}
+
 pub struct LifecycleController {
     phase: LifecyclePhase,
     marker: Option<LifecycleMarker>,
@@ -253,71 +260,44 @@ impl LifecycleController {
         let mut audio = snapshot.audio;
         audio.active = false;
         audio.enabled = false;
-        let mut touched_audio = false;
-        let mut touched_input = false;
-        let mut touched_radios = false;
+        let mut rollback_state = QuiesceRollback {
+            snapshot: &snapshot,
+            touched_audio: false,
+            touched_input: false,
+            touched_radios: false,
+        };
         if fault == Some(LifecycleFault::QuiesceAudio) {
-            return Err(self.quiesce_failed(
-                platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
-                "audio",
-                "injected fault",
-            ));
+            return Err(self.quiesce_failed(platform, &rollback_state, "audio", "injected fault"));
         }
         if let Err(error) = platform.set_audio(audio) {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "audio",
                 &error.to_string(),
             ));
         }
-        touched_audio = true;
+        rollback_state.touched_audio = true;
         self.record("quiesce-audio");
 
         if fault == Some(LifecycleFault::QuiesceInput) {
-            return Err(self.quiesce_failed(
-                platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
-                "input",
-                "injected fault",
-            ));
+            return Err(self.quiesce_failed(platform, &rollback_state, "input", "injected fault"));
         }
         if let Err(error) = platform.set_input(InputState {
             pressed: Vec::new(),
         }) {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "input",
                 &error.to_string(),
             ));
         }
-        touched_input = true;
+        rollback_state.touched_input = true;
         self.record("quiesce-input");
 
         if fault == Some(LifecycleFault::QuiesceRadios) {
-            return Err(self.quiesce_failed(
-                platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
-                "radios",
-                "injected fault",
-            ));
+            return Err(self.quiesce_failed(platform, &rollback_state, "radios", "injected fault"));
         }
         if let Err(error) = platform.set_radios(RadiosState {
             wifi: crate::RadioState {
@@ -331,24 +311,18 @@ impl LifecycleController {
         }) {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "radios",
                 &error.to_string(),
             ));
         }
-        touched_radios = true;
+        rollback_state.touched_radios = true;
         self.record("quiesce-radios");
 
         if fault == Some(LifecycleFault::Suspend) {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "suspend",
                 "injected fault",
             ));
@@ -356,10 +330,7 @@ impl LifecycleController {
         if self.expired(started, timeout) {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "suspend",
                 "deadline expired",
             ));
@@ -368,10 +339,7 @@ impl LifecycleController {
         {
             return Err(self.quiesce_failed(
                 platform,
-                &snapshot,
-                touched_audio,
-                touched_input,
-                touched_radios,
+                &rollback_state,
                 "suspend",
                 &error.to_string(),
             ));
@@ -558,20 +526,11 @@ impl LifecycleController {
     fn quiesce_failed<P: Platform>(
         &mut self,
         platform: &mut P,
-        snapshot: &PlatformState,
-        touched_audio: bool,
-        touched_input: bool,
-        touched_radios: bool,
+        rollback_state: &QuiesceRollback<'_>,
         stage: &'static str,
         reason: &str,
     ) -> LifecycleError {
-        let rollback = rollback(
-            platform,
-            snapshot,
-            touched_audio,
-            touched_input,
-            touched_radios,
-        );
+        let rollback = rollback(platform, rollback_state);
         if let Err(error) = rollback {
             return self.recover(format!("{stage} failed and rollback failed: {error}"));
         }
@@ -609,27 +568,24 @@ impl LifecycleController {
 
 fn rollback<P: Platform>(
     platform: &mut P,
-    snapshot: &PlatformState,
-    touched_audio: bool,
-    touched_input: bool,
-    touched_radios: bool,
+    rollback_state: &QuiesceRollback<'_>,
 ) -> Result<(), String> {
     platform
-        .set_suspend(snapshot.suspend.clone())
+        .set_suspend(rollback_state.snapshot.suspend.clone())
         .map_err(|error| error.to_string())?;
-    if touched_radios {
+    if rollback_state.touched_radios {
         platform
-            .set_radios(snapshot.radios)
+            .set_radios(rollback_state.snapshot.radios)
             .map_err(|error| error.to_string())?;
     }
-    if touched_input {
+    if rollback_state.touched_input {
         platform
-            .set_input(snapshot.input.clone())
+            .set_input(rollback_state.snapshot.input.clone())
             .map_err(|error| error.to_string())?;
     }
-    if touched_audio {
+    if rollback_state.touched_audio {
         platform
-            .set_audio(snapshot.audio)
+            .set_audio(rollback_state.snapshot.audio)
             .map_err(|error| error.to_string())?;
     }
     Ok(())

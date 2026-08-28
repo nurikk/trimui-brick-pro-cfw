@@ -1,0 +1,146 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+
+fail() {
+    printf '%s\n' "docker-isolation-journey: $*" >&2
+    exit 2
+}
+
+for command in docker sha256sum tar awk; do
+    command -v "$command" >/dev/null 2>&1 || fail "$command is required"
+done
+. "$ROOT/scripts/docker-worktree.sh"
+
+TMP_BASE=${TMPDIR:-/tmp}
+case "$TMP_BASE" in
+    "$ROOT"|"$ROOT"/*) fail "TMPDIR must be outside the repository" ;;
+esac
+WORK=$(mktemp -d "$TMP_BASE/trimui-docker-isolation.XXXXXX")
+FIRST=$WORK/first
+SECOND=$WORK/second
+FIRST_RUN=$WORK/first-run
+SECOND_RUN=$WORK/second-run
+FIRST_LOG=$WORK/first-build.log
+SECOND_LOG=$WORK/second-build.log
+mkdir -p "$FIRST" "$SECOND" "$FIRST_RUN" "$SECOND_RUN"
+
+first_name=
+second_name=
+first_namespace=
+second_namespace=
+first_root=
+second_root=
+first_source=
+second_source=
+
+remove_owned_container() {
+    name=$1
+    namespace=$2
+    root_fingerprint=$3
+    source_fingerprint=$4
+    [ -n "$name" ] || return 0
+    identity=$(docker inspect "$name" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.simulator" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) || return 0
+    [ "$identity" = "host-native|$namespace|$root_fingerprint|$source_fingerprint|$namespace" ] || return 0
+    docker rm -f "$name" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+    remove_owned_container "$first_name" "$first_namespace" "$first_root" "$first_source"
+    remove_owned_container "$second_name" "$second_namespace" "$second_root" "$second_source"
+    rm -rf -- "$WORK"
+}
+trap cleanup EXIT HUP INT TERM
+
+copy_worktree() {
+    destination=$1
+    (cd "$ROOT" && tar --exclude=.git --exclude=target -cf - .) | (cd "$destination" && tar -xf -)
+}
+
+copy_worktree "$FIRST"
+copy_worktree "$SECOND"
+first_namespace=$(unset TRIMUI_DOCKER_NAMESPACE; trimui_docker_namespace "$FIRST")
+second_namespace=$(unset TRIMUI_DOCKER_NAMESPACE; trimui_docker_namespace "$SECOND")
+[ "$first_namespace" != "$second_namespace" ] || fail "default namespaces are not distinct"
+first_root=$(trimui_root_fingerprint "$FIRST")
+second_root=$(trimui_root_fingerprint "$SECOND")
+[ "$first_root" != "$second_root" ] || fail "root fingerprints are not distinct"
+first_source=$(trimui_checkout_fingerprint "$FIRST")
+second_source=$(trimui_checkout_fingerprint "$SECOND")
+[ "$first_source" = "$second_source" ] || fail "same source received different fingerprints"
+
+if TRIMUI_DOCKER_NAMESPACE=bad/name trimui_docker_namespace "$ROOT" >/dev/null 2>&1; then
+    fail "unsafe namespace override was accepted"
+fi
+[ "$(TRIMUI_DOCKER_NAMESPACE=journey-override trimui_docker_namespace "$ROOT")" = journey-override ] \
+    || fail "valid namespace override was normalized or rejected"
+
+(
+    unset TRIMUI_DOCKER_NAMESPACE
+    "$FIRST/scripts/sim" build >"$FIRST_LOG" 2>&1
+) &
+first_build=$!
+(
+    unset TRIMUI_DOCKER_NAMESPACE
+    "$SECOND/scripts/sim" build >"$SECOND_LOG" 2>&1
+) &
+second_build=$!
+wait "$first_build" || { cat "$FIRST_LOG" >&2; fail "first worktree image build failed"; }
+wait "$second_build" || { cat "$SECOND_LOG" >&2; fail "second worktree image build failed"; }
+
+first_image=trimui-brick-pro-cfw-simulator:${first_namespace}
+second_image=trimui-brick-pro-cfw-simulator:${second_namespace}
+first_image_identity=$(docker image inspect "$first_image" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}')
+second_image_identity=$(docker image inspect "$second_image" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}')
+[ "$first_image_identity" = "$first_namespace|$first_root|$first_source|$first_namespace" ] || fail "first image labels are not exact"
+[ "$second_image_identity" = "$second_namespace|$second_root|$second_source|$second_namespace" ] || fail "second image labels are not exact"
+[ "$first_image" != "$second_image" ] || fail "image tags are not distinct"
+
+first_run_real=$(CDPATH= cd -- "$FIRST_RUN" && pwd -P)
+second_run_real=$(CDPATH= cd -- "$SECOND_RUN" && pwd -P)
+first_name=$(printf '%s' "$first_run_real" | cksum | awk -v docker_ns="$first_namespace" '{print "trimui-sim-" docker_ns "-" $1}')
+second_name=$(printf '%s' "$second_run_real" | cksum | awk -v docker_ns="$second_namespace" '{print "trimui-sim-" docker_ns "-" $1}')
+[ "$first_name" != "$second_name" ] || fail "container names are not distinct"
+
+(
+    unset TRIMUI_DOCKER_NAMESPACE
+    "$FIRST/scripts/sim" run --backend=dummy --run-dir "$FIRST_RUN" --wait-ready 30 --detach
+) &
+first_run_pid=$!
+(
+    unset TRIMUI_DOCKER_NAMESPACE
+    "$SECOND/scripts/sim" run --backend=dummy --run-dir "$SECOND_RUN" --wait-ready 30 --detach
+) &
+second_run_pid=$!
+wait "$first_run_pid" || fail "first simulator run failed"
+wait "$second_run_pid" || fail "second simulator run failed"
+first_container_identity=$(docker inspect "$first_name" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.simulator" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}')
+second_container_identity=$(docker inspect "$second_name" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.simulator" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}')
+[ "$first_container_identity" = "host-native|$first_namespace|$first_root|$first_source|$first_namespace" ] || fail "first container labels are not exact"
+[ "$second_container_identity" = "host-native|$second_namespace|$second_root|$second_source|$second_namespace" ] || fail "second container labels are not exact"
+
+unset TRIMUI_DOCKER_NAMESPACE
+"$FIRST/scripts/simctl" --socket "$FIRST_RUN/control.sock" state >/dev/null
+"$SECOND/scripts/simctl" --socket "$SECOND_RUN/control.sock" state >/dev/null
+"$FIRST/scripts/simctl" --socket "$FIRST_RUN/control.sock" presentation --action games >/dev/null
+"$SECOND/scripts/simctl" --socket "$SECOND_RUN/control.sock" presentation --action systems >/dev/null
+if (TRIMUI_DOCKER_NAMESPACE="$second_namespace" "$FIRST/scripts/simctl" --socket "$SECOND_RUN/control.sock" state >/dev/null 2>&1); then
+    fail "cross-worktree simulator acceptance succeeded"
+fi
+
+"$FIRST/scripts/sim" stop --run-dir "$FIRST_RUN" --wait-ready 30
+[ "$(docker inspect "$second_name" --format '{{.State.Running}}')" = true ] || fail "selective cleanup affected peer container"
+"$SECOND/scripts/simctl" --socket "$SECOND_RUN/control.sock" state >/dev/null
+"$SECOND/scripts/sim" stop --run-dir "$SECOND_RUN" --wait-ready 30
+
+owned_count() {
+    docker ps -aq \
+        --filter 'label=org.trimui-brick-pro-cfw.simulator=host-native' \
+        --filter "label=org.trimui-brick-pro-cfw.worktree=$1" |
+        awk 'NF { count += 1 } END { print count + 0 }'
+}
+[ "$(owned_count "$first_namespace")" -eq 0 ] || fail "first namespace still owns containers"
+[ "$(owned_count "$second_namespace")" -eq 0 ] || fail "second namespace still owns containers"
+
+printf '%s\n' "docker isolation journey passed: distinct namespaces, images, containers, exact labels, cross-worktree rejection, selective cleanup, and zero owned containers"

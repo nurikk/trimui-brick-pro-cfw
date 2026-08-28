@@ -10,8 +10,14 @@ three deterministic generated-input archives.
 
 Docker, Python 3, `dash`, `file`, `readelf`, `sha256sum`, `jq`, and `tar` must
 be installed. The baseline image and QEMU-user image are built from the
-repository's digest/version-pinned Dockerfiles. Image acquisition is the only
-network-capable setup step:
+repository's digest/version-pinned Dockerfiles. Their tags, cache scopes, and
+ownership labels use the deterministic namespace from the resolved physical
+checkout root. Set `TRIMUI_DOCKER_NAMESPACE` only to an exact 1–48 character
+lowercase alphanumeric/hyphen value starting and ending alphanumeric; it is
+rejected rather than normalized when invalid. Every run requires exact current
+root/source fingerprints and the pinned build-definition or QEMU-lock
+fingerprint, so a peer, stale tag, or source change fails closed until rebuilt.
+Image acquisition is the only network-capable setup step:
 
 ```sh
 ./scripts/build image
@@ -64,8 +70,8 @@ The deterministic report is
 `trimui-tg4040-qemu-aarch64-evidence/v1`. It contains exact archive, manifest,
 checksum and build-info SHA-256/size identities; ELF static/loader/dependency
 and QEMU-start records; shell, filesystem, package and semantic-journey
-results; generated-input names; image/base/lock/toolchain identity; cleanup
-status; and the evidence-scope statement:
+results; generated-input names; runtime-only sanitized namespace/root/source
+fingerprint, base/lock/toolchain identity; cleanup status; and the evidence-scope statement:
 
 > QEMU user mode here proves aarch64 ISA/ABI process startup or static
 > behavior, userspace filesystem/package/shell boundary and project semantic

@@ -851,7 +851,7 @@ fn write_file(path: &Path, bytes: &[u8], file_mode: u32) -> Result<(), ResumeErr
         .open(path)
         .map_err(error)?;
     fs::set_permissions(path, fs::Permissions::from_mode(file_mode)).map_err(error)?;
-    file.write_all(bytes).map_err(error)?
+    file.write_all(bytes).map_err(error)?;
     file.sync_all().map_err(error)
 }
 

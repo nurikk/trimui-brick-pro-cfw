@@ -9,9 +9,10 @@ mount, source-path, catalog-path, or content-path operation.
 
 ## Host CLI
 
-Use the host shim; it validates the resolved run directory, label, `/evidence`
-mount, and running container before using `docker exec --user 10001:10001`. It never weakens the socket
-permissions.
+Use the host shim; it validates the resolved run directory, the exact simulator,
+namespace, root/source-fingerprint, and cache-scope labels, `/evidence` mount,
+and running container before using `docker exec --user 10001:10001`. A socket
+from a peer worktree is rejected. It never weakens the socket permissions.
 
 ```sh
 scripts/simctl --socket "$RUN/control.sock" wait-ready --timeout 30
@@ -109,4 +110,5 @@ UID/GID 10001:10001. Regular evidence directories are caller-cleanable;
 `control.sock` is explicitly mode 0660 and is not world-writable. `scripts/sim stop` verifies the container identity and
 `/evidence` mount before stopping it, requires a clean shutdown record, and
 requires that `control.sock` is gone. `clean-run` removes only known simulator
-artifact directories/files.
+artifact directories/files and only the exact current-worktree container; it does
+not perform global label cleanup.

@@ -21,10 +21,13 @@ components, and BusyBox. Build the labeled image once before a release build:
 
 The helper computes a SHA-256 over the Dockerfile, `Cargo.lock`, Cargo
 configuration, root manifest, and every workspace crate manifest, then passes
-that digest as `BUILD_DEFINITION_SHA256`. The Dockerfile records both that
-label and the immutable Rust base-image digest. A release build fails closed
-when the local tag is missing or has either stale/missing label; it never
-silently rebuilds or accepts a mutable tag.
+that digest as `BUILD_DEFINITION_SHA256`. The scripts also derive a deterministic
+namespace from the resolved physical checkout root and label the image with the
+namespace, root fingerprint, source fingerprint, and cache scope. A release
+build fails closed when the local namespaced tag is missing, foreign, or has any
+stale/missing fingerprint or build-definition label; it never silently rebuilds
+or accepts a mutable tag. These runtime identities are deliberately absent from
+release files, manifests, build-info, checksums, SPDX, and payload bytes.
 
 That setup step may download the pinned Rust components and exact Debian
 BusyBox package. The compilation itself is offline: the source is mounted
@@ -173,10 +176,12 @@ Outputs are caller-owned. After inspection, remove only the external output:
 rm -rf -- "$OUT" "$OUT2"
 ```
 
-To remove a locally built image without touching the repository:
+To remove the locally built image for this checkout without touching the repository:
 
 ```sh
-docker image rm trimui-brick-pro-cfw-baseline:local
+. scripts/docker-worktree.sh
+NS=$(trimui_docker_namespace "$PWD")
+docker image rm "trimui-brick-pro-cfw-baseline:$NS"
 ```
 
 There is no device rollback procedure for this candidate because no device

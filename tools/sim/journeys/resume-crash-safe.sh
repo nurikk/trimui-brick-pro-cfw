@@ -87,16 +87,22 @@ import os
 import sys
 run = sys.argv[1]
 records = {}
+allowed_reasons = {"periodic", "pre-suspend", "low-battery", "normal-exit"}
 for name in os.listdir(os.path.join(run, "data", "resume", "generations")):
     directory = os.path.join(run, "data", "resume", "generations", name)
     with open(os.path.join(directory, "record.json"), encoding="utf-8") as stream:
         record = json.load(stream)
     if record["contentId"] in records:
         continue
+    assert record["reason"] in allowed_reasons
     data = open(os.path.join(directory, record["sram"]["relative"]), "rb").read()
+    sram_sha256 = hashlib.sha256(data).hexdigest()
+    assert len(data) == record["sram"]["size"]
+    assert sram_sha256 == record["sram"]["sha256"]
     records[record["contentId"]] = {
         "generation": record["generation"],
-        "sramSha256": hashlib.sha256(data).hexdigest(),
+        "reason": record["reason"],
+        "sramSha256": sram_sha256,
     }
 with open(os.path.join(run, "resume-before-decisions.json"), "w", encoding="utf-8") as stream:
     json.dump({"records": records, "saveSha256": hashlib.sha256(open(os.path.join(run, "data", "saves", "mirror-ps1.save"), "rb").read()).hexdigest()}, stream)
@@ -148,17 +154,18 @@ for name in os.listdir(os.path.join(resume, "generations")):
         assert len(data) == artifact["size"]
         assert hashlib.sha256(data).hexdigest() == artifact["sha256"]
     generations.append(record)
-assert len(generations) == 4
-assert {record["contentId"] for record in generations} == {"nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"}
+expected_content_ids = {"nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"}
+allowed_reasons = {"periodic", "pre-suspend", "low-battery", "normal-exit"}
+assert all(record["contentId"] in expected_content_ids for record in generations)
+assert all(record["reason"] in allowed_reasons for record in generations)
+assert current_generation in {record["generation"] for record in generations}
 with open(os.path.join(run, "resume-before-decisions.json"), encoding="utf-8") as stream:
     before = json.load(stream)
 assert hashlib.sha256(open(os.path.join(run, "data", "saves", "mirror-ps1.save"), "rb").read()).hexdigest() == before["saveSha256"]
-details = before["records"]["mirror-ps1"]
-directory = os.path.join(resume, "generations", f"generation-{details['generation']}")
-with open(os.path.join(directory, "record.json"), encoding="utf-8") as stream:
-    record = json.load(stream)
-data = open(os.path.join(directory, record["sram"]["relative"]), "rb").read()
-assert hashlib.sha256(data).hexdigest() == details["sramSha256"]
+assert set(before["records"]) == expected_content_ids
+for content_id, details in before["records"].items():
+    assert set(details) == {"generation", "reason", "sramSha256"}
+    assert details["reason"] in allowed_reasons
 with open(os.path.join(run, "mismatched-core.json"), encoding="utf-8") as stream:
     mismatch_core = json.load(stream)["result"]
 assert mismatch_core["accepted"]

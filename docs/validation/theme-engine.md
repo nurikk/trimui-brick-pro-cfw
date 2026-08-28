@@ -1,93 +1,53 @@
 # Theme engine validation
 
-All commands below run from the repository root. Evidence output belongs in a
-fresh caller-owned directory under `/tmp`; it is not a repository artifact.
-
-## Static checks
-
-The workspace lockfile must include the new independent package. The
-repository's existing provenance inventory pins the pre-change lockfile hash;
-updating that inventory is intentionally outside this ticket's ownership
-boundary, so the provenance checks must be rerun after that separately approved
-inventory update.
+Run from the repository root. Evidence is temporary and belongs under `/tmp`.
+This checkout does not provide a Cargo executable, so Rust commands are
+currently unsupported here.
 
 ```sh
 cargo fmt --check
 cargo clippy --locked -p launcher-theme -- -D warnings
+cargo test --locked -p launcher-theme
 cargo build --locked -p launcher-theme --release
-python3 -m json.tool schemas/theme-v1.schema.json >/dev/null
-for f in themes/default/theme.json themes/samples/*/theme.json; do
-  python3 -m json.tool "$f" >/dev/null
- done
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/provenance.py check
-scripts/test-provenance
-git diff --check
 ```
 
-## Deterministic generated journey
+The focused test boundary covers v1 fallback, native v2 PNG validation, XML
+import and reload, catalog locator and remote-package loading, renderer PNG
+dimensions, bounded traversal/XML work, and script/traversal rejection. The importer subset is deliberately small: UTF-8
+XML, literal `formatVersion="4"`, `theme`, `view`, `image`, `text`, and
+`textlist`; scalar `name`, `path`, `pos`, `size`, `color`, `fontSize`, and
+`text`; integer pixel geometry; `#RRGGBB`; relative PNG assets. Unknown
+ elements/properties, includes, entities, variables, scripts, commands, URLs,
+archives, duplicate components/properties, symlinks, unsafe paths, unsupported
+encodings, corrupt images, and resource exhaustion must fail.
+
+`ThemesCatalog` also accepts the documented Batocera `themes.json` envelope
+(`data` records with `theme`, `author`, `theme_url`, `last_update`,
+`up_to_date`, `size`, and `screenshot`) plus the local fixture form. It validates metadata and locators. `DirectCatalogTransport` performs bounded
+HTTPS retrieval with curl and maps GitHub repository locators to raw `main`
+branch files; `ThemeGarden` remote selection fetches native `theme.json` and
+its declared PNGs through this path. Local selection is bounded to a
+caller-provided fixture root.
 
 ```sh
 EVIDENCE_DIR="$(mktemp -d /tmp/launcher-theme.XXXXXX)"
 cargo run --locked -p launcher-theme --release -- demo --output "$EVIDENCE_DIR"
-python3 - "$EVIDENCE_DIR" <<'PY'
-import json, pathlib, struct, sys
-root = pathlib.Path(sys.argv[1])
-summary = json.loads((root / "summary.json").read_text())
-assert len(summary) == 3
-for item in summary:
-    png = root / pathlib.Path(item["png"]).name
-    scene = root / pathlib.Path(item["scene"]).name
-    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert struct.unpack(">II", png.read_bytes()[16:24]) == (1024, 768)
-    value = json.loads(scene.read_text())
-    assert {r["kind"] for r in value["regions"]} == {
-        "system-art", "game-list", "box-art-placeholder", "screenshot-placeholder",
-        "metadata", "menu", "help-strip", "clock", "battery"
-    }
-    assert value["settings"]["artworkMode"] in {"system-art", "box-art", "screenshot"}
-print("three deterministic scenes and PNG dimensions verified")
-PY
+cargo run --locked -p launcher-theme --release -- import \
+  --theme fixtures/theme-import/owned-a --output "$EVIDENCE_DIR/owned-a"
+cargo run --locked -p launcher-theme --release -- catalog \
+  --catalog fixtures/theme-import/themes.json
 ```
 
-Run the command again into a second temporary directory and compare the scene
-JSON and PNG SHA-256 values. The geometry renderer is deterministic and uses
-only synthetic metadata, so both runs must match byte-for-byte.
+The demo renders `themes/default` plus two distinct project-authored imported
+fixtures. `preview` is the safe fallback path; `validate` and `import` are
+strict. Inspect PNGs as 1024x768 images. The native renderer uses the validated
+component scene and decoded PNG assets at the host presentation boundary; it
+does not execute theme content or silently turn unsupported XML into diagnostic
+rectangles.
 
-## Fallback and negative cases
-
-`preview` is the safe integration path. It always emits `result.json`,
-`scene.json`, and `preview.png`; invalid input has `fallback: true`,
-`theme: "Artbook"`, and a stable kebab-case `reason`. `validate` is the strict
-path and exits nonzero. For example:
-
-```sh
-cargo run --locked -p launcher-theme --release -- preview \
-  --theme /tmp/not-a-theme --output "$EVIDENCE_DIR/missing"
-```
-
-A generated negative-case harness should copy a valid `theme.json`, then test
-malformed JSON, a duplicate key, an unknown `script` field, an absolute or
-parent resource value, a symlink, an unsupported non-JSON file, oversized JSON
-or resource declarations, and invalid setting/layout enum or value. Invoke
-`preview` for each copy and assert the result has the Artbook fallback and the
-expected reason; invoke `validate` to assert nonzero rejection. This exercises
-both the file boundary and the parser without adding test fixtures or assets
-inside the repository.
-
-## Evidence limits
-
-Native host output is a **host-native userspace simulator**-style logical
-renderer result only. It demonstrates parser behavior, semantic scene data,
-deterministic output, and PNG dimensions. It does not prove display, GPU,
-input, battery, audio, performance, board, or device behavior.
-
-If the checked-in target is installed, run:
-
-```sh
-cargo build --locked -p launcher-theme --release --target aarch64-unknown-linux-musl
-file target/aarch64-unknown-linux-musl/release/launcher-theme
-```
-
-That is compiler/ISA-only evidence. A missing target must be reported rather
-than installed. Neither host rendering nor static AArch64 output is physical
-TG4040 hardware-in-loop proof; no HIL claim is made by this ticket.
+Theme Garden validates native v2 and imported output with the same loader for
+preview, activation, and fallback. Existing package lifecycle remains atomic.
+Host-native screenshots are simulator evidence only: they do not establish
+physical display, GPU, performance, input, board, device, or TG4040 HIL
+behavior. No universal EmulationStation, Batocera, or KNULLI compatibility is
+claimed.

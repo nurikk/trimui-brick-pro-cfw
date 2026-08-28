@@ -38,6 +38,43 @@ fn run() -> Result<(), String> {
             reject_extra(&mut args)?;
             render_preview(Some(&theme), &output)
         }
+        Some("catalog") => {
+            let catalog = required_path(&mut args, "--catalog")?;
+            reject_extra(&mut args)?;
+            let parsed = launcher_theme::ThemesCatalog::parse(
+                &fs::read(catalog).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            println!(
+                "{}",
+                String::from_utf8(serialize_json(&parsed).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?
+            );
+            Ok(())
+        }
+        Some("import") => {
+            let theme = required_path(&mut args, "--theme")?;
+            let output = required_path(&mut args, "--output")?;
+            reject_extra(&mut args)?;
+            let imported =
+                launcher_theme::import_es_theme_dir(&theme).map_err(|error| error.to_string())?;
+            imported
+                .write_native_dir(&theme, &output)
+                .map_err(|error| error.to_string())?;
+            fs::write(
+                output.join("compatibility-report.json"),
+                serialize_json(&imported.report).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            println!(
+                "{}",
+                String::from_utf8(
+                    serialize_json(&imported.report).map_err(|error| error.to_string())?
+                )
+                .map_err(|error| error.to_string())?
+            );
+            Ok(())
+        }
         Some("demo") => {
             let output = required_path(&mut args, "--output")?;
             let mut themes = Vec::new();
@@ -50,8 +87,8 @@ fn run() -> Result<(), String> {
             if themes.is_empty() {
                 themes = vec![
                     PathBuf::from("themes/default"),
-                    PathBuf::from("themes/samples/high-contrast"),
-                    PathBuf::from("themes/samples/minimal"),
+                    PathBuf::from("fixtures/theme-import/owned-a"),
+                    PathBuf::from("fixtures/theme-import/owned-b"),
                 ];
             }
             fs::create_dir_all(&output).map_err(|error| error.to_string())?;
@@ -86,7 +123,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Some(command) => Err(format!("unknown command: {command}")),
-        None => Err("usage: launcher-theme validate|preview|demo".into()),
+        None => Err("usage: launcher-theme validate|preview|import|catalog|demo".into()),
     }
 }
 

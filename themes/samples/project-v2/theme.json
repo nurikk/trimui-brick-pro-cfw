@@ -149,19 +149,19 @@
   "assets": {
     "background": {
       "path": "assets/art.png",
-      "maxBytes": 1048576
+      "maxBytes": 4194304
     },
     "systemArt": {
       "path": "assets/art.png",
-      "maxBytes": 1048576
+      "maxBytes": 4194304
     },
     "boxArt": {
-      "path": "assets/box-art.png",
-      "maxBytes": 1048576
+      "path": "assets/art.png",
+      "maxBytes": 4194304
     },
     "screenshot": {
-      "path": "assets/screenshot.png",
-      "maxBytes": 1048576
+      "path": "assets/art.png",
+      "maxBytes": 4194304
     }
   },
   "components": [
@@ -181,7 +181,7 @@
       "y": 72,
       "width": 560,
       "height": 52,
-      "text": "Artbook",
+      "text": "Project Vector",
       "color": "#EDF2FA",
       "fontSize": 42
     },

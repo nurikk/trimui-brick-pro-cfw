@@ -1,4 +1,4 @@
-use std::{fmt, fs, path::Path};
+use std::{fmt, fs, path::Path, sync::OnceLock};
 
 use png::{BitDepth, ColorType, Encoder};
 use sdl2::{pixels::PixelFormatEnum, rect::Rect, render::Canvas, video::Window, Sdl};
@@ -366,29 +366,9 @@ impl Platform for HostPlatform {
             self.canvas.present();
             return Ok(());
         }
-        self.canvas.set_draw_color(rgb(screen.palette.background));
-        self.canvas.clear();
-        for region in &screen.regions {
-            if !region.visible {
-                continue;
-            }
-            let fill = match region.kind.as_str() {
-                "system-art" => screen.palette.accent,
-                "game-list" | "menu" => screen.palette.surface,
-                "metadata" | "help-strip" => screen.palette.muted,
-                "clock" | "battery" => screen.palette.highlight,
-                _ => screen.palette.text,
-            };
-            self.canvas.set_draw_color(rgb(fill));
-            self.canvas
-                .fill_rect(Rect::new(
-                    i32::from(region.x),
-                    i32::from(region.y),
-                    u32::from(region.width),
-                    u32::from(region.height),
-                ))
-                .map_err(backend_error)?;
-        }
+        draw_backdrop(&mut self.canvas, screen);
+        draw_theme_components(&mut self.canvas, screen)?;
+        draw_theme_media(&mut self.canvas, screen)?;
         draw_text(
             &mut self.canvas,
             48,
@@ -427,37 +407,52 @@ impl Platform for HostPlatform {
             draw_wifi(&mut self.canvas, screen);
         } else if screen.route.starts_with("scraper-") {
             draw_scraper(&mut self.canvas, screen);
+        } else if screen.route == "game-switcher"
+            || screen.route == "recovery"
+            || is_auxiliary_route(&screen.route)
+        {
+            draw_route_surface(&mut self.canvas, screen);
         } else {
             draw_catalog(&mut self.canvas, screen);
         }
         if let Some(modal) = &screen.modal {
+            let dialog = Rect::new(160, 174, 704, 340);
             self.canvas.set_draw_color(rgb(screen.palette.background));
-            self.canvas
-                .fill_rect(Rect::new(180, 190, 664, 300))
-                .map_err(backend_error)?;
+            self.canvas.fill_rect(dialog).map_err(backend_error)?;
+            self.canvas.set_draw_color(rgb(screen.palette.highlight));
+            self.canvas.draw_rect(dialog).map_err(backend_error)?;
+            draw_text(&mut self.canvas, 208, 240, modal, screen.palette.text, 2);
+            for (index, binding) in screen.controller_help.iter().take(2).enumerate() {
+                draw_text(
+                    &mut self.canvas,
+                    208 + index as i32 * 260,
+                    432,
+                    &binding.label,
+                    screen.palette.highlight,
+                    1,
+                );
+            }
+        }
+        let mut help_x = 48;
+        for binding in screen.controller_help.iter().take(5) {
+            let label = button_label(binding.button);
+            draw_controller_badge(
+                &mut self.canvas,
+                help_x,
+                704,
+                screen.palette.highlight,
+                label,
+            );
             draw_text(
                 &mut self.canvas,
-                224,
-                236,
-                "MODAL",
-                screen.palette.highlight,
-                3,
+                help_x + 78,
+                709,
+                &binding.label,
+                screen.palette.text,
+                1,
             );
-            draw_text(&mut self.canvas, 224, 292, modal, screen.palette.text, 2);
+            help_x += 180;
         }
-        draw_text(
-            &mut self.canvas,
-            48,
-            706,
-            &screen
-                .controller_help
-                .iter()
-                .map(|binding| format!("{}:{}", button_label(binding.button), binding.label))
-                .collect::<Vec<_>>()
-                .join("  "),
-            screen.palette.text,
-            2,
-        );
         self.canvas.present();
         Ok(())
     }
@@ -713,10 +708,176 @@ fn rgb(color: [u8; 4]) -> sdl2::pixels::Color {
     sdl2::pixels::Color::RGBA(color[0], color[1], color[2], color[3])
 }
 
+fn draw_backdrop(canvas: &mut Canvas<Window>, screen: &Screen) {
+    canvas.set_draw_color(rgb(screen.palette.background));
+    canvas.clear();
+}
+
+fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
+    for component in &screen.theme.components {
+        let bounds = Rect::new(
+            i32::from(component.bounds.x),
+            i32::from(component.bounds.y),
+            u32::from(component.bounds.width),
+            u32::from(component.bounds.height),
+        );
+        let color = component
+            .color
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(screen.palette.text);
+        let point_size = component.font_size.unwrap_or(16);
+        let line_height = i32::from(point_size).saturating_add(4);
+        match component.kind.as_str() {
+            "image" => {
+                let Some(path) = component.path.as_deref() else {
+                    continue;
+                };
+                let Some(asset) = screen.theme.assets.iter().find(|asset| asset.path == path)
+                else {
+                    continue;
+                };
+                draw_theme_asset(canvas, asset.width, asset.height, &asset.pixels, bounds)?;
+            }
+            "text" => {
+                if let Some(text) = &component.text {
+                    draw_text_in_bounds(canvas, bounds, text, color, point_size);
+                }
+            }
+            "textlist" => {
+                if let Some(text) = &component.text {
+                    draw_text_in_bounds(canvas, bounds, text, color, point_size);
+                }
+                let items = if screen.game_rows.is_empty() {
+                    &screen.menu
+                } else {
+                    &screen.game_rows
+                };
+                for (index, item) in items
+                    .iter()
+                    .take((bounds.height() as i32 / line_height) as usize)
+                    .enumerate()
+                {
+                    let item_color = if item.selected {
+                        screen.palette.highlight
+                    } else {
+                        color
+                    };
+                    let row = Rect::new(
+                        bounds.x(),
+                        bounds.y() + line_height * (index as i32 + 1),
+                        bounds.width(),
+                        line_height.max(1) as u32,
+                    );
+                    draw_text_in_bounds(canvas, row, &item.label, item_color, point_size);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn draw_theme_media(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
+    for region in &screen.regions {
+        let path_hint = match region.kind.as_str() {
+            "box-art-placeholder" => "box-art",
+            "screenshot-placeholder" => "screenshot",
+            _ => continue,
+        };
+        let asset = screen
+            .theme
+            .assets
+            .iter()
+            .find(|asset| asset.path.contains(path_hint))
+            .or_else(|| screen.theme.assets.first());
+        if let Some(asset) = asset {
+            draw_theme_asset(
+                canvas,
+                asset.width,
+                asset.height,
+                &asset.pixels,
+                Rect::new(
+                    i32::from(region.x),
+                    i32::from(region.y),
+                    u32::from(region.width),
+                    u32::from(region.height),
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn draw_theme_asset(
+    canvas: &mut Canvas<Window>,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    bounds: Rect,
+) -> PlatformResult<()> {
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::RGBA8888, width, height)
+        .map_err(backend_error)?;
+    texture
+        .update(None, pixels, (width * 4) as usize)
+        .map_err(backend_error)?;
+    canvas.copy(&texture, None, bounds).map_err(backend_error)
+}
+
+fn parse_hex_color(value: &str) -> Option<[u8; 4]> {
+    if value.len() != 7 || !value.starts_with('#') {
+        return None;
+    }
+    Some([
+        u8::from_str_radix(&value[1..3], 16).ok()?,
+        u8::from_str_radix(&value[3..5], 16).ok()?,
+        u8::from_str_radix(&value[5..7], 16).ok()?,
+        255,
+    ])
+}
+
+fn is_auxiliary_route(route: &str) -> bool {
+    [
+        "theme-garden",
+        "save-vault",
+        "save-sync",
+        "portmaster",
+        "update",
+        "modal",
+        "modals",
+        "fault",
+        "settings-form",
+    ]
+    .iter()
+    .any(|prefix| route == *prefix || route.starts_with(&format!("{prefix}-")))
+}
+
+fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
+    draw_text(canvas, 64, 112, &screen.title, screen.palette.highlight, 3);
+    draw_text(
+        canvas,
+        64,
+        158,
+        &screen.selected_label,
+        screen.palette.text,
+        2,
+    );
+    draw_text(canvas, 64, 208, &screen.focus, screen.palette.muted, 1);
+    draw_text(canvas, 64, 250, &screen.route, screen.palette.text, 1);
+}
+
 fn draw_splash(canvas: &mut Canvas<Window>, screen: &Screen) {
-    draw_text(canvas, 332, 250, "ARTBOOK", screen.palette.accent, 8);
-    draw_text(canvas, 350, 360, "GENERATED SPLASH", screen.palette.text, 3);
-    draw_text(canvas, 368, 420, &screen.splash, screen.palette.muted, 2);
+    draw_text(
+        canvas,
+        332,
+        250,
+        &screen.theme.theme,
+        screen.palette.accent,
+        6,
+    );
+    draw_text(canvas, 368, 360, &screen.splash, screen.palette.muted, 2);
 }
 
 fn draw_fallback(canvas: &mut Canvas<Window>, screen: &Screen) {
@@ -724,17 +885,9 @@ fn draw_fallback(canvas: &mut Canvas<Window>, screen: &Screen) {
         canvas,
         292,
         238,
-        "SAFE FALLBACK",
+        &screen.theme.theme,
         screen.palette.highlight,
         5,
-    );
-    draw_text(
-        canvas,
-        330,
-        330,
-        "GENERATED CONTENT",
-        screen.palette.text,
-        3,
     );
     draw_text(canvas, 360, 400, &screen.splash, screen.palette.muted, 2);
     if let Some(reason) = &screen.theme_fallback {
@@ -758,14 +911,36 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
     } else {
         &screen.game_rows
     };
-    for (index, item) in items.iter().take(8).enumerate() {
-        let y = 92 + index as i32 * 26;
-        let color = if item.selected {
-            screen.palette.highlight
-        } else {
-            screen.palette.text
-        };
-        draw_text(canvas, 448, y, &item.label, color, 2);
+    let has_theme_textlist = screen
+        .theme
+        .components
+        .iter()
+        .any(|component| component.kind == "textlist");
+    if !has_theme_textlist {
+        for (index, item) in items.iter().take(8).enumerate() {
+            let y = 92 + index as i32 * 26;
+            let color = if item.selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            };
+            draw_text(canvas, 448, y, &item.label, color, 2);
+        }
+    } else {
+        for (index, item) in screen.menu.iter().take(4).enumerate() {
+            let color = if item.selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            };
+            draw_text_in_bounds(
+                canvas,
+                Rect::new(48 + index as i32 * 230, 600, 210, 32),
+                &item.label,
+                color,
+                16,
+            );
+        }
     }
     if let Some(game) = &screen.selected_game {
         draw_text(canvas, 548, 372, &game.title, screen.palette.text, 3);
@@ -777,22 +952,13 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
             if game.favorite { "  favorite" } else { "" }
         );
         draw_text(canvas, 548, 468, &metadata, screen.palette.highlight, 2);
-        draw_text(canvas, 62, 372, "BOX ART", screen.palette.background, 3);
-        draw_text(canvas, 260, 404, "SCREENSHOT", screen.palette.background, 2);
     }
     if let Some(fallback) = &screen.theme_fallback {
-        draw_text(
-            canvas,
-            64,
-            612,
-            &format!("SAFE FALLBACK {fallback}"),
-            screen.palette.highlight,
-            2,
-        );
+        draw_text(canvas, 64, 612, fallback, screen.palette.highlight, 2);
     }
     if screen.group_jump.visible {
         let current = screen.group_jump.current.as_deref().unwrap_or("…");
-        let target = screen.group_jump.target.as_deref().unwrap_or("EDGE");
+        let target = screen.group_jump.target.as_deref().unwrap_or("");
         draw_text(
             canvas,
             64,
@@ -844,22 +1010,15 @@ fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
             y += 30;
         }
         if let Some(keyboard) = &wifi.keyboard {
-            let label = if keyboard.masked {
-                "PASSWORD •••"
+            let value = if keyboard.masked {
+                "•••"
             } else {
-                "NETWORK NAME"
+                screen.selected_label.as_str()
             };
-            draw_text(canvas, 64, 560, label, screen.palette.highlight, 3);
+            draw_text(canvas, 64, 560, value, screen.palette.highlight, 3);
         }
         if wifi.open_confirmation {
-            draw_text(
-                canvas,
-                64,
-                610,
-                "CONFIRM OPEN NETWORK",
-                screen.palette.highlight,
-                2,
-            );
+            draw_text(canvas, 64, 610, &screen.focus, screen.palette.highlight, 2);
         }
     }
 }
@@ -868,14 +1027,7 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
     let scraper = &screen.scraper;
     canvas.set_draw_color(rgb(screen.palette.background));
     let _ = canvas.fill_rect(Rect::new(32, 72, 960, 610));
-    draw_text(
-        canvas,
-        64,
-        104,
-        "BULK COVER SCRAPER",
-        screen.palette.highlight,
-        3,
-    );
+    draw_text(canvas, 64, 104, &screen.title, screen.palette.highlight, 3);
     draw_text(
         canvas,
         64,
@@ -938,7 +1090,7 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
             canvas,
             64,
             326,
-            "RUNNING IN BACKGROUND",
+            &scraper.status,
             screen.palette.highlight,
             2,
         );
@@ -1005,168 +1157,93 @@ fn button_label(button: ui_model::Button) -> &'static str {
     }
 }
 
-fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
-    let mut cursor = x;
-    for character in text.chars().take(72) {
-        if character == ' ' {
-            cursor += 6 * scale;
-            continue;
-        }
-        let glyph = glyph(character);
-        canvas.set_draw_color(rgb(color));
-        for (row, line) in glyph.iter().enumerate() {
-            for (column, value) in line.bytes().enumerate() {
-                if value == b'#' {
-                    let _ = canvas.fill_rect(Rect::new(
-                        cursor + column as i32 * scale,
-                        y + row as i32 * scale,
-                        scale as u32,
-                        scale as u32,
-                    ));
-                }
-            }
-        }
-        cursor += 6 * scale;
-    }
+fn ttf_context() -> Option<&'static sdl2::ttf::Sdl2TtfContext> {
+    static CONTEXT: OnceLock<Option<sdl2::ttf::Sdl2TtfContext>> = OnceLock::new();
+    CONTEXT.get_or_init(|| sdl2::ttf::init().ok()).as_ref()
 }
 
-fn glyph(character: char) -> [&'static str; 7] {
-    match character.to_ascii_uppercase() {
-        'A' => [
-            ".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
-        ],
-        'B' => [
-            "####.", "#...#", "#...#", "####.", "#...#", "#...#", "####.",
-        ],
-        'C' => [
-            ".####", "#....", "#....", "#....", "#....", "#....", ".####",
-        ],
-        'D' => [
-            "####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####.",
-        ],
-        'E' => [
-            "#####", "#....", "#....", "####.", "#....", "#....", "#####",
-        ],
-        'F' => [
-            "#####", "#....", "#....", "####.", "#....", "#....", "#....",
-        ],
-        'G' => [
-            ".####", "#....", "#....", "#.###", "#...#", "#...#", ".###.",
-        ],
-        'H' => [
-            "#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
-        ],
-        'I' => [
-            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####",
-        ],
-        'J' => [
-            "..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##..",
-        ],
-        'K' => [
-            "#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#",
-        ],
-        'L' => [
-            "#....", "#....", "#....", "#....", "#....", "#....", "#####",
-        ],
-        'M' => [
-            "#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#",
-        ],
-        'N' => [
-            "#...#", "##..#", "##..#", "#.#.#", "#..##", "#..##", "#...#",
-        ],
-        'O' => [
-            ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
-        ],
-        'P' => [
-            "####.", "#...#", "#...#", "####.", "#....", "#....", "#....",
-        ],
-        'Q' => [
-            ".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#",
-        ],
-        'R' => [
-            "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
-        ],
-        'S' => [
-            ".####", "#....", "#....", ".###.", "....#", "....#", "####.",
-        ],
-        'T' => [
-            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
-        ],
-        'U' => [
-            "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
-        ],
-        'V' => [
-            "#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#..",
-        ],
-        'W' => [
-            "#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#",
-        ],
-        'X' => [
-            "#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#",
-        ],
-        'Y' => [
-            "#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#..",
-        ],
-        'Z' => [
-            "#####", "....#", "...#.", "..#..", ".#...", "#....", "#####",
-        ],
-        '0' => [
-            ".###.", "#..##", "#.#.#", "##..#", "#...#", "#...#", ".###.",
-        ],
-        '1' => [
-            "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###.",
-        ],
-        '2' => [
-            ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####",
-        ],
-        '3' => [
-            "####.", "....#", "....#", ".###.", "....#", "....#", "####.",
-        ],
-        '4' => [
-            "...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#.",
-        ],
-        '5' => [
-            "#####", "#....", "#....", "####.", "....#", "....#", "####.",
-        ],
-        '6' => [
-            ".###.", "#....", "#....", "####.", "#...#", "#...#", ".###.",
-        ],
-        '7' => [
-            "#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#...",
-        ],
-        '8' => [
-            ".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###.",
-        ],
-        '9' => [
-            ".###.", "#...#", "#...#", ".####", "....#", "....#", ".###.",
-        ],
-        '#' => [
-            "#.#.#", "#.#.#", "#####", ".#.#.", "#####", "#.#.#", "#.#.#",
-        ],
-        '…' => [
-            ".....", ".....", "#.#.#", ".....", "#.#.#", ".....", "#.#.#",
-        ],
+fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
+    draw_text_in_bounds(
+        canvas,
+        Rect::new(x, y, (1024 - x).max(1) as u32, (768 - y).max(1) as u32),
+        text,
+        color,
+        (scale.max(1) * 8) as u16,
+    );
+}
 
-        '-' => [
-            ".....", ".....", ".....", ".###.", ".....", ".....", ".....",
-        ],
-        '%' => [
-            "#...#", "...#.", "..#..", ".#...", "#...#", ".....", ".....",
-        ],
-        '+' => [
-            ".....", "..#..", "..#..", ".###.", "..#..", "..#..", ".....",
-        ],
-        '.' => [
-            ".....", ".....", ".....", ".....", ".....", ".#...", ".#...",
-        ],
-        ':' => [
-            ".....", ".#...", ".#...", ".....", ".#...", ".#...", ".....",
-        ],
-        '>' => [
-            "#....", ".#...", "..#..", "...#.", "..#..", ".#...", "#....",
-        ],
-        _ => [
-            "#####", "#...#", "...#.", "..#..", "...#.", "#...#", "#####",
-        ],
+fn draw_text_in_bounds(
+    canvas: &mut Canvas<Window>,
+    bounds: Rect,
+    text: &str,
+    color: [u8; 4],
+    point_size: u16,
+) {
+    let Some(ttf) = ttf_context() else {
+        return;
+    };
+    let Ok(rwops) =
+        sdl2::rwops::RWops::from_bytes(include_bytes!("../assets/fonts/Lato-Regular.ttf"))
+    else {
+        return;
+    };
+    let Ok(font) = ttf.load_font_from_rwops(rwops, point_size.clamp(8, 96)) else {
+        return;
+    };
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{line} {word}")
+        };
+        let fits = font
+            .size_of(&candidate)
+            .map(|(width, _)| width <= bounds.width())
+            .unwrap_or(false);
+        if !line.is_empty() && !fits {
+            lines.push(std::mem::take(&mut line));
+        }
+        if line.is_empty() {
+            line.push_str(word);
+        } else if fits {
+            line = candidate;
+        } else {
+            lines.push(std::mem::take(&mut line));
+            line.push_str(word);
+        }
     }
+    if !line.is_empty() || lines.is_empty() {
+        lines.push(line);
+    }
+    canvas.set_clip_rect(Some(bounds));
+    let texture_creator = canvas.texture_creator();
+    let mut cursor_y = bounds.y();
+    for line in lines {
+        let Ok(surface) = font.render(&line).blended(rgb(color)) else {
+            continue;
+        };
+        let Ok(texture) = texture_creator.create_texture_from_surface(&surface) else {
+            continue;
+        };
+        let target = Rect::new(bounds.x(), cursor_y, surface.width(), surface.height());
+        let _ = canvas.copy(&texture, None, target);
+        cursor_y += surface.height() as i32;
+        if cursor_y >= bounds.y() + bounds.height() as i32 {
+            break;
+        }
+    }
+    canvas.set_clip_rect(None);
+}
+
+fn draw_controller_badge(canvas: &mut Canvas<Window>, x: i32, y: i32, color: [u8; 4], label: &str) {
+    canvas.set_draw_color(rgb(color));
+    let _ = canvas.fill_rect(Rect::new(x + 2, y + 2, 24, 24));
+    canvas.set_draw_color(rgb([0, 0, 0, 255]));
+    let _ = canvas.fill_rect(Rect::new(x + 7, y + 7, 14, 14));
+    canvas.set_draw_color(rgb(color));
+    let _ = canvas.draw_line((x + 8, y + 14), (x + 20, y + 14));
+    let _ = canvas.draw_line((x + 14, y + 8), (x + 14, y + 20));
+    draw_text(canvas, x + 32, y + 4, label, color, 1);
 }

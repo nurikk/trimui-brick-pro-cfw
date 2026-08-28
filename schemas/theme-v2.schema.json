@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/theme-v2.schema.json",
+  "title": "Project launcher theme v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format",
+    "schemaVersion",
+    "metadata",
+    "canvas",
+    "colors",
+    "resources",
+    "layout",
+    "settings",
+    "fallback",
+    "typography",
+    "assets",
+    "components"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "urn:project:theme-v2"
+    },
+    "format": {
+      "const": "theme-v2"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "canvas": {
+      "$ref": "#/$defs/canvas"
+    },
+    "colors": {
+      "$ref": "#/$defs/colors"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "layout": {
+      "type": "object"
+    },
+    "settings": {
+      "type": "object"
+    },
+    "fallback": {
+      "type": "object"
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "titleSize",
+        "bodySize",
+        "smallSize"
+      ],
+      "properties": {
+        "family": {
+          "const": "project-sans"
+        },
+        "titleSize": {
+          "type": "integer",
+          "minimum": 12,
+          "maximum": 96
+        },
+        "bodySize": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 64
+        },
+        "smallSize": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 48
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/asset"
+        },
+        "systemArt": {
+          "$ref": "#/$defs/asset"
+        },
+        "boxArt": {
+          "$ref": "#/$defs/asset"
+        },
+        "screenshot": {
+          "$ref": "#/$defs/asset"
+        },
+        "controller": {
+          "$ref": "#/$defs/asset"
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 48
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "text",
+              "textlist"
+            ]
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1023
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 767
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 768
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "fontSize": {
+            "type": "integer",
+            "minimum": 8,
+            "maximum": 96
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "author",
+        "license",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "license": {
+          "const": "MIT"
+        },
+        "provenance": {
+          "const": "project-authored"
+        }
+      }
+    },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height",
+        "aspect"
+      ],
+      "properties": {
+        "width": {
+          "const": 1024
+        },
+        "height": {
+          "const": 768
+        },
+        "aspect": {
+          "const": "4:3"
+        }
+      }
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "background",
+        "surface",
+        "accent",
+        "text",
+        "muted",
+        "highlight"
+      ],
+      "properties": {
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "surface": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "muted": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "highlight": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "maxBytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[^./\\\\][^\\\\]*$",
+          "maxLength": 128
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        }
+      }
+    }
+  }
+}

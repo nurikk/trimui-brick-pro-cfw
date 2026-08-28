@@ -2,7 +2,6 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-IMAGE=trimui-brick-pro-cfw-qemu:local
 BASE_IMAGE=debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
 LOCK=$ROOT/containers/qemu/versions.lock
 EPOCH=${SOURCE_DATE_EPOCH-}
@@ -13,6 +12,17 @@ fail() {
     printf '%s\n' "qemu-aarch64: $*" >&2
     exit 2
 }
+
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+. "$ROOT/scripts/docker-worktree.sh"
+DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT") || fail "invalid Docker namespace"
+ROOT_FINGERPRINT=$(trimui_root_fingerprint "$ROOT") || fail "cannot fingerprint repository root"
+SOURCE_FINGERPRINT=$(trimui_checkout_fingerprint "$ROOT") || fail "cannot fingerprint checkout"
+IMAGE=trimui-brick-pro-cfw-qemu:${DOCKER_NAMESPACE}
+WORKTREE_LABEL=org.trimui-brick-pro-cfw.worktree=${DOCKER_NAMESPACE}
+ROOT_LABEL=org.trimui-brick-pro-cfw.worktree-root-sha256=${ROOT_FINGERPRINT}
+SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
+CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 cleanup() {
     if [ -n "${WORK:-}" ]; then
@@ -28,6 +38,8 @@ lock_sha256() {
 
 qemu_run() {
     docker run --rm --network none --read-only --cap-drop=ALL \
+        --label "$WORKTREE_LABEL" --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" --label "$CACHE_LABEL" \
         --security-opt=no-new-privileges --user "$(id -u):$(id -g)" \
         --mount "type=bind,src=$SYSTEM,dst=/system,readonly" \
         --mount "type=bind,src=$DATA,dst=/data" \
@@ -37,6 +49,8 @@ qemu_run() {
 
 qemu_nested_run() {
     docker run --rm --network none --read-only --cap-drop=ALL \
+        --label "$WORKTREE_LABEL" --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" --label "$CACHE_LABEL" \
         --security-opt=no-new-privileges --user "$(id -u):$(id -g)" \
         --env BRICKPRO_QEMU_USER=/usr/bin/qemu-aarch64-static \
         --env BRICKPRO_SIMULATION_PROBE="${BRICKPRO_SIMULATION_PROBE-}" \
@@ -62,6 +76,11 @@ if [ "$#" -eq 1 ] && [ "$1" = image ]; then
     QEMU_LOCK_SHA256=$(lock_sha256)
     docker build --platform linux/amd64 \
         --build-arg "QEMU_LOCK_SHA256=$QEMU_LOCK_SHA256" \
+        --build-arg "DOCKER_CACHE_SCOPE=$DOCKER_NAMESPACE" \
+        --label "$WORKTREE_LABEL" \
+        --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" \
+        --label "$CACHE_LABEL" \
         -f "$ROOT/containers/qemu/Dockerfile" -t "$IMAGE" "$ROOT"
     printf '%s\n' "qemu image ready: $IMAGE"
     exit 0
@@ -92,10 +111,10 @@ for command in docker python3 dash file readelf sha256sum jq tar; do
     command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
 LOCK_SHA256=$(lock_sha256)
-IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro.qemu.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro.qemu.lock-sha256" }}' 2>/dev/null) \
+IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro.qemu.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro.qemu.lock-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
     || fail "qemu image is missing; run ./scripts/qemu-aarch64 image"
-[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$LOCK_SHA256" ] \
-    || fail "qemu image is stale or missing its exact lock label; run ./scripts/qemu-aarch64 image"
+[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$LOCK_SHA256|$DOCKER_NAMESPACE|$ROOT_FINGERPRINT|$SOURCE_FINGERPRINT|$DOCKER_NAMESPACE" ] \
+    || fail "qemu image is stale, foreign, or missing exact checkout labels; run ./scripts/qemu-aarch64 image"
 
 TMP_BASE=${TMPDIR:-/tmp}
 case "$TMP_BASE" in
@@ -265,7 +284,7 @@ BRICKPRO_SIMULATION_RECOVERY=/data/qemu-recovery \
 BRICKPRO_SIMULATION_SUPERVISOR=/data/qemu-supervisor \
 busybox_nested_run /system/bootstrap/recovery.sh --simulation-fixture-root /data/recovery-supported --select safe-mode >"$RESULTS/recovery.json"
 
-ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" DATA="$DATA" RESULTS="$RESULTS" REPORT="$REPORT" LOCK="$LOCK" IMAGE="$IMAGE" BASE_IMAGE="$BASE_IMAGE" LOCK_SHA256="$LOCK_SHA256" python3 - <<'PY'
+ROOT="$ROOT" RELEASE="$RELEASE" SYSTEM="$SYSTEM" DATA="$DATA" RESULTS="$RESULTS" REPORT="$REPORT" LOCK="$LOCK" DOCKER_NAMESPACE="$DOCKER_NAMESPACE" ROOT_FINGERPRINT="$ROOT_FINGERPRINT" SOURCE_FINGERPRINT="$SOURCE_FINGERPRINT" BASE_IMAGE="$BASE_IMAGE" LOCK_SHA256="$LOCK_SHA256" python3 - <<'PY'
 import hashlib
 import json
 import os
@@ -360,7 +379,9 @@ report_data = {
         "packageManager": {"checks": package_checks, "allPassed": True},
     },
     "container": {
-        "image": os.environ["IMAGE"],
+        "namespace": os.environ["DOCKER_NAMESPACE"],
+        "rootFingerprint": os.environ["ROOT_FINGERPRINT"],
+        "sourceFingerprint": os.environ["SOURCE_FINGERPRINT"],
         "baseImage": os.environ["BASE_IMAGE"],
         "lockFile": "containers/qemu/versions.lock",
         "lockSha256": os.environ["LOCK_SHA256"],
@@ -401,7 +422,10 @@ for item in elfs:
 PY
 
 # Capture pinned container tool versions without adding them to the system layout.
-docker run --rm --network none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+docker run --rm --network none --read-only --cap-drop=ALL \
+    --label "$WORKTREE_LABEL" --label "$ROOT_LABEL" \
+    --label "$SOURCE_LABEL" --label "$CACHE_LABEL" \
+    --security-opt=no-new-privileges \
     --entrypoint /bin/sh "$IMAGE" -eu -c 'cat /usr/share/trimui-qemu-version.txt' >"$WORK/toolchain.txt"
 REPORT_TMP=$REPORT.tmp
 python3 - "$REPORT_TMP" "$REPORT" "$WORK/toolchain.txt" <<'PY'

@@ -2,7 +2,6 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-IMAGE=trimui-brick-pro-cfw-baseline:local
 BASE_IMAGE=rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0
 EPOCH=${SOURCE_DATE_EPOCH-}
 WORK=
@@ -12,6 +11,17 @@ fail() {
     printf '%s\n' "build: $*" >&2
     exit 2
 }
+
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+. "$ROOT/scripts/docker-worktree.sh"
+DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT") || fail "invalid Docker namespace"
+ROOT_FINGERPRINT=$(trimui_root_fingerprint "$ROOT") || fail "cannot fingerprint repository root"
+SOURCE_FINGERPRINT=$(trimui_checkout_fingerprint "$ROOT") || fail "cannot fingerprint checkout"
+IMAGE=trimui-brick-pro-cfw-baseline:${DOCKER_NAMESPACE}
+WORKTREE_LABEL=org.trimui-brick-pro-cfw.worktree=${DOCKER_NAMESPACE}
+ROOT_LABEL=org.trimui-brick-pro-cfw.worktree-root-sha256=${ROOT_FINGERPRINT}
+SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
+CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 cleanup() {
     [ -z "${SUPERVISOR_WORK:-}" ] || rm -rf -- "$SUPERVISOR_WORK"
@@ -49,6 +59,11 @@ if [ "$#" -eq 1 ] && [ "$1" = image ]; then
     BUILD_DEFINITION_SHA256=$(build_definition_digest)
     docker build --platform linux/amd64 \
         --build-arg "BUILD_DEFINITION_SHA256=$BUILD_DEFINITION_SHA256" \
+        --build-arg "DOCKER_CACHE_SCOPE=$DOCKER_NAMESPACE" \
+        --label "$WORKTREE_LABEL" \
+        --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" \
+        --label "$CACHE_LABEL" \
         -f "$ROOT/containers/baseline/Dockerfile" \
         -t "$IMAGE" "$ROOT"
     printf '%s\n' "baseline image ready: $IMAGE"
@@ -89,16 +104,18 @@ BUILD_DEFINITION_SHA256=$(build_definition_digest)
 
 PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/provenance.py" check >/dev/null
 PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/check-diagnostics-schema" >/dev/null
-IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro-cfw.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro-cfw.build-definition-sha256" }}' 2>/dev/null) \
+IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui.brick-pro-cfw.base-image" }}|{{ index .Config.Labels "org.trimui.brick-pro-cfw.build-definition-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
     || fail "baseline image is missing; run ./scripts/build image"
-[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$BUILD_DEFINITION_SHA256" ] \
-    || fail "baseline image is stale or missing its exact build-definition label; run ./scripts/build image"
+[ "$IMAGE_IDENTITY" = "$BASE_IMAGE|$BUILD_DEFINITION_SHA256|$DOCKER_NAMESPACE|$ROOT_FINGERPRINT|$SOURCE_FINGERPRINT|$DOCKER_NAMESPACE" ] \
+    || fail "baseline image is stale, foreign, or missing exact checkout labels; run ./scripts/build image"
 
 WORK=$OUT/.baseline-work
 mkdir -m 0703 "$WORK"
 mkdir -m 0703 "$WORK/payload" "$WORK/host"
 
 docker run --rm \
+    --label "$WORKTREE_LABEL" --label "$ROOT_LABEL" \
+    --label "$SOURCE_LABEL" --label "$CACHE_LABEL" \
     --platform linux/amd64 \
     --network none \
     --read-only \
@@ -193,7 +210,7 @@ install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
     "$STAGE/config/platform/tg4040/compatibility.json"
 install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
 
-ROOT="$ROOT" STAGE="$STAGE" WORK="$WORK" OUT="$OUT" EPOCH="$EPOCH" IMAGE="$IMAGE" \
+ROOT="$ROOT" STAGE="$STAGE" WORK="$WORK" OUT="$OUT" EPOCH="$EPOCH" \
 BASE_IMAGE="$BASE_IMAGE" BUILD_DEFINITION_SHA256="$BUILD_DEFINITION_SHA256" \
 DOCKERFILE_SHA256="$DOCKERFILE_SHA256" python3 - <<'PY'
 import hashlib
@@ -210,7 +227,6 @@ stage = Path(os.environ["STAGE"])
 work = Path(os.environ["WORK"])
 out = Path(os.environ["OUT"])
 epoch = int(os.environ["EPOCH"])
-image = os.environ["IMAGE"]
 base_image = os.environ["BASE_IMAGE"]
 build_definition_sha256 = os.environ["BUILD_DEFINITION_SHA256"]
 dockerfile_sha256 = os.environ["DOCKERFILE_SHA256"]
@@ -426,6 +442,8 @@ PYTHONDONTWRITEBYTECODE=1 "$ROOT/scripts/audit-dist" "$STAGE" \
 for script in bootstrap/boot.sh bootstrap/recovery.sh; do
     dash -n "$STAGE/$script"
     docker run --rm --network none --read-only --cap-drop=ALL \
+        --label "$WORKTREE_LABEL" --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" --label "$CACHE_LABEL" \
         --mount "type=bind,src=$STAGE,dst=/stage,readonly" \
         --entrypoint busybox "$IMAGE" ash -n "/stage/$script"
 done

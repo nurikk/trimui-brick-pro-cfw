@@ -2,12 +2,22 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-LABEL=org.trimui-brick-pro-cfw.simulator=host-native
 
 emit_error() {
     printf '%s\n' "{\"version\":\"sim-control/v1\",\"id\":\"\",\"ok\":false,\"result\":null,\"error\":{\"code\":\"$1\",\"message\":\"$2\"}}"
     exit "$3"
 }
+
+command -v sha256sum >/dev/null 2>&1 || emit_error unavailable "sha256sum is required" 3
+. "$ROOT/scripts/docker-worktree.sh"
+DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT") || emit_error usage "invalid Docker namespace" 2
+ROOT_FINGERPRINT=$(trimui_root_fingerprint "$ROOT") || emit_error unavailable "cannot fingerprint repository root" 3
+SOURCE_FINGERPRINT=$(trimui_checkout_fingerprint "$ROOT") || emit_error unavailable "cannot fingerprint checkout" 3
+SIMULATOR_LABEL=org.trimui-brick-pro-cfw.simulator=host-native
+WORKTREE_LABEL=org.trimui-brick-pro-cfw.worktree=${DOCKER_NAMESPACE}
+ROOT_LABEL=org.trimui-brick-pro-cfw.worktree-root-sha256=${ROOT_FINGERPRINT}
+SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
+CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() { emit_error usage "invalid simctl arguments" 2; }
 
@@ -32,21 +42,22 @@ RUN_REAL=$(CDPATH= cd -- "$RUN_DIR" && pwd -P) || emit_error unavailable "run di
 case "$RUN_REAL" in "$ROOT"|"$ROOT"/*) emit_error usage "run directory must be outside the repository" 2 ;; esac
 [ ${#RUN_REAL} -le 87 ] || emit_error usage "run directory is too long for control.sock" 2
 SOCKET="$RUN_REAL/control.sock"
-NAME=$(printf '%s' "$RUN_REAL" | cksum | awk '{print "trimui-sim-" $1}')
+NAME=$(printf '%s' "$RUN_REAL" | cksum | awk -v docker_ns="$DOCKER_NAMESPACE" '{print "trimui-sim-" docker_ns "-" $1}')
 
 verify_container() {
     docker inspect "$NAME" 2>/dev/null | python3 -c '
 import json, os, sys
 try:
     record = json.load(sys.stdin)[0]
-    label_key, label_value = sys.argv[2].split("=", 1)
-    if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
+    for label in sys.argv[2:]:
+        label_key, label_value = label.split("=", 1)
+        if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
     if record.get("State", {}).get("Running") is not True: raise ValueError
     mounts = [mount for mount in record.get("Mounts", []) if mount.get("Destination") == "/evidence"]
     if len(mounts) != 1 or os.path.realpath(mounts[0].get("Source", "")) != os.path.realpath(sys.argv[1]): raise ValueError
 except (IndexError, OSError, TypeError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
-' "$RUN_REAL" "$LABEL"
+' "$RUN_REAL" "$SIMULATOR_LABEL" "$WORKTREE_LABEL" "$ROOT_LABEL" "$SOURCE_LABEL" "$CACHE_LABEL"
 }
 
 validate_name() {

@@ -1,8 +1,10 @@
 FROM rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0
 
 ARG BUILD_DEFINITION_SHA256
+ARG DOCKER_CACHE_SCOPE
 LABEL org.trimui.brick-pro-cfw.base-image="rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0" \
-      org.trimui.brick-pro-cfw.build-definition-sha256="$BUILD_DEFINITION_SHA256"
+      org.trimui.brick-pro-cfw.build-definition-sha256="$BUILD_DEFINITION_SHA256" \
+      org.trimui-brick-pro-cfw.cache-scope="$DOCKER_CACHE_SCOPE"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

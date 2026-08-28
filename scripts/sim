@@ -2,13 +2,23 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-IMAGE=trimui-brick-pro-cfw-simulator:local
-LABEL=org.trimui-brick-pro-cfw.simulator=host-native
 
 fail() {
     printf '%s\n' "sim: $*" >&2
     exit 2
 }
+
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+. "$ROOT/scripts/docker-worktree.sh"
+DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT") || fail "invalid Docker namespace"
+ROOT_FINGERPRINT=$(trimui_root_fingerprint "$ROOT") || fail "cannot fingerprint repository root"
+SOURCE_FINGERPRINT=$(trimui_checkout_fingerprint "$ROOT") || fail "cannot fingerprint checkout"
+IMAGE=trimui-brick-pro-cfw-simulator:${DOCKER_NAMESPACE}
+SIMULATOR_LABEL=org.trimui-brick-pro-cfw.simulator=host-native
+WORKTREE_LABEL=org.trimui-brick-pro-cfw.worktree=${DOCKER_NAMESPACE}
+ROOT_LABEL=org.trimui-brick-pro-cfw.worktree-root-sha256=${ROOT_FINGERPRINT}
+SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
+CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() {
     printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
@@ -33,7 +43,7 @@ require_run_dir() {
 }
 
 container_name() {
-    printf '%s' "$RUN_REAL" | cksum | awk '{print "trimui-sim-" $1}'
+    printf '%s' "$RUN_REAL" | cksum | awk -v docker_ns="$DOCKER_NAMESPACE" '{print "trimui-sim-" docker_ns "-" $1}'
 }
 
 reject_stale_evidence() {
@@ -50,19 +60,23 @@ reject_stale_evidence() {
     done
 }
 
-verify_container() {
+verify_labels() {
     docker inspect "$NAME" 2>/dev/null | python3 -c '
 import json, os, sys
 try:
     record = json.load(sys.stdin)[0]
-    label_key, label_value = sys.argv[2].split("=", 1)
-    if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
+    for label in sys.argv[2:]:
+        label_key, label_value = label.split("=", 1)
+        if record.get("Config", {}).get("Labels", {}).get(label_key) != label_value: raise ValueError
     mounts = [mount for mount in record.get("Mounts", []) if mount.get("Destination") == "/evidence"]
     if len(mounts) != 1 or os.path.realpath(mounts[0].get("Source", "")) != os.path.realpath(sys.argv[1]): raise ValueError
 except (IndexError, OSError, TypeError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
-' "$RUN_REAL" "$LABEL"
+' "$RUN_REAL" "$SIMULATOR_LABEL" "$WORKTREE_LABEL" "$ROOT_LABEL" "$CACHE_LABEL" "$@"
 }
+
+verify_container() { verify_labels "$SOURCE_LABEL"; }
+verify_owned_container() { verify_labels; }
 
 verify_running_container() {
     verify_container && docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'
@@ -129,7 +143,9 @@ PY
 startup_failure() {
     printf '%s\n' "sim: $1" >&2
     docker logs "$NAME" >&2 || true
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    if verify_owned_container; then
+        docker rm -f "$NAME" >/dev/null 2>&1 || true
+    fi
     exit 1
 }
 
@@ -169,14 +185,23 @@ parse_run_options() {
 
 build() {
     [ "$#" -eq 0 ] || usage
-    docker build --platform linux/amd64 -f "$ROOT/containers/simulator/Dockerfile" -t "$IMAGE" "$ROOT"
+    docker build --platform linux/amd64 \
+        --build-arg "DOCKER_CACHE_SCOPE=$DOCKER_NAMESPACE" \
+        --label "$WORKTREE_LABEL" \
+        --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" \
+        --label "$CACHE_LABEL" \
+        -f "$ROOT/containers/simulator/Dockerfile" -t "$IMAGE" "$ROOT"
 }
 
 run_sim() {
     parse_run_options "$@"
     reject_stale_evidence
     command -v python3 >/dev/null 2>&1 || fail "python3 is required for structural evidence validation"
-    docker image inspect "$IMAGE" >/dev/null 2>&1 || fail "image is missing; run ./scripts/sim build first"
+    IMAGE_IDENTITY=$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.worktree-root-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.source-sha256" }}|{{ index .Config.Labels "org.trimui-brick-pro-cfw.cache-scope" }}' 2>/dev/null) \
+        || fail "image is missing; run ./scripts/sim build first"
+    [ "$IMAGE_IDENTITY" = "$DOCKER_NAMESPACE|$ROOT_FINGERPRINT|$SOURCE_FINGERPRINT|$DOCKER_NAMESPACE" ] \
+        || fail "simulator image is stale, foreign, or missing exact checkout labels; run ./scripts/sim build first"
     NAME=$(container_name)
     chmod 0777 "$RUN_REAL" || fail "--run-dir must be writable"
     if docker container inspect "$NAME" >/dev/null 2>&1; then
@@ -187,7 +212,11 @@ run_sim() {
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
     docker run -d \
         --name "$NAME" \
-        --label "$LABEL" \
+        --label "$SIMULATOR_LABEL" \
+        --label "$WORKTREE_LABEL" \
+        --label "$ROOT_LABEL" \
+        --label "$SOURCE_LABEL" \
+        --label "$CACHE_LABEL" \
         --platform linux/amd64 \
         --network none \
         --read-only \
@@ -235,6 +264,7 @@ run_sim() {
     wait_output=
     wait_status=0
     wait_output=$(docker wait "$NAME") || wait_status=$?
+    verify_container || fail "simulator container identity changed during run"
     docker rm "$NAME" >/dev/null 2>&1 || docker rm -f "$NAME" >/dev/null 2>&1 || true
     docker container inspect "$NAME" >/dev/null 2>&1 && fail "simulator container survived cleanup" || true
     [ "$wait_status" -eq 0 ] || fail "docker wait failed with status $wait_status"
@@ -248,7 +278,7 @@ stop_sim() {
     parse_run_options "$@"
     NAME=$(container_name)
     if docker container inspect "$NAME" >/dev/null 2>&1; then
-        verify_container || fail "named container does not belong to --run-dir"
+        verify_owned_container || fail "named container does not belong to --run-dir"
         if docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'; then
             if ! docker stop --time 10 "$NAME" >/dev/null; then
                 docker rm -f "$NAME" >/dev/null 2>&1 || true
@@ -274,7 +304,7 @@ clean_run() {
     parse_run_options "$@"
     NAME=$(container_name)
     if docker container inspect "$NAME" >/dev/null 2>&1; then
-        verify_container || fail "named container does not belong to --run-dir"
+        verify_owned_container || fail "named container does not belong to --run-dir"
         docker rm -f "$NAME" >/dev/null 2>&1 || fail "failed to remove simulator"
     fi
     docker container inspect "$NAME" >/dev/null 2>&1 && fail "simulator container survived cleanup" || true
@@ -289,7 +319,10 @@ clean_run() {
 }
 
 labeled_container_count() {
-    docker ps -aq --filter "label=$LABEL" | awk 'NF { count += 1 } END { print count + 0 }'
+    docker ps -aq \
+        --filter "label=$SIMULATOR_LABEL" \
+        --filter "label=$WORKTREE_LABEL" |
+        awk 'NF { count += 1 } END { print count + 0 }'
 }
 
 lifecycle_journey() {
@@ -298,9 +331,13 @@ lifecycle_journey() {
     first=$(mktemp -d "${TMPDIR:-/tmp}/trimui-sim-lifecycle.XXXXXX")
     second=$(mktemp -d "${TMPDIR:-/tmp}/trimui-sim-lifecycle.XXXXXX")
     cleanup() {
-        first_name=$(RUN_REAL="$first" container_name)
-        second_name=$(RUN_REAL="$second" container_name)
-        docker rm -f "$first_name" "$second_name" >/dev/null 2>&1 || true
+        for run in "$first" "$second"; do
+            RUN_REAL=$(CDPATH= cd -- "$run" 2>/dev/null && pwd -P) || continue
+            NAME=$(container_name)
+            if docker container inspect "$NAME" >/dev/null 2>&1 && verify_owned_container; then
+                docker rm -f "$NAME" >/dev/null 2>&1 || true
+            fi
+        done
         rm -rf "$first" "$second"
     }
     trap cleanup EXIT HUP INT TERM

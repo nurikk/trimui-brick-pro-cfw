@@ -132,7 +132,7 @@ validate_command() {
         presentation)
             [ "$#" -eq 2 ] && [ "$1" = --action ] || usage
             case "$2" in
-                home|systems|games|favorites|recent|resume|favorite|media-details|theme-garden|update|unavailable|search|settings|settings-form|recovery|modal|scraper-settings|scraper-game|scraper-queue|scraper-progress|scraper-paused|scraper-resumed|scraper-ambiguity|scraper-complete|scraper-cancel|wifi-scan|wifi-access-points|wifi-password|wifi-hidden|wifi-manual|wifi-progress|wifi-error|save-vault-history|save-vault-preview|save-vault-confirm|save-vault-restore|save-vault-cancel|fallback) ;;
+                home|systems|games|favorites|recent|resume|favorite|media-details|theme-garden|update|unavailable|search|settings|settings-form|recovery|modal|scraper-settings|scraper-game|scraper-queue|scraper-progress|scraper-progress-zero|scraper-progress-2|scraper-progress-4|scraper-fallback|scraper-background|scraper-paused|scraper-resumed|scraper-ambiguity|scraper-complete|scraper-cancel|scraper-confirm-cancel|wifi-scan|wifi-access-points|wifi-password|wifi-hidden|wifi-manual|wifi-progress|wifi-error|save-vault-history|save-vault-preview|save-vault-confirm|save-vault-restore|save-vault-cancel|fallback) ;;
                 *) usage ;;
             esac ;;
         screenshot|checkpoint)

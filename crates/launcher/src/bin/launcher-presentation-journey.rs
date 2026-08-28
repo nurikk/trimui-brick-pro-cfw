@@ -60,6 +60,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("controller transition did not change route and selection".into());
     }
+    let scraper_progress_2 = reduce(
+        &reduce(&base, Action::Scraper(ScraperAction::OpenBulkQueue)),
+        Action::Scraper(ScraperAction::SetProgress(bulk_progress(
+            2, 0, false, false,
+        ))),
+    );
+    let scraper_progress_4 = reduce(
+        &reduce(&base, Action::Scraper(ScraperAction::OpenBulkQueue)),
+        Action::Scraper(ScraperAction::SetProgress(bulk_progress(
+            4, 1, false, false,
+        ))),
+    );
+    let scraper_paused = reduce(
+        &scraper_progress_2,
+        Action::Scraper(ScraperAction::PauseForGate {
+            reason: "network".into(),
+        }),
+    );
+    let scraper_background = reduce(&scraper_progress_2, Action::Scraper(ScraperAction::Hide));
+    let scraper_complete = reduce(
+        &scraper_progress_4,
+        Action::Scraper(ScraperAction::Complete),
+    );
 
     let states = vec![
         ("splash", splash),
@@ -91,10 +114,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 },
             ),
         ),
-        (
-            "scraper-progress",
-            reduce(&base, Action::Scraper(ScraperAction::OpenBulkQueue)),
-        ),
+        ("scraper-progress-2", scraper_progress_2),
+        ("scraper-progress-4", scraper_progress_4),
+        ("scraper-paused", scraper_paused),
+        ("scraper-background", scraper_background),
+        ("scraper-complete", scraper_complete),
         (
             "scraper-ambiguity",
             reduce(
@@ -129,6 +153,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Some(&wifi_snapshot),
             );
             assert_contract(&screen, name)?;
+            if *name == "scraper-progress-2"
+                && (screen.scraper.progress_percent != Some(0)
+                    || screen.scraper.configured_slots != 2
+                    || screen.scraper.rows.len() != 2
+                    || screen.scraper.total != 4)
+            {
+                return Err("two-slot scraper popup projection is incomplete".into());
+            }
+            if *name == "scraper-progress-4"
+                && (screen.scraper.configured_slots != 4 || screen.scraper.rows.len() != 4)
+            {
+                return Err("four-slot scraper popup projection is incomplete".into());
+            }
+            if *name == "scraper-paused"
+                && (!screen.scraper.paused
+                    || screen.scraper.paused_reason.as_deref() != Some("network"))
+            {
+                return Err("paused gate reason is missing from scraper popup".into());
+            }
+            if *name == "scraper-complete" && screen.scraper.progress_percent != Some(100) {
+                return Err("completed scraper popup did not reach 100 percent".into());
+            }
             if *name == "splash" && screen.splash != "artbook-generated-splash" {
                 return Err("splash semantic state is missing".into());
             }
@@ -209,8 +255,71 @@ fn reduce(state: &UiState, action: Action) -> UiState {
     ui_model::reduce(state, action)
 }
 
+fn bulk_progress(
+    slots: u8,
+    completed: u16,
+    paused: bool,
+    background: bool,
+) -> ui_model::ScraperProgress {
+    let titles = [
+        "Nebula Notes",
+        "Mirror Museum",
+        "Orbit Garden",
+        "Signal Workshop",
+    ];
+    let rows = titles
+        .iter()
+        .take(slots as usize)
+        .enumerate()
+        .map(|(index, title)| ui_model::ScraperRow {
+            game_id: ui_model::GameId::new(format!("generated-game-0{}", index + 1)),
+            title: (*title).into(),
+            provider: Some(
+                if index == 0 {
+                    "fixture-secondary"
+                } else {
+                    "fixture-tertiary"
+                }
+                .into(),
+            ),
+            phase: if index == 0 {
+                ui_model::ScraperPhase::FallingBack
+            } else {
+                ui_model::ScraperPhase::Searching
+            },
+            fallback_transition: (index == 0)
+                .then_some("fixture-primary: not found → fixture-secondary".into()),
+        })
+        .collect();
+    ui_model::ScraperProgress {
+        completed,
+        total: 4,
+        percent: ((u32::from(completed) * 100) / 4) as u8,
+        configured_slots: slots,
+        paused,
+        paused_reason: paused.then_some("network".into()),
+        background,
+        counts: ui_model::ScraperCounts {
+            succeeded: completed,
+            ..Default::default()
+        },
+        rows,
+    }
+}
+
 fn settings() -> Result<settings_ui::Scene, Box<dyn std::error::Error>> {
-    let registry = Registry::from_json(REGISTRY)?;
+    let providers = metadata_scraper::registered_providers()
+        .into_iter()
+        .map(|provider| settings_schema::ProviderMetadata {
+            id: provider.id,
+            enabled: provider.enabled,
+            requires_credentials: provider.requires_credentials,
+            credential_configured: provider.credential_configured,
+            priority: provider.priority,
+            max_concurrency: provider.max_concurrency,
+        })
+        .collect::<Vec<_>>();
+    let registry = Registry::from_json(REGISTRY)?.with_provider_metadata(&providers)?;
     let mut context = ProjectionContext::default();
     context.capabilities.extend([
         "audio".into(),

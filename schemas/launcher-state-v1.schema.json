@@ -4,7 +4,7 @@
   "title": "Artbook launcher durable state",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "identity", "preferences", "favorites", "recent"],
+  "required": ["schemaVersion", "identity", "preferences", "favorites", "recent", "scraperProgress"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "identity": { "const": "Artbook" },
@@ -26,6 +26,50 @@
         "required": ["contentId", "playtimeMs"],
         "properties": { "contentId": { "type": "string", "maxLength": 128 }, "playtimeMs": { "type": "integer", "minimum": 0 } }
       }
+    },
+    "scraperProgress": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["completed", "total", "percent", "configuredSlots", "paused", "pausedReason", "background", "counts", "rows"],
+          "properties": {
+            "completed": {"type": "integer", "minimum": 0, "maximum": 256},
+            "total": {"type": "integer", "minimum": 0, "maximum": 256},
+            "percent": {"type": "integer", "minimum": 0, "maximum": 100},
+            "configuredSlots": {"enum": [1, 2, 4]},
+            "paused": {"type": "boolean"},
+            "pausedReason": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9-]{1,64}$"},
+            "background": {"type": "boolean"},
+            "counts": {
+              "type": "object", "additionalProperties": false,
+              "required": ["succeeded", "fallback", "notFound", "ambiguous", "failed", "cancelled"],
+              "properties": {
+                "succeeded": {"type": "integer", "minimum": 0, "maximum": 256},
+                "fallback": {"type": "integer", "minimum": 0, "maximum": 256},
+                "notFound": {"type": "integer", "minimum": 0, "maximum": 256},
+                "ambiguous": {"type": "integer", "minimum": 0, "maximum": 256},
+                "failed": {"type": "integer", "minimum": 0, "maximum": 256},
+                "cancelled": {"type": "integer", "minimum": 0, "maximum": 256}
+              }
+            },
+            "rows": {
+              "type": "array", "maxItems": 4,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["gameId", "title", "provider", "phase", "fallbackTransition"],
+                "properties": {
+                  "gameId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+                  "title": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "provider": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+                  "phase": {"enum": ["searching", "retrying", "falling-back", "downloading-cover", "publishing", "done"]},
+                  "fallbackTransition": {"type": ["string", "null"], "maxLength": 128}
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

@@ -137,6 +137,49 @@ fn run() -> Result<(), String> {
     if !matches!(secret.value, settings_ui::SemanticValue::Masked { .. }) || !secret.redacted {
         return Err("secret control was not masked".into());
     }
+    let parallel = control(&initial, "core.scraper.parallel-jobs")?;
+    let options: Vec<_> = parallel
+        .constraints
+        .as_ref()
+        .ok_or("parallelism options missing")?
+        .options
+        .iter()
+        .map(|option| option.value.as_str())
+        .collect();
+    if parallel.kind != FieldKind::EnumSingle || options != ["1", "2", "4"] {
+        return Err("parallelism did not project exact controller options".into());
+    }
+    for id in [
+        "provider.scraper.fixture-primary-enabled",
+        "provider.scraper.fixture-secondary-enabled",
+        "provider.scraper.fixture-tertiary-enabled",
+        "provider.scraper.priority",
+        "provider.scraper.fixture-primary-credentials",
+        "provider.scraper.fixture-secondary-credentials",
+        "provider.scraper.fixture-tertiary-credentials",
+    ] {
+        control(&initial, id)?;
+    }
+    for (id, expected) in [
+        ("provider.scraper.fixture-primary-limit", "1"),
+        ("provider.scraper.fixture-secondary-limit", "2"),
+        ("provider.scraper.fixture-tertiary-limit", "2"),
+    ] {
+        if control(&initial, id)?.value != settings_ui::SemanticValue::Text(expected.into()) {
+            return Err(format!(
+                "provider limit metadata was not projected for {id}"
+            ));
+        }
+    }
+    if initial
+        .sections
+        .iter()
+        .flat_map(|section| section.groups.iter())
+        .flat_map(|group| group.controls.iter())
+        .any(|control| control.setting_id.contains("credential-ref"))
+    {
+        return Err("provider projection exposed a credential reference".into());
+    }
     if initial
         .sections
         .iter()
@@ -317,8 +360,20 @@ fn run() -> Result<(), String> {
 }
 
 fn synthetic_registry() -> Result<settings_schema::Registry, String> {
-    let mut registry =
-        settings_schema::Registry::from_json(REGISTRY).map_err(|error| error.to_string())?;
+    let providers = metadata_scraper::registered_providers()
+        .into_iter()
+        .map(|provider| settings_schema::ProviderMetadata {
+            id: provider.id,
+            enabled: provider.enabled,
+            requires_credentials: provider.requires_credentials,
+            credential_configured: provider.credential_configured,
+            priority: provider.priority,
+            max_concurrency: provider.max_concurrency,
+        })
+        .collect::<Vec<_>>();
+    let mut registry = settings_schema::Registry::from_json(REGISTRY)
+        .and_then(|registry| registry.with_provider_metadata(&providers))
+        .map_err(|error| error.to_string())?;
     let template = registry
         .settings
         .iter()

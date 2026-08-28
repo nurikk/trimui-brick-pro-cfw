@@ -208,6 +208,51 @@ fn check_journey() {
         Some("generated-candidate-b")
     );
 
+    let progress = ui_model::ScraperProgress {
+        completed: 0,
+        total: 4,
+        percent: 0,
+        configured_slots: 2,
+        paused: false,
+        paused_reason: None,
+        background: false,
+        counts: ui_model::ScraperCounts::default(),
+        rows: vec![
+            ui_model::ScraperRow {
+                game_id: GameId::new("generated-game-01"),
+                title: "Nebula Notes".into(),
+                provider: Some("fixture-secondary".into()),
+                phase: ui_model::ScraperPhase::FallingBack,
+                fallback_transition: Some("fixture-primary: not found → fixture-secondary".into()),
+            },
+            ui_model::ScraperRow {
+                game_id: GameId::new("generated-game-02"),
+                title: "Mirror Museum".into(),
+                provider: Some("fixture-tertiary".into()),
+                phase: ui_model::ScraperPhase::Searching,
+                fallback_transition: None,
+            },
+        ],
+    };
+    let state = reduce(&state, Action::Scraper(ScraperAction::OpenBulkQueue));
+    let state = reduce(
+        &state,
+        Action::Scraper(ScraperAction::SetProgress(progress)),
+    );
+    assert_eq!(state.scraper.progress.as_ref().unwrap().percent, 0);
+    assert_eq!(state.scraper.progress.as_ref().unwrap().rows.len(), 2);
+    let state = reduce(&state, Action::Scraper(ScraperAction::Pause));
+    assert!(state.scraper.progress.as_ref().unwrap().paused);
+    let state = reduce(&state, Action::Scraper(ScraperAction::Hide));
+    assert!(state.scraper.progress.as_ref().unwrap().background);
+    let state = reduce(&state, Action::Scraper(ScraperAction::Resume));
+    assert!(!state.scraper.progress.as_ref().unwrap().paused);
+    let state = reduce(&state, Action::Scraper(ScraperAction::Cancel));
+    assert!(state.scraper.cancel_requested);
+    let state = reduce(&state, Action::Scraper(ScraperAction::ConfirmCancel));
+    assert_eq!(state.scraper.progress.as_ref().unwrap().percent, 100);
+    assert_eq!(state.scraper.status, ui_model::ScraperStatus::Cancelled);
+
     let serialized = serde_json::to_vec(&state).unwrap();
     assert_eq!(serialized, serde_json::to_vec(&state).unwrap());
 }

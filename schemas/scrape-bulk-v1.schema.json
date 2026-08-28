@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-brick-scrape-bulk-v1.schema.json",
+  "title": "Synthetic bulk scraper progress v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema", "synthetic", "parallelJobs", "providers", "journeys"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-brick-scrape-bulk-v1.schema.json"},
+    "schema": {"const": "metadata-scraper-bulk/v1"},
+    "synthetic": {"const": true},
+    "parallelJobs": {"enum": [1, 2, 4]},
+    "providers": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/provider"}},
+    "journeys": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/journey"}}
+  },
+  "$defs": {
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "requiresCredentials", "credentialConfigured", "priority", "maxConcurrency"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+        "enabled": {"type": "boolean"},
+        "requiresCredentials": {"type": "boolean"},
+        "credentialConfigured": {"type": "boolean"},
+        "priority": {"type": "integer", "minimum": 1, "maximum": 3},
+        "maxConcurrency": {"enum": [1, 2, 4]}
+      }
+    },
+    "journey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentId", "expected"],
+      "properties": {
+        "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+        "expected": {"enum": ["fallback-1-to-2", "fallback-1-to-2-to-3", "credential-skip", "auth-batch-disable", "exhausted", "absent-cover-kind", "retry-after", "ambiguous", "parallel"]}
+      }
+    }
+  }
+}

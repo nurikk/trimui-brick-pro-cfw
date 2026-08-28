@@ -83,7 +83,7 @@
     {
       "id": "provider.scraper.api-key", "namespace": "provider.scraper", "section": "scraper", "group": "credentials", "order": 10,
       "labelKey": "settings.scraper.apiKey.label", "descriptionKey": "settings.scraper.apiKey.description", "kind": "secret",
-      "default": {"kind": "secret", "value": {"credentialRef": "scraper-api-key"}}, "current": {"kind": "secret", "value": {"credentialRef": "scraper-api-key"}}, "pending": null,
+      "default": null, "current": null, "pending": null,
       "constraints": null, "units": null, "display": {"unit": null, "format": "password", "redact": true}, "scope": "provider", "apply": ["external-operation"],
       "requiresCapabilities": ["network"], "unsupportedReason": "Scraper credentials require network support", "visibility": null, "enabledIf": null, "redacted": true,
       "validation": {"required": false, "trim": true, "allowEmpty": true}, "migration": {"key": "scraper.api-key", "introducedIn": 1, "removedIn": null}
@@ -145,10 +145,23 @@
     {
       "id": "core.wifi.password", "namespace": "core", "section": "wifi", "group": "credentials", "order": 30,
       "labelKey": "settings.wifi.password.label", "descriptionKey": "settings.wifi.password.description", "kind": "secret",
-      "default": {"kind": "secret", "value": {"credentialRef": "wifi-password"}}, "current": {"kind": "secret", "value": {"credentialRef": "wifi-password"}}, "pending": null,
+      "default": null, "current": null, "pending": null,
       "constraints": null, "units": null, "display": {"unit": null, "format": "password", "redact": true}, "scope": "system", "apply": ["external-operation"], "requiresCapabilities": ["wifi"], "unsupportedReason": "Wi-Fi is a placeholder; no network operation is implemented",
       "visibility": null, "enabledIf": {"kind": "present", "setting": "core.wifi.ssid"}, "redacted": true,
       "validation": {"required": false, "trim": true, "allowEmpty": true}, "migration": null
+    },
+    {
+      "id": "core.scraper.parallel-jobs", "namespace": "core", "section": "scraper", "group": "bulk", "order": 20,
+      "labelKey": "settings.scraper.parallelJobs.label", "descriptionKey": "settings.scraper.parallelJobs.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "2"}, "current": {"kind": "enum-single", "value": "2"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "1", "labelKey": "settings.scraper.parallelJobs.one"},
+        {"value": "2", "labelKey": "settings.scraper.parallelJobs.two"},
+        {"value": "4", "labelKey": "settings.scraper.parallelJobs.four"}
+      ]},
+      "units": "game-jobs", "display": {"unit": "game-jobs", "format": "select", "redact": false}, "scope": "provider", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     }
   ],
   "migrations": []

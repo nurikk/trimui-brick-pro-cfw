@@ -61,6 +61,16 @@ pub struct SettingDescriptor {
     pub migration: Option<SettingMigration>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderMetadata {
+    pub id: String,
+    pub enabled: bool,
+    pub requires_credentials: bool,
+    pub credential_configured: bool,
+    pub priority: u8,
+    pub max_concurrency: u8,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FieldKind {
@@ -422,6 +432,119 @@ impl Registry {
         validate_migrations(self, &setting_ids)
     }
 
+    pub fn with_provider_metadata(
+        mut self,
+        providers: &[ProviderMetadata],
+    ) -> Result<Self, RegistryError> {
+        let mut ids = HashSet::new();
+        for provider in providers {
+            if !valid_name(&provider.id)
+                || !ids.insert(provider.id.as_str())
+                || !matches!(provider.priority, 1..=3)
+                || !matches!(provider.max_concurrency, 1 | 2 | 4)
+                || (!provider.requires_credentials && provider.credential_configured)
+            {
+                return invalid("invalid provider metadata");
+            }
+        }
+        if providers.is_empty() || providers.len() > 3 {
+            return invalid("provider metadata is outside bounds");
+        }
+        let options = providers
+            .iter()
+            .map(|provider| OptionDescriptor {
+                value: provider.id.clone(),
+                label_key: "settings.scraper.provider.name".into(),
+            })
+            .collect::<Vec<_>>();
+        let mut ordered_providers: Vec<_> = providers.iter().collect();
+        ordered_providers.sort_by_key(|provider| provider.priority);
+        let ordered_ids = ordered_providers
+            .iter()
+            .map(|provider| provider.id.clone())
+            .collect::<Vec<_>>();
+        self.settings.push(SettingDescriptor {
+            id: "provider.scraper.priority".into(),
+            namespace: "provider.scraper".into(),
+            section: "scraper".into(),
+            group: "providers".into(),
+            order: 40,
+            label_key: "settings.scraper.priority.label".into(),
+            description_key: "settings.scraper.priority.description".into(),
+            kind: FieldKind::EnumMulti,
+            default: Some(SettingValue::EnumMulti(ordered_ids.clone())),
+            current: Some(SettingValue::EnumMulti(ordered_ids)),
+            pending: None,
+            constraints: Some(Constraints {
+                range: None,
+                text: None,
+                options,
+            }),
+            units: None,
+            display: Some(DisplayHints {
+                unit: None,
+                format: Some("ordered-list".into()),
+                redact: false,
+            }),
+            scope: Scope::Provider,
+            apply: vec![ApplyMode::OnConfirm],
+            requires_capabilities: Vec::new(),
+            unsupported_reason: None,
+            visibility: None,
+            enabled_if: None,
+            redacted: false,
+            validation: ValidationMetadata {
+                required: true,
+                trim: false,
+                allow_empty: false,
+            },
+            migration: None,
+        });
+        for provider in providers {
+            let prefix = format!("provider.scraper.{}", provider.id);
+            let mut enabled = provider_setting(
+                format!("{prefix}-enabled"),
+                30 + i32::from(provider.priority),
+                FieldKind::Boolean,
+                SettingValue::Boolean(provider.enabled),
+                "settings.scraper.provider.enabled",
+                "settings.scraper.provider.toggle",
+                None,
+            );
+            enabled.apply = vec![ApplyMode::OnConfirm];
+            self.settings.push(enabled);
+            let credential_status = if provider.requires_credentials {
+                if provider.credential_configured {
+                    "required; configured"
+                } else {
+                    "required; not configured"
+                }
+            } else {
+                "anonymous; configured"
+            };
+            self.settings.push(provider_setting(
+                format!("{prefix}-credentials"),
+                50 + i32::from(provider.priority),
+                FieldKind::Status,
+                SettingValue::Text(credential_status.into()),
+                "settings.scraper.credentials.status",
+                "settings.scraper.credentials.status",
+                None,
+            ));
+            self.settings.push(provider_setting(
+                format!("{prefix}-limit"),
+                60 + i32::from(provider.priority),
+                FieldKind::Status,
+                SettingValue::Text(provider.max_concurrency.to_string()),
+                "settings.scraper.provider.limit",
+                "settings.scraper.provider.limit.status",
+                Some("requests".into()),
+            ));
+        }
+        self.validate()?;
+        Ok(self)
+    }
+
     pub fn canonicalized(&self) -> Self {
         let mut result = self.clone();
         result.allowed_namespaces.sort();
@@ -535,6 +658,54 @@ impl Registry {
 impl MenuModel {
     pub fn to_canonical_json(&self) -> Result<String, RegistryError> {
         serde_json::to_string(self).map_err(|error| RegistryError::Json(error.to_string()))
+    }
+}
+
+fn provider_setting(
+    id: String,
+    order: i32,
+    kind: FieldKind,
+    value: SettingValue,
+    label_key: &str,
+    description_key: &str,
+    units: Option<String>,
+) -> SettingDescriptor {
+    SettingDescriptor {
+        id,
+        namespace: "provider.scraper".into(),
+        section: "scraper".into(),
+        group: "providers".into(),
+        order,
+        label_key: label_key.into(),
+        description_key: description_key.into(),
+        kind,
+        default: None,
+        current: Some(value),
+        pending: None,
+        constraints: None,
+        units,
+        display: Some(DisplayHints {
+            unit: None,
+            format: Some(if kind == FieldKind::Boolean {
+                "toggle".into()
+            } else {
+                "status".into()
+            }),
+            redact: false,
+        }),
+        scope: Scope::Provider,
+        apply: vec![ApplyMode::Immediate],
+        requires_capabilities: Vec::new(),
+        unsupported_reason: None,
+        visibility: None,
+        enabled_if: None,
+        redacted: false,
+        validation: ValidationMetadata {
+            required: true,
+            trim: false,
+            allow_empty: false,
+        },
+        migration: None,
     }
 }
 

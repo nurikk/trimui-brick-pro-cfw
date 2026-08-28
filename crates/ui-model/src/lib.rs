@@ -606,12 +606,50 @@ pub struct ScrapeJob {
     pub progress_percent: u8,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScraperPhase {
+    Searching,
+    Retrying,
+    FallingBack,
+    DownloadingCover,
+    Publishing,
+    Done,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ScraperRow {
+    pub game_id: GameId,
+    pub title: String,
+    pub provider: Option<String>,
+    pub phase: ScraperPhase,
+    pub fallback_transition: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ScraperCounts {
+    pub succeeded: u16,
+    pub fallback: u16,
+    pub not_found: u16,
+    pub ambiguous: u16,
+    pub failed: u16,
+    pub cancelled: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ScraperProgress {
     pub completed: u16,
     pub total: u16,
+    pub percent: u8,
+    pub configured_slots: u8,
     pub paused: bool,
+    pub paused_reason: Option<String>,
+    pub background: bool,
+    pub counts: ScraperCounts,
+    pub rows: Vec<ScraperRow>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -643,6 +681,7 @@ pub struct ScraperState {
     pub status: ScraperStatus,
     pub ambiguous_choice: Option<AmbiguousChoice>,
     pub selected_candidate: Option<String>,
+    pub cancel_requested: bool,
 }
 
 impl Default for ScraperState {
@@ -655,6 +694,7 @@ impl Default for ScraperState {
             status: ScraperStatus::Idle,
             ambiguous_choice: None,
             selected_candidate: None,
+            cancel_requested: false,
         }
     }
 }
@@ -764,8 +804,13 @@ pub enum ScraperAction {
     Queue { jobs: Vec<ScrapeJob> },
     SetProgress(ScraperProgress),
     Pause,
+    PauseForGate { reason: String },
     Resume,
     Cancel,
+    ConfirmCancel,
+    Hide,
+    Close,
+    InspectResults,
     Complete,
     NonBlockingError { message: String },
 }
@@ -1035,23 +1080,108 @@ fn reduce_scraper(state: &mut UiState, action: ScraperAction) {
             state.scraper.queue = jobs;
             state.scraper.status = ScraperStatus::Queued;
         }
-        ScraperAction::SetProgress(progress) => {
+        ScraperAction::SetProgress(mut progress) => {
+            let configured_slots = if matches!(progress.configured_slots, 1 | 2 | 4) {
+                progress.configured_slots
+            } else {
+                state
+                    .scraper
+                    .progress
+                    .as_ref()
+                    .map_or(2, |previous| previous.configured_slots)
+            };
+            progress.configured_slots = configured_slots;
+            if let Some(previous) = &state.scraper.progress {
+                progress.total = previous.total;
+                progress.completed = progress
+                    .completed
+                    .max(previous.completed)
+                    .min(progress.total);
+                progress.background |= previous.background;
+            } else {
+                progress.completed = progress.completed.min(progress.total);
+            }
+            progress.percent = if progress.total == 0 {
+                0
+            } else {
+                ((u32::from(progress.completed) * 100) / u32::from(progress.total)) as u8
+            };
+            progress.rows.truncate(configured_slots as usize);
+            let terminal = progress.total > 0 && progress.completed == progress.total;
+            let cancelled = terminal && progress.counts.cancelled > 0;
             state.scraper.progress = Some(progress);
+            state.scraper.status = if cancelled {
+                ScraperStatus::Cancelled
+            } else if terminal {
+                ScraperStatus::Complete
+            } else {
+                ScraperStatus::Running
+            };
+            state.scraper.cancel_requested = false;
+        }
+        ScraperAction::Pause => {
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                progress.paused = true;
+                progress.paused_reason = progress
+                    .paused_reason
+                    .clone()
+                    .or_else(|| Some("user-paused".into()));
+            }
+            state.scraper.status = ScraperStatus::Paused;
+        }
+        ScraperAction::PauseForGate { reason } => {
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                progress.paused = true;
+                progress.paused_reason = Some(scraper_gate_reason(&reason));
+            }
+            state.scraper.status = ScraperStatus::Paused;
+        }
+        ScraperAction::Resume => {
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                progress.paused = false;
+                progress.paused_reason = None;
+            }
             state.scraper.status = ScraperStatus::Running;
         }
-        ScraperAction::Pause => state.scraper.status = ScraperStatus::Paused,
-        ScraperAction::Resume => state.scraper.status = ScraperStatus::Running,
-        ScraperAction::Cancel => {
-            state.scraper.progress = None;
+        ScraperAction::Cancel => state.scraper.cancel_requested = true,
+        ScraperAction::ConfirmCancel => {
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                let pending = progress.total.saturating_sub(progress.completed);
+                progress.counts.cancelled = progress.counts.cancelled.saturating_add(pending);
+                progress.completed = progress.total;
+                progress.percent = 100;
+                progress.paused = false;
+                progress.paused_reason = None;
+                progress.rows.clear();
+            }
+            state.scraper.cancel_requested = false;
             state.scraper.status = ScraperStatus::Cancelled;
         }
+        ScraperAction::Hide => {
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                progress.background = true;
+            }
+            navigate(state, Route::Home);
+        }
+        ScraperAction::Close => {
+            state.scraper.route = ScraperRoute::Settings;
+            navigate(state, Route::Home);
+        }
+        ScraperAction::InspectResults => {
+            state.scraper.route = ScraperRoute::AmbiguousChoice;
+            navigate(state, Route::Scraper(ScraperRoute::AmbiguousChoice));
+        }
         ScraperAction::Complete => {
-            state.scraper.progress = None;
+            if let Some(progress) = state.scraper.progress.as_mut() {
+                progress.completed = progress.total;
+                progress.percent = 100;
+                progress.rows.clear();
+            }
             state.scraper.status = ScraperStatus::Complete;
         }
         ScraperAction::NonBlockingError { message } => {
             state.scraper.status = ScraperStatus::Error {
-                message,
+                message: scraper_status_message(&message),
                 blocking: false,
             };
         }
@@ -1130,6 +1260,33 @@ fn reduce_wifi(state: &mut UiState, action: WifiAction) {
 
 fn bounded_input(value: &str) -> String {
     value.chars().take(MAX_INPUT_CHARS).collect()
+}
+
+fn scraper_gate_reason(reason: &str) -> String {
+    match reason {
+        "network"
+        | "suspended"
+        | "low-battery"
+        | "foreground-gameplay"
+        | "storage-quota"
+        | "user-paused" => reason.to_owned(),
+        _ => "gate-unavailable".into(),
+    }
+}
+
+fn scraper_status_message(message: &str) -> String {
+    let safe: String = message
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || *character == '-' || *character == '_'
+        })
+        .take(64)
+        .collect();
+    if safe.is_empty() {
+        "scraper-error".into()
+    } else {
+        safe
+    }
 }
 
 fn route_capability(route: &Route) -> Option<Capability> {

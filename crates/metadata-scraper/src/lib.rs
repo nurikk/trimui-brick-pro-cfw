@@ -4,7 +4,12 @@ use std::{
     io::Write,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Condvar, Mutex,
+    },
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -596,11 +601,77 @@ impl QueueItem {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PersistedRequest {
+    content_id: String,
+    system_id: String,
+    hash_lookup_configured: bool,
+    region_priority: Vec<Region>,
+    language_priority: Vec<Language>,
+}
+
+impl From<&ScrapeRequest> for PersistedRequest {
+    fn from(request: &ScrapeRequest) -> Self {
+        Self {
+            content_id: request.content_id.clone(),
+            system_id: request.system_id.clone(),
+            hash_lookup_configured: request.hash_lookup_configured,
+            region_priority: request.region_priority.clone(),
+            language_priority: request.language_priority.clone(),
+        }
+    }
+}
+
+impl From<PersistedRequest> for ScrapeRequest {
+    fn from(request: PersistedRequest) -> Self {
+        Self {
+            content_id: request.content_id,
+            system_id: request.system_id,
+            rom_hash: None,
+            filename: None,
+            title: None,
+            manual_query: None,
+            hash_lookup_configured: request.hash_lookup_configured,
+            region_priority: request.region_priority,
+            language_priority: request.language_priority,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedQueueItem {
+    request: PersistedRequest,
+    state: QueueState,
+    attempts: u32,
+    next_attempt_at: u64,
+    overwrite_metadata: bool,
+    overwrite_media: bool,
+    result: Option<ScrapeResult>,
+    reason: Option<String>,
+}
+
+impl From<PersistedQueueItem> for QueueItem {
+    fn from(item: PersistedQueueItem) -> Self {
+        Self {
+            request: item.request.into(),
+            state: item.state,
+            attempts: item.attempts,
+            next_attempt_at: item.next_attempt_at,
+            overwrite_metadata: item.overwrite_metadata,
+            overwrite_media: item.overwrite_media,
+            result: item.result,
+            reason: item.reason,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct QueueCheckpoint {
     schema: String,
     paused: bool,
-    jobs: Vec<QueueItem>,
+    jobs: Vec<PersistedQueueItem>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -623,7 +694,7 @@ impl Default for SchedulingPolicy {
             low_battery: false,
             foreground_gameplay: false,
             active_jobs: 0,
-            max_concurrency: 1,
+            max_concurrency: 2,
             storage_used_bytes: 0,
             storage_quota_bytes: u64::MAX,
         }
@@ -644,7 +715,7 @@ impl SchedulingPolicy {
         if self.foreground_gameplay {
             bail!("foreground-gameplay");
         }
-        if self.max_concurrency == 0 || self.active_jobs >= self.max_concurrency {
+        if !matches!(self.max_concurrency, 1 | 2 | 4) || self.active_jobs >= self.max_concurrency {
             bail!("concurrency-limit");
         }
         if self.storage_used_bytes > self.storage_quota_bytes {
@@ -724,13 +795,18 @@ impl Queue {
             if checkpoint.schema != CHECKPOINT_SCHEMA || checkpoint.jobs.len() > MAX_JOBS {
                 bail!("unsupported scraper checkpoint");
             }
-            for job in &checkpoint.jobs {
+            let jobs = checkpoint
+                .jobs
+                .into_iter()
+                .map(QueueItem::from)
+                .collect::<Vec<_>>();
+            for job in &jobs {
                 job.validate()?;
             }
             Self {
                 root,
                 paused: checkpoint.paused,
-                jobs: checkpoint.jobs,
+                jobs,
             }
         };
         if queue
@@ -951,6 +1027,156 @@ impl Queue {
             .find(|job| job.request.content_id == content_id)
     }
 
+    pub fn pending_requests(&self) -> Vec<ScrapeRequest> {
+        self.jobs
+            .iter()
+            .filter(|job| matches!(job.state, QueueState::Pending | QueueState::Retry))
+            .map(|job| job.request.clone())
+            .collect()
+    }
+
+    pub fn finalize(
+        &mut self,
+        content_id: &str,
+        state: QueueState,
+        result: Option<ScrapeResult>,
+        reason: Option<String>,
+    ) -> Result<()> {
+        if !state.terminal() {
+            bail!("bulk finalization requires a terminal state");
+        }
+        if let Some(result) = &result {
+            result.validate()?;
+            if result.content_id != content_id {
+                bail!("bulk result content ID does not match job");
+            }
+        }
+        if let Some(reason) = &reason {
+            validate_safe_reason(reason)?;
+        }
+        let job = self.find_mut(content_id)?;
+        if job.state.terminal() {
+            return Ok(());
+        }
+        job.state = state;
+        job.result = result;
+        job.reason = reason;
+        job.next_attempt_at = 0;
+        self.persist()
+    }
+
+    pub fn finalize_bulk(&mut self, run: &BulkRun) -> Result<()> {
+        for item in &run.results {
+            self.finalize(
+                &item.content_id,
+                item.state.clone(),
+                item.result.clone(),
+                item.reason.clone(),
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn dispatch_bulk(
+        &mut self,
+        settings: &ScraperSettings,
+        providers: Vec<Arc<dyn BulkProvider>>,
+        observer: Option<&dyn BulkObserver>,
+    ) -> Result<BulkRun> {
+        let policy = SchedulingPolicy {
+            max_concurrency: settings.parallel_jobs as usize,
+            ..SchedulingPolicy::default()
+        };
+        self.dispatch_bulk_with_policy(settings, providers, policy, observer)
+    }
+
+    pub fn dispatch_bulk_with_media_publisher(
+        &mut self,
+        settings: &ScraperSettings,
+        providers: Vec<Arc<dyn BulkProvider>>,
+        publisher: Arc<dyn BulkMediaPublisher>,
+        observer: Option<&dyn BulkObserver>,
+    ) -> Result<BulkRun> {
+        let policy = SchedulingPolicy {
+            max_concurrency: settings.parallel_jobs as usize,
+            ..SchedulingPolicy::default()
+        };
+        self.dispatch_bulk_with_policy_and_publisher(
+            settings,
+            providers,
+            policy,
+            Some(publisher),
+            observer,
+        )
+    }
+
+    pub fn dispatch_bulk_with_policy(
+        &mut self,
+        settings: &ScraperSettings,
+        providers: Vec<Arc<dyn BulkProvider>>,
+        policy: SchedulingPolicy,
+        observer: Option<&dyn BulkObserver>,
+    ) -> Result<BulkRun> {
+        self.dispatch_bulk_with_policy_and_publisher(settings, providers, policy, None, observer)
+    }
+
+    fn dispatch_bulk_with_policy_and_publisher(
+        &mut self,
+        settings: &ScraperSettings,
+        providers: Vec<Arc<dyn BulkProvider>>,
+        policy: SchedulingPolicy,
+        publisher: Option<Arc<dyn BulkMediaPublisher>>,
+        observer: Option<&dyn BulkObserver>,
+    ) -> Result<BulkRun> {
+        policy.validate()?;
+        if self.paused {
+            bail!("queue-paused");
+        }
+        let now = unix_time_secs();
+        let requests: Vec<_> = self
+            .jobs
+            .iter()
+            .filter(|job| {
+                matches!(job.state, QueueState::Pending)
+                    || matches!(job.state, QueueState::Retry) && job.next_attempt_at <= now
+            })
+            .map(|job| job.request.clone())
+            .collect();
+        let jobs = requests
+            .into_iter()
+            .map(|request| {
+                let content_id = request.content_id.clone();
+                BulkJob::new(content_id.clone(), content_id, request)
+            })
+            .collect::<Vec<_>>();
+        settings.validate()?;
+        let global_slots = settings.parallel_jobs.min(policy.max_concurrency as u8) as usize;
+        if policy.active_jobs >= global_slots {
+            bail!("concurrency-limit");
+        }
+        let available_slots = (global_slots - policy.active_jobs) as u8;
+        for job in &jobs {
+            self.mark_running(&job.content_id)?;
+        }
+        let mut persist = |item: &BulkItemResult| {
+            self.finalize(
+                &item.content_id,
+                item.state.clone(),
+                item.result.clone(),
+                item.reason.clone(),
+            )
+        };
+        scrape_bulk_with_worker_limit(
+            jobs,
+            settings,
+            providers,
+            available_slots,
+            publisher,
+            observer,
+            Some(&mut persist),
+        )
+    }
+
     pub fn get_for(&self, content_id: &str, system_id: &str) -> Option<&QueueItem> {
         self.jobs
             .iter()
@@ -997,7 +1223,20 @@ impl Queue {
         let checkpoint = QueueCheckpoint {
             schema: CHECKPOINT_SCHEMA.to_string(),
             paused: self.paused,
-            jobs: self.jobs.clone(),
+            jobs: self
+                .jobs
+                .iter()
+                .map(|job| PersistedQueueItem {
+                    request: (&job.request).into(),
+                    state: job.state.clone(),
+                    attempts: job.attempts,
+                    next_attempt_at: job.next_attempt_at,
+                    overwrite_metadata: job.overwrite_metadata,
+                    overwrite_media: job.overwrite_media,
+                    result: job.result.clone(),
+                    reason: job.reason.clone(),
+                })
+                .collect(),
         };
         let bytes = serde_json::to_vec_pretty(&checkpoint)?;
         if bytes.len() > MAX_JSON_BYTES {
@@ -1289,6 +1528,871 @@ fn unsafe_ip(address: IpAddr) -> bool {
                         segments[7] as u8,
                     ))))
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProviderDeclaration {
+    pub id: String,
+    pub enabled: bool,
+    pub requires_credentials: bool,
+    pub credential_configured: bool,
+    pub priority: u8,
+    pub max_concurrency: u8,
+}
+
+impl ProviderDeclaration {
+    pub fn validate(&self) -> Result<()> {
+        validate_opaque_id(&self.id, "provider ID")?;
+        if !matches!(self.priority, 1..=3) || !matches!(self.max_concurrency, 1 | 2 | 4) {
+            bail!("provider limits are outside bounds");
+        }
+        if !self.requires_credentials && self.credential_configured {
+            bail!("anonymous provider cannot have credential status");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ScraperSettings {
+    pub parallel_jobs: u8,
+    pub providers: Vec<ProviderDeclaration>,
+}
+
+impl Default for ScraperSettings {
+    fn default() -> Self {
+        Self {
+            parallel_jobs: 2,
+            providers: registered_providers(),
+        }
+    }
+}
+
+impl ScraperSettings {
+    pub fn validate(&self) -> Result<()> {
+        if !matches!(self.parallel_jobs, 1 | 2 | 4) {
+            bail!("parallel jobs must be 1, 2, or 4");
+        }
+        if self.providers.is_empty() || self.providers.len() > 3 {
+            bail!("provider declarations are outside bounds");
+        }
+        let mut priorities = std::collections::HashSet::new();
+        let mut ids = std::collections::HashSet::new();
+        for provider in &self.providers {
+            provider.validate()?;
+            if !ids.insert(provider.id.as_str()) || !priorities.insert(provider.priority) {
+                bail!("provider IDs and priorities must be unique");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn enabled_in_priority(&self) -> Vec<&ProviderDeclaration> {
+        let mut providers: Vec<_> = self
+            .providers
+            .iter()
+            .filter(|provider| provider.enabled)
+            .collect();
+        providers.sort_by_key(|provider| provider.priority);
+        providers
+    }
+}
+
+pub fn registered_providers() -> Vec<ProviderDeclaration> {
+    vec![
+        ProviderDeclaration {
+            id: "fixture-primary".into(),
+            enabled: true,
+            requires_credentials: true,
+            credential_configured: false,
+            priority: 1,
+            max_concurrency: 1,
+        },
+        ProviderDeclaration {
+            id: "fixture-secondary".into(),
+            enabled: true,
+            requires_credentials: false,
+            credential_configured: false,
+            priority: 2,
+            max_concurrency: 2,
+        },
+        ProviderDeclaration {
+            id: "fixture-tertiary".into(),
+            enabled: true,
+            requires_credentials: false,
+            credential_configured: false,
+            priority: 3,
+            max_concurrency: 2,
+        },
+    ]
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum BulkPhase {
+    Searching,
+    Retrying,
+    FallingBack,
+    DownloadingCover,
+    Publishing,
+    Done,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct BulkJob {
+    pub content_id: String,
+    pub display_title: String,
+    pub request: ScrapeRequest,
+}
+
+impl BulkJob {
+    pub fn new(
+        content_id: impl Into<String>,
+        display_title: impl Into<String>,
+        request: ScrapeRequest,
+    ) -> Self {
+        Self {
+            content_id: content_id.into(),
+            display_title: display_title.into(),
+            request,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct BulkRow {
+    pub content_id: String,
+    pub display_title: String,
+    pub provider: Option<String>,
+    pub phase: BulkPhase,
+    pub fallback_transition: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct BulkCounts {
+    pub succeeded: usize,
+    pub fallback: usize,
+    pub not_found: usize,
+    pub ambiguous: usize,
+    pub failed: usize,
+    pub cancelled: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct BulkProgress {
+    pub completed: usize,
+    pub total: usize,
+    pub percent: u8,
+    pub active_slots: u8,
+    pub rows: Vec<BulkRow>,
+    pub counts: BulkCounts,
+    pub paused: bool,
+    pub paused_reason: Option<String>,
+    pub background: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct BulkItemResult {
+    pub content_id: String,
+    pub state: QueueState,
+    pub result: Option<ScrapeResult>,
+    pub reason: Option<String>,
+    pub fallback: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct BulkRun {
+    pub progress: BulkProgress,
+    pub results: Vec<BulkItemResult>,
+}
+
+pub trait BulkObserver: Send + Sync {
+    fn progress(&self, progress: &BulkProgress);
+}
+
+type BulkCompletionCallback<'a> = &'a mut dyn FnMut(&BulkItemResult) -> Result<()>;
+
+pub trait BulkProvider: Send + Sync {
+    fn declaration(&self) -> &ProviderDeclaration;
+    fn scrape(&self, request: &ScrapeRequest) -> ProviderResponse;
+}
+
+pub trait BulkMediaPublisher: Send + Sync {
+    fn publish(&self, provider_id: &str, result: &ScrapeResult) -> Result<()>;
+}
+
+pub struct MediaCachePublisher {
+    cache: Arc<media_cache::MediaCache>,
+    transport: Arc<dyn media_cache::Transport>,
+}
+
+impl MediaCachePublisher {
+    pub fn new(
+        cache: Arc<media_cache::MediaCache>,
+        transport: Arc<dyn media_cache::Transport>,
+    ) -> Self {
+        Self { cache, transport }
+    }
+}
+
+impl BulkMediaPublisher for MediaCachePublisher {
+    fn publish(&self, provider_id: &str, result: &ScrapeResult) -> Result<()> {
+        for media in result
+            .media
+            .iter()
+            .filter(|media| media.kind == MediaKind::BoxArt)
+        {
+            let reference = media_cache::MediaReference {
+                content_id: result.content_id.clone(),
+                kind: match media.kind {
+                    MediaKind::BoxArt => media_cache::MediaKind::BoxArt,
+                    MediaKind::Screenshot => media_cache::MediaKind::Screenshot,
+                    MediaKind::TitleScreen => media_cache::MediaKind::TitleScreen,
+                    MediaKind::Logo => media_cache::MediaKind::Logo,
+                },
+                url: media.url.as_str().to_owned(),
+                region: Some(format!("{:?}", media.region).to_ascii_lowercase()),
+                language: Some(format!("{:?}", media.language).to_ascii_lowercase()),
+                provider: provider_id.to_owned(),
+            };
+            let profile = match media.kind {
+                MediaKind::BoxArt => media_cache::Profile::Cover,
+                MediaKind::Screenshot => media_cache::Profile::ScreenshotPreview,
+                MediaKind::TitleScreen => media_cache::Profile::TitleScreen,
+                MediaKind::Logo => media_cache::Profile::TransparentLogo,
+            };
+            self.cache
+                .ingest(&reference, profile, self.transport.as_ref())?;
+        }
+        Ok(())
+    }
+}
+
+pub struct FixtureBulkProvider {
+    declaration: ProviderDeclaration,
+    provider: Mutex<FixtureProvider>,
+}
+
+impl FixtureBulkProvider {
+    pub fn new(declaration: ProviderDeclaration) -> Result<Self> {
+        declaration.validate()?;
+        Ok(Self {
+            declaration,
+            provider: Mutex::new(FixtureProvider::new()),
+        })
+    }
+}
+
+impl BulkProvider for FixtureBulkProvider {
+    fn declaration(&self) -> &ProviderDeclaration {
+        &self.declaration
+    }
+
+    fn scrape(&self, request: &ScrapeRequest) -> ProviderResponse {
+        let id = self.declaration.id.as_str();
+        if id == "fixture-primary" && request.content_id == "malformed" {
+            let mut result = self
+                .provider
+                .lock()
+                .expect("fixture provider lock")
+                .success_result(request, "Synthetic Malformed Record".into());
+            result.metadata.description = "private /roms provider payload".into();
+            return ProviderResponse::Result(Box::new(result));
+        }
+        if id == "fixture-primary"
+            && matches!(
+                request.content_id.as_str(),
+                "fallback-2" | "fallback-3" | "absent-cover" | "auth"
+            )
+        {
+            if request.content_id == "auth" {
+                return ProviderResponse::Failed {
+                    reason: "auth-failure".into(),
+                };
+            }
+            return ProviderResponse::Result(Box::new(ScrapeResult {
+                status: MatchStatus::NotFound,
+                ..self
+                    .provider
+                    .lock()
+                    .expect("fixture provider lock")
+                    .success_result(request, "Synthetic Missing Record".into())
+            }));
+        }
+        if id == "fixture-secondary" && request.content_id == "fallback-2" {
+            return ProviderResponse::Result(Box::new(
+                self.provider
+                    .lock()
+                    .expect("fixture provider lock")
+                    .success_result(request, "Synthetic Secondary Fallback".into()),
+            ));
+        }
+        if id == "fixture-secondary" && request.content_id == "fallback-3" {
+            return ProviderResponse::Result(Box::new(ScrapeResult {
+                status: MatchStatus::NotFound,
+                ..self
+                    .provider
+                    .lock()
+                    .expect("fixture provider lock")
+                    .success_result(request, "Synthetic Missing Record".into())
+            }));
+        }
+        if id == "fixture-secondary" && matches!(request.content_id.as_str(), "auth" | "malformed")
+        {
+            return ProviderResponse::Result(Box::new(
+                self.provider
+                    .lock()
+                    .expect("fixture provider lock")
+                    .success_result(request, "Synthetic Auth Fallback".into()),
+            ));
+        }
+        if id == "fixture-tertiary"
+            && matches!(
+                request.content_id.as_str(),
+                "fallback-2" | "fallback-3" | "absent-cover"
+            )
+        {
+            return ProviderResponse::Result(Box::new(
+                self.provider
+                    .lock()
+                    .expect("fixture provider lock")
+                    .success_result(request, "Synthetic Tertiary Fallback".into()),
+            ));
+        }
+        let result = <FixtureProvider as MetadataProvider>::scrape(
+            &mut self.provider.lock().expect("fixture provider lock"),
+            request,
+        );
+        match result {
+            ProviderResponse::Result(mut result)
+                if id == "fixture-secondary" && request.content_id == "absent-cover" =>
+            {
+                result.media.clear();
+                ProviderResponse::Result(result)
+            }
+            ProviderResponse::Result(result) => ProviderResponse::Result(result),
+            ProviderResponse::Retry {
+                reason,
+                retry_after_secs,
+            } => ProviderResponse::Retry {
+                reason,
+                retry_after_secs,
+            },
+            ProviderResponse::Failed { reason } => ProviderResponse::Failed { reason },
+        }
+    }
+}
+
+struct ProviderGate {
+    active: Mutex<usize>,
+    wake: Condvar,
+    limit: usize,
+}
+
+impl ProviderGate {
+    fn new(limit: usize) -> Self {
+        Self {
+            active: Mutex::new(0),
+            wake: Condvar::new(),
+            limit,
+        }
+    }
+    fn enter(&self) -> ProviderPermit<'_> {
+        let mut active = self.active.lock().expect("provider gate lock");
+        while *active >= self.limit {
+            active = self
+                .wake
+                .wait(active)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *active += 1;
+        ProviderPermit { gate: self }
+    }
+}
+
+struct ProviderPermit<'a> {
+    gate: &'a ProviderGate,
+}
+
+impl Drop for ProviderPermit<'_> {
+    fn drop(&mut self) {
+        let mut active = self.gate.active.lock().expect("provider gate lock");
+        *active -= 1;
+        self.gate.wake.notify_one();
+    }
+}
+
+struct ProviderSlot {
+    provider: Arc<dyn BulkProvider>,
+    auth_lock: Option<Mutex<()>>,
+    gate: ProviderGate,
+    unavailable: AtomicBool,
+}
+
+enum BulkEvent {
+    Phase {
+        index: usize,
+        provider: Option<String>,
+        phase: BulkPhase,
+        transition: Option<String>,
+    },
+    Done {
+        index: usize,
+        result: Box<BulkItemResult>,
+    },
+}
+
+pub fn scrape_bulk(
+    jobs: Vec<BulkJob>,
+    settings: &ScraperSettings,
+    providers: Vec<Arc<dyn BulkProvider>>,
+    observer: Option<&dyn BulkObserver>,
+) -> Result<BulkRun> {
+    scrape_bulk_with_worker_limit(
+        jobs,
+        settings,
+        providers,
+        settings.parallel_jobs,
+        None,
+        observer,
+        None,
+    )
+}
+
+pub fn scrape_bulk_with_media_publisher(
+    jobs: Vec<BulkJob>,
+    settings: &ScraperSettings,
+    providers: Vec<Arc<dyn BulkProvider>>,
+    publisher: Arc<dyn BulkMediaPublisher>,
+    observer: Option<&dyn BulkObserver>,
+) -> Result<BulkRun> {
+    scrape_bulk_with_worker_limit(
+        jobs,
+        settings,
+        providers,
+        settings.parallel_jobs,
+        Some(publisher),
+        observer,
+        None,
+    )
+}
+
+fn scrape_bulk_with_worker_limit(
+    jobs: Vec<BulkJob>,
+    settings: &ScraperSettings,
+    providers: Vec<Arc<dyn BulkProvider>>,
+    worker_limit: u8,
+    publisher: Option<Arc<dyn BulkMediaPublisher>>,
+    observer: Option<&dyn BulkObserver>,
+    mut on_completed: Option<BulkCompletionCallback<'_>>,
+) -> Result<BulkRun> {
+    settings.validate()?;
+    if !matches!(worker_limit, 1 | 2 | 4) || worker_limit > settings.parallel_jobs {
+        bail!("worker limit is outside configured bounds");
+    }
+    if jobs.len() > MAX_JOBS {
+        bail!("bulk job count is too large");
+    }
+    let mut content_ids = std::collections::HashSet::new();
+    for job in &jobs {
+        if !content_ids.insert(job.content_id.as_str()) {
+            bail!("duplicate bulk content ID");
+        }
+        if job.content_id != job.request.content_id {
+            bail!("bulk job content ID does not match request");
+        }
+        job.request.validate()?;
+        bounded_string(&job.display_title, "display title", true)?;
+        reject_private_text(&job.display_title, "display title")?;
+    }
+    let configured: HashMap<_, _> = settings
+        .providers
+        .iter()
+        .map(|p| (p.id.as_str(), p))
+        .collect();
+    let mut ordered = Vec::new();
+    let mut provider_ids = std::collections::HashSet::new();
+    for provider in providers {
+        let declaration = provider.declaration();
+        declaration.validate()?;
+        let declaration_id = declaration.id.clone();
+        if !provider_ids.insert(declaration_id.clone()) {
+            bail!("duplicate bulk provider ID");
+        }
+        let declaration_requires_credentials = declaration.requires_credentials;
+        let declaration_max_concurrency = declaration.max_concurrency;
+        let Some(setting) = configured.get(declaration_id.as_str()) else {
+            continue;
+        };
+        if setting.enabled
+            && declaration_requires_credentials == setting.requires_credentials
+            && (!setting.requires_credentials || setting.credential_configured)
+        {
+            ordered.push((
+                setting.priority,
+                provider,
+                setting.max_concurrency.min(declaration_max_concurrency),
+            ));
+        }
+    }
+    ordered.sort_by_key(|(priority, _, _)| *priority);
+    let credential_missing = settings.providers.iter().any(|provider| {
+        provider.enabled && provider.requires_credentials && !provider.credential_configured
+    });
+    let credential_fallback = settings
+        .enabled_in_priority()
+        .first()
+        .zip(ordered.first())
+        .is_some_and(|(first_enabled, first_runnable)| {
+            credential_missing && first_runnable.0 > first_enabled.priority
+        });
+    let slots: Vec<_> = ordered
+        .into_iter()
+        .map(|(_, provider, max_concurrency)| ProviderSlot {
+            auth_lock: provider
+                .declaration()
+                .requires_credentials
+                .then(|| Mutex::new(())),
+            gate: ProviderGate::new(max_concurrency as usize),
+            provider,
+            unavailable: AtomicBool::new(false),
+        })
+        .collect();
+    let mut progress = BulkProgress {
+        completed: 0,
+        total: jobs.len(),
+        percent: 0,
+        active_slots: settings.parallel_jobs,
+        rows: Vec::new(),
+        counts: BulkCounts::default(),
+        paused: false,
+        paused_reason: None,
+        background: false,
+    };
+    if let Some(observer) = observer {
+        observer.progress(&progress);
+    }
+    if jobs.is_empty() {
+        progress.percent = 100;
+        if let Some(observer) = observer {
+            observer.progress(&progress);
+        }
+        return Ok(BulkRun {
+            progress,
+            results: Vec::new(),
+        });
+    }
+    let worker_count = worker_limit.min(jobs.len() as u8) as usize;
+    let (work_tx, work_rx) = mpsc::sync_channel::<(usize, BulkJob)>(worker_count);
+    let (event_tx, event_rx) = mpsc::channel::<BulkEvent>();
+    let receiver = Arc::new(Mutex::new(work_rx));
+    let slots = Arc::new(slots);
+    let mut workers = Vec::new();
+    for _ in 0..worker_count {
+        let receiver = Arc::clone(&receiver);
+        let event_tx = event_tx.clone();
+        let slots = Arc::clone(&slots);
+        let publisher = publisher.clone();
+        workers.push(thread::spawn(move || loop {
+            let work = receiver.lock().expect("bulk work lock").recv();
+            let Ok((index, job)) = work else { break };
+            let result = scrape_one(
+                index,
+                &job,
+                &slots,
+                publisher.as_deref(),
+                &event_tx,
+                credential_fallback,
+            );
+            let _ = event_tx.send(BulkEvent::Done {
+                index,
+                result: Box::new(result),
+            });
+        }));
+    }
+    for (index, job) in jobs.iter().cloned().enumerate() {
+        work_tx
+            .send((index, job))
+            .map_err(|_| anyhow!("bulk worker stopped"))?;
+    }
+    drop(work_tx);
+    drop(event_tx);
+    let mut results: Vec<Option<BulkItemResult>> = vec![None; jobs.len()];
+    let mut finalized = 0;
+    while finalized < jobs.len() {
+        match event_rx
+            .recv()
+            .map_err(|_| anyhow!("bulk event stream stopped"))?
+        {
+            BulkEvent::Phase {
+                index,
+                provider,
+                phase,
+                transition,
+            } => {
+                progress
+                    .rows
+                    .retain(|row| row.content_id != jobs[index].content_id);
+                progress.rows.push(BulkRow {
+                    content_id: jobs[index].content_id.clone(),
+                    display_title: jobs[index].display_title.clone(),
+                    provider,
+                    phase,
+                    fallback_transition: transition,
+                });
+                progress.rows.sort_by_key(|row| {
+                    jobs.iter()
+                        .position(|job| job.content_id == row.content_id)
+                        .unwrap_or(usize::MAX)
+                });
+                progress.rows.truncate(worker_count);
+                if let Some(observer) = observer {
+                    observer.progress(&progress);
+                }
+            }
+            BulkEvent::Done { index, result } => {
+                let result = *result;
+                progress
+                    .rows
+                    .retain(|row| row.content_id != jobs[index].content_id);
+                update_counts(&mut progress.counts, &result);
+                progress.completed += 1;
+                progress.percent = ((progress.completed * 100) / progress.total).min(100) as u8;
+                if let Some(on_completed) = on_completed.as_deref_mut() {
+                    on_completed(&result)?;
+                }
+                results[index] = Some(result);
+                finalized += 1;
+                if let Some(observer) = observer {
+                    observer.progress(&progress);
+                }
+            }
+        }
+    }
+    for worker in workers {
+        worker.join().map_err(|_| anyhow!("bulk worker panicked"))?;
+    }
+    progress.rows.clear();
+    progress.percent = 100;
+    if credential_missing && slots.is_empty() {
+        progress.paused_reason = Some("credential-missing".into());
+    }
+    Ok(BulkRun {
+        progress,
+        results: results.into_iter().map(Option::unwrap).collect(),
+    })
+}
+
+fn scrape_one(
+    index: usize,
+    job: &BulkJob,
+    slots: &[ProviderSlot],
+    publisher: Option<&dyn BulkMediaPublisher>,
+    events: &mpsc::Sender<BulkEvent>,
+    credential_fallback: bool,
+) -> BulkItemResult {
+    let mut fallback = credential_fallback;
+    let mut transition = None;
+    let mut matched_metadata = None;
+    for slot in slots {
+        let declaration = slot.provider.declaration();
+        if slot.unavailable.load(Ordering::Acquire) {
+            fallback = true;
+            transition = Some(format!("{}: unavailable → next", declaration.id));
+            continue;
+        }
+        let _ = events.send(BulkEvent::Phase {
+            index,
+            provider: Some(declaration.id.clone()),
+            phase: BulkPhase::Searching,
+            transition: transition.clone(),
+        });
+        let _permit = slot.gate.enter();
+        let _auth_lock = slot
+            .auth_lock
+            .as_ref()
+            .map(|lock| lock.lock().expect("provider auth lock"));
+        if slot.unavailable.load(Ordering::Acquire) {
+            fallback = true;
+            transition = Some(format!("{}: unavailable → next", declaration.id));
+            continue;
+        }
+        let mut attempts = 0;
+        let response = loop {
+            match slot.provider.scrape(&job.request) {
+                ProviderResponse::Retry {
+                    reason,
+                    retry_after_secs,
+                } if attempts < 3 => {
+                    let retry_after = retry_after_secs.unwrap_or(0);
+                    if retry_after > MAX_RETRY_AFTER_SECS {
+                        break ProviderResponse::Failed {
+                            reason: "retry-after-oversized".into(),
+                        };
+                    }
+                    attempts += 1;
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::Retrying,
+                        transition: None,
+                    });
+                    let backoff = 2_u64.saturating_pow(attempts.min(11));
+                    let delay = retry_after.max(backoff).min(MAX_BACKOFF_SECS);
+                    thread::sleep(Duration::from_secs(delay));
+                    let _ = reason;
+                }
+                response => break response,
+            }
+        };
+        match response {
+            ProviderResponse::Result(result) => {
+                let result = *result;
+                if result.content_id != job.request.content_id
+                    || result.system_id != job.request.system_id
+                    || result.validate().is_err()
+                {
+                    fallback = true;
+                    transition = Some(format!("{}: policy-invalid → next", declaration.id));
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::FallingBack,
+                        transition: transition.clone(),
+                    });
+                    continue;
+                }
+                if result.status == MatchStatus::Ambiguous {
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::Done,
+                        transition: transition.clone(),
+                    });
+                    return BulkItemResult {
+                        content_id: job.content_id.clone(),
+                        state: QueueState::Ambiguous,
+                        result: Some(result),
+                        reason: Some("ambiguous".into()),
+                        fallback,
+                    };
+                }
+                if result.status == MatchStatus::Matched
+                    && result
+                        .media
+                        .iter()
+                        .any(|media| media.kind == MediaKind::BoxArt)
+                {
+                    let mut result = result;
+                    if let Some(metadata) = matched_metadata.take() {
+                        result.metadata = metadata;
+                    }
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::DownloadingCover,
+                        transition: transition.clone(),
+                    });
+                    if let Some(publisher) = publisher {
+                        if publisher.publish(&declaration.id, &result).is_err() {
+                            let _ = events.send(BulkEvent::Phase {
+                                index,
+                                provider: Some(declaration.id.clone()),
+                                phase: BulkPhase::Done,
+                                transition: Some("media-publish-failed".into()),
+                            });
+                            return BulkItemResult {
+                                content_id: job.content_id.clone(),
+                                state: QueueState::Failed,
+                                result: None,
+                                reason: Some("media-publish-failed".into()),
+                                fallback,
+                            };
+                        }
+                    }
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::Publishing,
+                        transition: transition.clone(),
+                    });
+                    let _ = events.send(BulkEvent::Phase {
+                        index,
+                        provider: Some(declaration.id.clone()),
+                        phase: BulkPhase::Done,
+                        transition: transition.clone(),
+                    });
+                    return BulkItemResult {
+                        content_id: job.content_id.clone(),
+                        state: QueueState::Succeeded,
+                        result: Some(result),
+                        reason: fallback.then_some("cover-found-via-fallback".into()),
+                        fallback,
+                    };
+                }
+                if result.status == MatchStatus::Matched {
+                    matched_metadata = Some(result.metadata);
+                    transition = Some(format!("{}: missing-cover-kind → next", declaration.id));
+                } else {
+                    transition = Some(format!("{}: not-found → next", declaration.id));
+                }
+                fallback = true;
+            }
+            ProviderResponse::Retry { reason, .. } => {
+                fallback = true;
+                transition = Some(format!(
+                    "{}: {} → next",
+                    declaration.id,
+                    safe_reason(&reason)
+                ));
+            }
+            ProviderResponse::Failed { reason } => {
+                fallback = true;
+                let reason = safe_reason(&reason);
+                transition = Some(format!("{}: {} → next", declaration.id, reason));
+                if reason.starts_with("auth") {
+                    slot.unavailable.store(true, Ordering::Release);
+                }
+            }
+        }
+        let _ = events.send(BulkEvent::Phase {
+            index,
+            provider: Some(declaration.id.clone()),
+            phase: BulkPhase::FallingBack,
+            transition: transition.clone(),
+        });
+    }
+    let _ = events.send(BulkEvent::Phase {
+        index,
+        provider: None,
+        phase: BulkPhase::Done,
+        transition,
+    });
+    BulkItemResult {
+        content_id: job.content_id.clone(),
+        state: QueueState::NotFound,
+        result: None,
+        reason: Some("all-providers-exhausted".into()),
+        fallback,
+    }
+}
+
+fn update_counts(counts: &mut BulkCounts, result: &BulkItemResult) {
+    match result.state {
+        QueueState::Succeeded if result.fallback => counts.fallback += 1,
+        QueueState::Succeeded => counts.succeeded += 1,
+        QueueState::NotFound => counts.not_found += 1,
+        QueueState::Ambiguous => counts.ambiguous += 1,
+        QueueState::Failed => counts.failed += 1,
+        QueueState::Cancelled => counts.cancelled += 1,
+        _ => {}
     }
 }
 

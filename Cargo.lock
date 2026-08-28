@@ -539,6 +539,7 @@ name = "metadata-scraper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "media-cache",
  "serde",
  "serde_json",
 ]
@@ -811,6 +812,7 @@ dependencies = [
 name = "settings-schema"
 version = "0.1.0"
 dependencies = [
+ "metadata-scraper",
  "serde",
  "serde_json",
 ]
@@ -819,6 +821,7 @@ dependencies = [
 name = "settings-ui"
 version = "0.1.0"
 dependencies = [
+ "metadata-scraper",
  "regex-automata",
  "serde",
  "serde_json",

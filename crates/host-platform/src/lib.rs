@@ -787,42 +787,127 @@ fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
 
 fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
     let scraper = &screen.scraper;
+    canvas.set_draw_color(rgb(screen.palette.background));
+    let _ = canvas.fill_rect(Rect::new(32, 72, 960, 610));
     draw_text(
         canvas,
         64,
-        116,
-        &format!("STATUS {}", scraper.status),
-        screen.palette.text,
+        104,
+        "BULK COVER SCRAPER",
+        screen.palette.highlight,
         3,
     );
     draw_text(
         canvas,
         64,
-        166,
-        &format!("QUEUE {}", scraper.queue_count),
+        148,
+        &format!("STATUS {}", scraper.status),
+        screen.palette.text,
+        2,
+    );
+    draw_text(
+        canvas,
+        64,
+        180,
+        &format!(
+            "COMPLETED {}/{}  SLOTS {}",
+            scraper.completed, scraper.total, scraper.configured_slots
+        ),
         screen.palette.text,
         2,
     );
     if let Some(progress) = scraper.progress_percent {
+        canvas.set_draw_color(rgb(screen.palette.muted));
+        let _ = canvas.fill_rect(Rect::new(64, 214, 896, 18));
+        canvas.set_draw_color(rgb(screen.palette.highlight));
+        let _ = canvas.fill_rect(Rect::new(64, 214, 896 * u32::from(progress) / 100, 18));
         draw_text(
             canvas,
             64,
-            216,
+            252,
             &format!("PROGRESS {}%", progress),
             screen.palette.highlight,
             3,
         );
     }
+    let counts = &scraper.counts;
+    draw_text(
+        canvas,
+        64,
+        294,
+        &format!(
+            "FOUND {}  FALLBACK {}  NOT FOUND {}  AMBIGUOUS {}  FAILED {}",
+            counts.succeeded, counts.fallback, counts.not_found, counts.ambiguous, counts.failed
+        ),
+        screen.palette.text,
+        1,
+    );
+    if scraper.paused {
+        draw_text(
+            canvas,
+            64,
+            326,
+            &format!(
+                "PAUSED {}",
+                scraper.paused_reason.as_deref().unwrap_or("user-paused")
+            ),
+            screen.palette.highlight,
+            2,
+        );
+    } else if scraper.background {
+        draw_text(
+            canvas,
+            64,
+            326,
+            "RUNNING IN BACKGROUND",
+            screen.palette.highlight,
+            2,
+        );
+    }
+    for (index, row) in scraper
+        .rows
+        .iter()
+        .enumerate()
+        .take(scraper.configured_slots as usize)
+    {
+        draw_text(
+            canvas,
+            64,
+            366 + index as i32 * 48,
+            &format!(
+                "{}  {}  {}",
+                row.title,
+                row.provider.as_deref().unwrap_or("-"),
+                format_debug(&row.phase)
+            ),
+            screen.palette.text,
+            2,
+        );
+        if let Some(transition) = &row.fallback_transition {
+            draw_text(
+                canvas,
+                96,
+                394 + index as i32 * 48,
+                transition,
+                screen.palette.muted,
+                1,
+            );
+        }
+    }
     for (index, candidate) in scraper.ambiguous_candidates.iter().enumerate() {
         draw_text(
             canvas,
             96,
-            280 + index as i32 * 30,
+            420 + index as i32 * 30,
             candidate,
             screen.palette.text,
             2,
         );
     }
+}
+
+fn format_debug<T: std::fmt::Debug>(value: &T) -> String {
+    format!("{value:?}").to_ascii_lowercase().replace('_', "-")
 }
 
 fn button_label(button: ui_model::Button) -> &'static str {

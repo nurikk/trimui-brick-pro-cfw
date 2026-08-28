@@ -11,7 +11,7 @@ fail() {
 }
 
 usage() {
-    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS" >&2
+    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
     exit 2
 }
 
@@ -129,8 +129,7 @@ PY
 startup_failure() {
     printf '%s\n' "sim: $1" >&2
     docker logs "$NAME" >&2 || true
-    docker stop --time 5 "$NAME" >/dev/null 2>&1 || true
-    docker rm "$NAME" >/dev/null 2>&1 || true
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
     exit 1
 }
 
@@ -236,7 +235,8 @@ run_sim() {
     wait_output=
     wait_status=0
     wait_output=$(docker wait "$NAME") || wait_status=$?
-    docker rm "$NAME" >/dev/null 2>&1 || true
+    docker rm "$NAME" >/dev/null 2>&1 || docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker container inspect "$NAME" >/dev/null 2>&1 && fail "simulator container survived cleanup" || true
     [ "$wait_status" -eq 0 ] || fail "docker wait failed with status $wait_status"
     case "$wait_output" in
         ''|*[!0-9]*) fail "docker wait returned malformed exit code: $wait_output" ;;
@@ -250,10 +250,17 @@ stop_sim() {
     if docker container inspect "$NAME" >/dev/null 2>&1; then
         verify_container || fail "named container does not belong to --run-dir"
         if docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q '^true$'; then
-            docker stop --time 10 "$NAME" >/dev/null || fail "failed to stop simulator"
+            if ! docker stop --time 10 "$NAME" >/dev/null; then
+                docker rm -f "$NAME" >/dev/null 2>&1 || true
+                fail "failed to stop simulator"
+            fi
         fi
-        docker rm "$NAME" >/dev/null 2>&1 || fail "failed to remove simulator"
+        docker rm "$NAME" >/dev/null 2>&1 || {
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+            fail "failed to remove simulator"
+        }
     fi
+    docker container inspect "$NAME" >/dev/null 2>&1 && fail "simulator container survived cleanup" || true
     [ ! -e "$RUN_REAL/control.sock" ] || fail "control socket was not removed during clean shutdown"
     [ -f "$RUN_REAL/logs/launcher.jsonl" ] || fail "launcher log is missing"
     grep -q '"event":"clean_shutdown"' "$RUN_REAL/logs/launcher.jsonl" \
@@ -268,10 +275,10 @@ clean_run() {
     NAME=$(container_name)
     if docker container inspect "$NAME" >/dev/null 2>&1; then
         verify_container || fail "named container does not belong to --run-dir"
-        docker stop --time 10 "$NAME" >/dev/null 2>&1 || true
-        docker rm "$NAME" >/dev/null 2>&1 || true
+        docker rm -f "$NAME" >/dev/null 2>&1 || fail "failed to remove simulator"
     fi
-    rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" "$RUN_REAL/checkpoints" \
+    docker container inspect "$NAME" >/dev/null 2>&1 && fail "simulator container survived cleanup" || true
+    rm -rf "$RUN_REAL/logs" "$RUN_REAL/screenshots" "$RUN_REAL/checkpoints" "$RUN_REAL/data" \
         "$RUN_REAL/readiness.json" "$RUN_REAL/route-selection.json" \
         "$RUN_REAL/launch.json" "$RUN_REAL/launch-request.json" "$RUN_REAL/session.json" "$RUN_REAL/exit-status.json" \
         "$RUN_REAL/.readiness.json.tmp" "$RUN_REAL/.route-selection.json.tmp" \
@@ -279,6 +286,45 @@ clean_run() {
         "$RUN_REAL/.exit-status.json.tmp" \
         "$RUN_REAL/control.sock"
     run_sim "$@"
+}
+
+labeled_container_count() {
+    docker ps -aq --filter "label=$LABEL" | awk 'NF { count += 1 } END { print count + 0 }'
+}
+
+lifecycle_journey() {
+    [ "$#" -eq 0 ] || usage
+    [ "$(labeled_container_count)" -eq 0 ] || fail "lifecycle journey started with labeled simulator containers"
+    first=$(mktemp -d "${TMPDIR:-/tmp}/trimui-sim-lifecycle.XXXXXX")
+    second=$(mktemp -d "${TMPDIR:-/tmp}/trimui-sim-lifecycle.XXXXXX")
+    cleanup() {
+        first_name=$(RUN_REAL="$first" container_name)
+        second_name=$(RUN_REAL="$second" container_name)
+        docker rm -f "$first_name" "$second_name" >/dev/null 2>&1 || true
+        rm -rf "$first" "$second"
+    }
+    trap cleanup EXIT HUP INT TERM
+
+    "$ROOT/scripts/sim" run --backend=dummy --run-dir "$first" --wait-ready 30 --detach
+    [ -f "$first/data/launcher-state.json" ]
+    [ -f "$first/data/rom-index.json" ]
+    [ "$(stat -c '%a' "$first/data")" = 777 ] || fail "simulator data directory is not caller-cleanable"
+    [ "$(stat -c '%a' "$first/control.sock")" = 660 ] || fail "control socket is world-writable"
+    "$ROOT/scripts/sim" stop --backend=dummy --run-dir "$first" --wait-ready 30
+    [ ! -e "$first/control.sock" ] || fail "control socket survived stop"
+    rm -rf "$first"
+    [ ! -e "$first" ] || fail "caller could not remove stopped simulator run"
+
+    "$ROOT/scripts/sim" run --backend=dummy --run-dir "$second" --wait-ready 30 --detach
+    RUN_REAL=$(CDPATH= cd -- "$second" && pwd -P)
+    NAME=$(container_name)
+    docker rm -f "$NAME" >/dev/null || fail "could not interrupt simulator journey"
+    "$ROOT/scripts/sim" clean-run --backend=dummy --run-dir "$second" --wait-ready 30 --detach
+    "$ROOT/scripts/sim" stop --backend=dummy --run-dir "$second" --wait-ready 30
+    rm -rf "$second"
+    [ ! -e "$second" ] || fail "caller could not remove clean-run simulator run"
+    [ "$(labeled_container_count)" -eq 0 ] || fail "lifecycle cleanup left labeled simulator containers"
+    printf '%s\n' "sim lifecycle journey passed: caller-cleanable state, interruption recovery, and zero labeled containers"
 }
 
 [ "$#" -gt 0 ] || usage
@@ -289,5 +335,6 @@ case "$command" in
     run) run_sim "$@" ;;
     stop) stop_sim "$@" ;;
     clean-run) clean_run "$@" ;;
+    lifecycle-journey) lifecycle_journey "$@" ;;
     *) usage ;;
 esac

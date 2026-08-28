@@ -791,8 +791,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sim-domain",
- "sim-launcher",
  "sim-platform-contract",
 ]
 
@@ -957,10 +955,13 @@ dependencies = [
  "launch-contract",
  "launcher-presentation",
  "launcher-theme",
+ "media-cache",
+ "metadata-scraper",
  "package-trust",
  "png",
  "serde",
  "serde_json",
+ "session-broker",
  "settings-schema",
  "settings-ui",
  "signal-hook",

@@ -116,7 +116,7 @@ validate_command() {
         presentation)
             [ "$#" -eq 2 ] && [ "$1" = --action ] || usage
             case "$2" in
-                home|systems|games|favorites|search|settings|settings-form|recovery|modal|scraper-settings|scraper-game|scraper-queue|scraper-progress|scraper-paused|scraper-resumed|scraper-ambiguity|scraper-complete|scraper-cancel|wifi-scan|wifi-access-points|wifi-password|wifi-hidden|wifi-manual|wifi-progress|wifi-error|fallback) ;;
+                home|systems|games|favorites|recent|resume|favorite|media-details|theme-garden|update|unavailable|search|settings|settings-form|recovery|modal|scraper-settings|scraper-game|scraper-queue|scraper-progress|scraper-paused|scraper-resumed|scraper-ambiguity|scraper-complete|scraper-cancel|wifi-scan|wifi-access-points|wifi-password|wifi-hidden|wifi-manual|wifi-progress|wifi-error|fallback) ;;
                 *) usage ;;
             esac ;;
         screenshot|checkpoint)

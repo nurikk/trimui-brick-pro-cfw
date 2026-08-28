@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::SessionResult;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sim_platform_contract::PlatformState;
@@ -36,30 +37,6 @@ pub struct JournalRecord {
     pub released: bool,
     pub snapshot: PlatformState,
     pub checksum: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct SessionResult {
-    #[serde(rename = "type")]
-    pub result_type: &'static str,
-    pub journey: String,
-    pub accepted: bool,
-    pub runner: Option<String>,
-    pub core: Option<String>,
-    pub reason: String,
-    #[serde(rename = "durationMs")]
-    pub duration_ms: u64,
-    pub restored: bool,
-    #[serde(rename = "safeDefault")]
-    pub safe_default: bool,
-    #[serde(rename = "persistenceStatus")]
-    pub persistence_status: &'static str,
-    #[serde(rename = "resumePublished")]
-    pub resume_published: bool,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "exitCode")]
-    pub exit_code: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signal: Option<i32>,
 }
 
 #[derive(Clone, Debug, Serialize)]

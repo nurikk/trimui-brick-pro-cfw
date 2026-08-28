@@ -42,6 +42,7 @@ pub enum Route {
     Games,
     Search,
     Favorites,
+    Recent,
     Settings,
     GameSwitcher,
     Recovery,
@@ -1109,7 +1110,7 @@ fn bounded_input(value: &str) -> String {
 fn route_capability(route: &Route) -> Option<Capability> {
     match route {
         Route::Systems | Route::Games | Route::Search => Some(Capability::Catalog),
-        Route::Favorites => Some(Capability::Favorites),
+        Route::Favorites | Route::Recent => Some(Capability::Favorites),
         Route::Scraper(_) => Some(Capability::Scraper),
         Route::Wifi(_) => Some(Capability::Wifi),
         _ => None,
@@ -1140,7 +1141,9 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
         Route::Home => vec![
             entry("systems", "Systems", Route::Systems, true, None),
             entry("games", "Games", Route::Games, true, None),
+            entry("resume", "Resume", Route::Recent, true, None),
             entry("search", "Search", Route::Search, true, None),
+            entry("recent", "Recent", Route::Recent, true, None),
             entry(
                 "favorites",
                 "Favorites",
@@ -1170,7 +1173,7 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
                 selected: false,
             })
             .collect(),
-        Route::Games | Route::Favorites | Route::Search => state
+        Route::Games | Route::Favorites | Route::Recent | Route::Search => state
             .games
             .iter()
             .filter(|game| match state.selected_system.as_ref() {
@@ -1178,6 +1181,7 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
                 None => true,
             })
             .filter(|game| !matches!(route, Route::Favorites) || game.favorite)
+            .filter(|game| !matches!(route, Route::Recent) || game.id.0 == "generated-game-02")
             .filter(|game| {
                 state.search_query.is_empty()
                     || game

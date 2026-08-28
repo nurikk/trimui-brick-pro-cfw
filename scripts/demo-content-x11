@@ -5,43 +5,43 @@ RUN=$(mktemp -d /tmp/trimui-demo-XXXXXX)
 trap 'rm -rf "$RUN"' EXIT
 
 ./scripts/sim run --backend=x11 --run-dir "$RUN" --wait-ready 30 --detach
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-1
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-2
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name orbit-3
+# The canonical host profile starts the fourth entry, signal-workshop.
+for frame in 1 2 3; do
+    ./scripts/simctl --socket "$RUN/control.sock" screenshot --name "signal-$frame"
+    [ "$frame" -eq 3 ] || ./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+done
+./scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
+
+# Return to the library after each broker-backed session, then select the next entry.
 ./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
+for _ in 1 2 3; do ./scripts/simctl --socket "$RUN/control.sock" button --button up --action press; done
+./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
+for frame in 1 2 3; do
+    ./scripts/simctl --socket "$RUN/control.sock" screenshot --name "nebula-$frame"
+    [ "$frame" -eq 3 ] || ./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+done
+./scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
+
 ./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-1
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-2
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name signal-3
-./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-1
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-2
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name mirror-3
-./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+for frame in 1 2 3; do
+    ./scripts/simctl --socket "$RUN/control.sock" screenshot --name "mirror-$frame"
+    [ "$frame" -eq 3 ] || ./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+done
+./scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
+
 ./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
-./scripts/simctl --socket "$RUN/control.sock" button --button up --action press
+./scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 ./scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-1
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-2
-./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
-./scripts/simctl --socket "$RUN/control.sock" screenshot --name nebula-3
-./scripts/simctl --socket "$RUN/control.sock" button --button start --action press
+for frame in 1 2 3; do
+    ./scripts/simctl --socket "$RUN/control.sock" screenshot --name "orbit-$frame"
+    [ "$frame" -eq 3 ] || ./scripts/simctl --socket "$RUN/control.sock" button --button right --action press
+done
+./scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
 ./scripts/sim stop --run-dir "$RUN"
 
 python3 - "$RUN" <<'PY'

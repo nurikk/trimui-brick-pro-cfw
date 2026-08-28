@@ -102,6 +102,45 @@ pub struct SettingsControl {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BoundaryStatus {
+    pub available: bool,
+    pub state: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoundaryViews {
+    pub metadata_scraper: BoundaryStatus,
+    pub media_cache: BoundaryStatus,
+    pub wifi_controller: BoundaryStatus,
+    pub theme_garden: BoundaryStatus,
+    pub update_agent: BoundaryStatus,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexView {
+    pub status: String,
+    pub entry_count: usize,
+    pub visible_rows: usize,
+    pub search_results: usize,
+    pub queue_depth: usize,
+}
+
+impl Default for IndexView {
+    fn default() -> Self {
+        Self {
+            status: "ready".into(),
+            entry_count: 0,
+            visible_rows: 12,
+            search_results: 64,
+            queue_depth: 32,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Screen {
     pub schema: &'static str,
     pub identity: &'static str,
@@ -124,6 +163,8 @@ pub struct Screen {
     pub splash: String,
     pub affordances: Affordances,
     pub controller_help: Vec<ui_model::HelpBinding>,
+    pub index: IndexView,
+    pub boundaries: BoundaryViews,
 }
 
 pub fn build(
@@ -132,6 +173,36 @@ pub fn build(
     theme_fallback: Option<ThemeReason>,
     settings: Option<&settings_ui::Scene>,
     wifi: Option<&wifi_settings_controller::Snapshot>,
+) -> Screen {
+    build_with_index(
+        state,
+        theme,
+        theme_fallback,
+        settings,
+        wifi,
+        &IndexView::default(),
+    )
+}
+
+pub fn build_with_index(
+    state: &UiState,
+    theme: &ValidatedTheme,
+    theme_fallback: Option<ThemeReason>,
+    settings: Option<&settings_ui::Scene>,
+    wifi: Option<&wifi_settings_controller::Snapshot>,
+    index: &IndexView,
+) -> Screen {
+    build_with_recent(state, theme, theme_fallback, settings, wifi, index, &[])
+}
+
+pub fn build_with_recent(
+    state: &UiState,
+    theme: &ValidatedTheme,
+    theme_fallback: Option<ThemeReason>,
+    settings: Option<&settings_ui::Scene>,
+    wifi: Option<&wifi_settings_controller::Snapshot>,
+    index: &IndexView,
+    recent: &[String],
 ) -> Screen {
     let selected_id = state
         .menu
@@ -160,6 +231,9 @@ pub fn build(
                 .is_none_or(|id| id == &game.system_id)
         })
         .filter(|game| !matches!(state.route, Route::Favorites) || game.favorite)
+        .filter(|game| {
+            !matches!(state.route, Route::Recent) || recent.iter().any(|id| id == &game.id.0)
+        })
         .filter(|game| {
             state.search_query.is_empty()
                 || game
@@ -254,6 +328,29 @@ pub fn build(
             charging: state.affordances.battery.charging,
         },
         controller_help: state.controller_help.bindings.clone(),
+        index: index.clone(),
+        boundaries: BoundaryViews {
+            metadata_scraper: BoundaryStatus {
+                available: true,
+                state: "fixture-contract".into(),
+            },
+            media_cache: BoundaryStatus {
+                available: true,
+                state: "bounded-cache".into(),
+            },
+            wifi_controller: BoundaryStatus {
+                available: wifi.is_some(),
+                state: "controller-contract".into(),
+            },
+            theme_garden: BoundaryStatus {
+                available: false,
+                state: "unavailable".into(),
+            },
+            update_agent: BoundaryStatus {
+                available: false,
+                state: "unavailable".into(),
+            },
+        },
     }
 }
 
@@ -311,6 +408,7 @@ fn route_name(route: &Route) -> String {
         Route::Games => "games".into(),
         Route::Search => "search".into(),
         Route::Favorites => "favorites".into(),
+        Route::Recent => "recent".into(),
         Route::Settings => "settings".into(),
         Route::GameSwitcher => "game-switcher".into(),
         Route::Recovery => "recovery".into(),
@@ -330,6 +428,7 @@ fn title(route: &Route) -> String {
         Route::Games => "Games".into(),
         Route::Search => "Search".into(),
         Route::Favorites => "Favorites".into(),
+        Route::Recent => "Recent".into(),
         Route::Settings => "Settings".into(),
         Route::GameSwitcher => "Game Switcher".into(),
         Route::Recovery => "Recovery".into(),

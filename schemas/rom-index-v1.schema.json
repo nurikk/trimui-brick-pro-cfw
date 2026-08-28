@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rom-index-v1",
+  "title": "Bounded launcher ROM index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "entries"],
+  "properties": {
+    "schema": { "const": "launcher-rom-index/v1" },
+    "entries": {
+      "type": "array", "maxItems": 4096,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["contentId", "title", "path"],
+        "properties": {
+          "contentId": { "type": "string", "maxLength": 128 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "path": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        }
+      }
+    }
+  }
+}

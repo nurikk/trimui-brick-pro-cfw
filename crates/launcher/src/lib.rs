@@ -1,4 +1,8 @@
 mod control;
+mod launcher_state;
+mod rom_index;
+#[cfg(feature = "simulator")]
+mod simulator_session;
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -25,6 +29,7 @@ use launcher_theme::ValidatedTheme;
 use package_trust::VerificationTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use session_broker::{SessionBrokerClient, SessionHandle, SessionResult};
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
@@ -100,24 +105,16 @@ struct ExitStatus<'a> {
     clean_shutdown: bool,
 }
 
-#[derive(Clone, Serialize)]
-struct FakeSession {
-    id: String,
-    #[serde(rename = "contentId")]
-    content_id: String,
-    status: String,
-    #[serde(rename = "exitStatus")]
-    exit_status: Option<u8>,
-    value: Option<i32>,
-}
-
 struct AppState {
     route: Route,
     selected_index: usize,
-    active_fake_session: Option<FakeSession>,
+    broker: Box<dyn SessionBrokerClient>,
+    active_session: Option<SessionHandle>,
+    last_session: Option<SessionResult>,
     modal: Option<String>,
     faults: Vec<String>,
     readiness_generation: u64,
+    persisted: launcher_state::State,
     presentation: PresentationState,
     session_step: u32,
 }
@@ -128,6 +125,8 @@ struct PresentationState {
     theme_fallback: Option<launcher_theme::Reason>,
     settings: SettingsUi,
     wifi: WifiSettingsController,
+    index: launcher_presentation::IndexView,
+    recent: Vec<String>,
 }
 
 impl PresentationState {
@@ -186,6 +185,8 @@ impl PresentationState {
             theme_fallback: None,
             settings,
             wifi,
+            index: launcher_presentation::IndexView::default(),
+            recent: Vec::new(),
         })
     }
 
@@ -195,12 +196,14 @@ impl PresentationState {
             .scene()
             .map_err(|error| anyhow!(error.to_string()))?;
         let wifi = self.wifi.snapshot();
-        Ok(launcher_presentation::build(
+        Ok(launcher_presentation::build_with_recent(
             &self.ui,
             &self.theme,
             self.theme_fallback,
             Some(&settings),
             Some(&wifi),
+            &self.index,
+            &self.recent,
         ))
     }
 }
@@ -377,11 +380,34 @@ impl CompatibilityRecipeController {
     }
 }
 
+#[cfg(feature = "simulator")]
 pub fn run<P, F>(
     catalog_path: &Path,
     evidence_path: &Path,
     keep_alive: bool,
     stop: &AtomicBool,
+    make_platform: F,
+) -> Result<()>
+where
+    P: Platform,
+    F: FnOnce() -> PlatformResult<P>,
+{
+    run_with_broker(
+        catalog_path,
+        evidence_path,
+        keep_alive,
+        stop,
+        Box::new(simulator_session::SimulatorSessionAdapter::default()),
+        make_platform,
+    )
+}
+
+pub fn run_with_broker<P, F>(
+    catalog_path: &Path,
+    evidence_path: &Path,
+    keep_alive: bool,
+    stop: &AtomicBool,
+    broker: Box<dyn SessionBrokerClient>,
     make_platform: F,
 ) -> Result<()>
 where
@@ -407,6 +433,7 @@ where
                 &evidence,
                 &mut log,
                 &mut server,
+                broker,
                 keep_alive,
                 stop,
             )
@@ -442,12 +469,14 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_session<P: Platform>(
     mut platform: P,
     catalog_path: &Path,
     evidence: &Evidence,
     log: &mut EventLog,
     server: &mut control::ControlServer,
+    broker: Box<dyn SessionBrokerClient>,
     keep_alive: bool,
     stop: &AtomicBool,
 ) -> Result<()> {
@@ -486,16 +515,74 @@ fn run_session<P: Platform>(
             ("latencyUs", json!(catalog_started.elapsed().as_micros())),
         ]),
     )?;
+    let state_root = evidence.root.join("data");
+    fs::create_dir_all(&state_root)?;
+    // Simulator evidence is mounted from the caller; keep its state directory caller-cleanable.
+    fs::set_permissions(&state_root, fs::Permissions::from_mode(0o777))?;
+    let index = rom_index::spawn(catalog_path.to_path_buf(), state_root.clone())
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|_| anyhow!("ROM index worker did not report"))?;
+    log.emit(
+        "index",
+        platform.logical_time_ms(),
+        json_map([
+            ("status", json!(index.report.status)),
+            ("entryCount", json!(index.report.entry_count)),
+            ("visibleRows", json!(index.report.visible_rows)),
+            ("searchResults", json!(index.report.search_results)),
+            ("queueDepth", json!(index.report.queue_depth)),
+        ]),
+    )?;
+    let persisted = launcher_state::load(&state_root);
+    let mut presentation = PresentationState::new()?;
+    presentation.index = launcher_presentation::IndexView {
+        status: index.report.status,
+        entry_count: index.report.entry_count,
+        visible_rows: index.report.visible_rows,
+        search_results: index.report.search_results,
+        queue_depth: index.report.queue_depth,
+    };
+    presentation.recent = persisted
+        .recent
+        .iter()
+        .map(|item| item.content_id.clone())
+        .collect();
+    let preferences = persisted.preferences.clone();
+    for change in [
+        ui_model::PreferenceChange::ArtworkMode(preferences.artwork_mode),
+        ui_model::PreferenceChange::MetadataVisibility(preferences.metadata_visibility),
+        ui_model::PreferenceChange::FontScale(preferences.font_scale),
+        ui_model::PreferenceChange::ColorScheme(preferences.color_scheme),
+    ] {
+        presentation.ui = ui_model::reduce(&presentation.ui, UiAction::SetPreference(change));
+    }
+    for favorite in &persisted.favorites {
+        let game_id = presentation
+            .ui
+            .games
+            .iter()
+            .find(|game| game.id.0 == *favorite && !game.favorite)
+            .map(|game| game.id.clone());
+        if let Some(game_id) = game_id {
+            presentation.ui =
+                ui_model::reduce(&presentation.ui, UiAction::ToggleFavorite { game_id });
+        }
+    }
     let mut state = AppState {
         route: Route::Library,
         selected_index: 0,
-        active_fake_session: None,
+        broker,
+        active_session: None,
+        last_session: None,
         modal: None,
         faults: Vec::new(),
         readiness_generation: 1,
-        presentation: PresentationState::new()?,
+        persisted,
+        presentation,
         session_step: 0,
     };
+    launcher_state::save(&state_root, &state.persisted)
+        .map_err(|error| anyhow!(error.to_string()))?;
     refresh_presentation_affordances(&mut state.presentation, &platform)
         .map_err(|error| anyhow!(error))?;
     let screen = screen_for_state(&state, &catalog)?;
@@ -599,7 +686,7 @@ fn run_session<P: Platform>(
         }
     }
 
-    if state.active_fake_session.is_some() {
+    if state.active_session.is_some() || state.last_session.is_some() {
         write_session(&evidence.root, session_state(&state))?;
     }
     log.emit("clean_shutdown", platform.logical_time_ms(), Map::new())?;
@@ -722,6 +809,10 @@ fn handle_request<P: Platform>(
         }),
         _ => Err("unknown command".to_string()),
     };
+    if result.is_ok() {
+        launcher_state::save(&evidence.root.join("data"), &state.persisted)
+            .map_err(|error| anyhow!(error.to_string()))?;
+    }
     match result {
         Ok(value) => control::send_ok(&mut stream, &id, &value)?,
         Err(message) => control::send_error(&mut stream, &id, "protocol_rejected", &message)?,
@@ -750,6 +841,46 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
         "systems" => reduce_route(state, ui_model::Route::Systems),
         "games" => reduce_route(state, ui_model::Route::Games),
         "favorites" => reduce_route(state, ui_model::Route::Favorites),
+        "recent" => reduce_route(state, ui_model::Route::Recent),
+        "resume" => reduce_route(state, ui_model::Route::Recent),
+        "favorite" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                UiAction::ToggleFavorite {
+                    game_id: ui_model::GameId::new("generated-game-02"),
+                },
+            );
+            state.persisted.favorites = state
+                .presentation
+                .ui
+                .games
+                .iter()
+                .filter(|game| game.favorite)
+                .map(|game| game.id.0.clone())
+                .collect();
+        }
+        "media-details" => {
+            reduce_route(state, ui_model::Route::Games);
+            state.modal = Some("media-details-projected".into());
+        }
+        "theme-garden" => {
+            state.modal = Some("theme-garden-unavailable".into());
+        }
+        "update" => {
+            state.modal = Some("update-unavailable".into());
+        }
+        "unavailable" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                UiAction::ShowModal(ui_model::ModalState::Unavailable(
+                    ui_model::CapabilityError {
+                        capability: ui_model::Capability::Session,
+                        code: "capability-unavailable".into(),
+                        message: "Capability is unavailable in the simulator.".into(),
+                    },
+                )),
+            );
+        }
         "search" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
@@ -791,6 +922,10 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
             )
         }
         "scraper-game" => {
+            metadata_scraper::ScrapeRequest::new("generated-game-01", "generated-system-alpha")
+                .with_filename("generated-game-01.bin")
+                .validate()
+                .map_err(|error| error.to_string())?;
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
                 Action::Scraper(ScraperAction::OpenGame {
@@ -799,6 +934,10 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
             )
         }
         "scraper-queue" => {
+            metadata_scraper::ScrapeRequest::new("generated-game-01", "generated-system-alpha")
+                .with_filename("generated-game-01.bin")
+                .validate()
+                .map_err(|error| error.to_string())?;
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
                 Action::Scraper(ScraperAction::QueueGame {
@@ -1067,52 +1206,76 @@ fn adapter_result(
     args: AdapterArgs,
 ) -> Result<(), String> {
     if !["complete", "fail", "exit", "crash"].contains(&args.action.as_str()) {
-        return Err("adapter action must be complete, fail, exit, or crash".to_string());
+        return Err("session result action must be complete, fail, exit, or crash".to_string());
     }
     if args.value.abs_diff(0) > MAX_ADAPTER_VALUE as u32 {
         return Err("adapter value must be between -1000000 and 1000000".to_string());
     }
-    if state
-        .active_fake_session
-        .as_ref()
-        .is_some_and(|session| session.status != "started")
-    {
-        return Err("fake session is already finished".to_string());
+    if state.active_session.is_none() {
+        return Err("no active session".to_string());
     }
-    let Some(session) = state.active_fake_session.as_mut() else {
-        return Err("no active fake session".to_string());
-    };
     let failed = matches!(args.action.as_str(), "fail" | "crash")
         || state
             .faults
             .iter()
             .any(|fault| fault == "adapter-fail" || fault == "adapter-crash");
-    session.status = if args.action == "crash" {
-        "crashed"
-    } else if failed {
-        "failed"
-    } else {
-        "completed"
-    }
-    .to_string();
-    session.exit_status = Some(args.status);
-    session.value = Some(args.value);
+    let content_id = state
+        .active_session
+        .as_ref()
+        .map(|session| session.content_id.clone())
+        .ok_or_else(|| "no active session".to_string())?;
+    let result = state
+        .broker
+        .complete(
+            if failed {
+                args.status.max(1) as i32
+            } else {
+                args.status as i32
+            },
+            0,
+        )
+        .map_err(|error| error.to_string())?;
+    state.active_session = None;
+    state.last_session = Some(result.clone());
+    state
+        .persisted
+        .recent
+        .retain(|item| item.content_id != content_id);
+    state.persisted.recent.insert(
+        0,
+        launcher_state::RecentItem {
+            content_id,
+            playtime_ms: result.duration_ms,
+        },
+    );
+    state.persisted.recent.truncate(64);
+    state.presentation.recent = state
+        .persisted
+        .recent
+        .iter()
+        .map(|item| item.content_id.clone())
+        .collect();
+    state.route = Route::Library;
+    state.presentation.ui = ui_model::reduce(
+        &state.presentation.ui,
+        UiAction::Navigate(ui_model::Route::Home),
+    );
     state.modal = Some(
         if failed {
-            "fake-adapter-failed"
+            "session-failed"
         } else {
-            "fake-adapter-completed"
+            "session-returned"
         }
         .to_string(),
     );
     log.emit(
-        "adapter",
+        "session_result",
         0,
         json_map([
             ("action", json!(args.action)),
             ("status", json!(args.status)),
             ("value", json!(args.value)),
-            ("result", json!(session.status)),
+            ("reason", json!(result.reason)),
         ]),
     )
     .map_err(|error| error.to_string())?;
@@ -1176,7 +1339,8 @@ fn handle_button<P: Platform>(
             route_changed = true;
         }
         (Route::Games, Button::Primary) => {
-            let request = launch_request(&catalog.entries[state.selected_index])?;
+            let request = launch_request(&catalog.entries[state.selected_index], launch_catalog)
+                .map_err(|error| anyhow!(error))?;
             let bytes = launch_contract::request_json(&request)
                 .map_err(|error| anyhow!(error.to_string()))?
                 .into_bytes();
@@ -1184,21 +1348,20 @@ fn handle_button<P: Platform>(
                 .map_err(|error| anyhow!(error.to_string()))?;
             validate_launch_request(&parsed, launch_catalog)
                 .map_err(|error| anyhow!(error.to_string()))?;
+            let accepted = state
+                .broker
+                .submit(parsed, launch_catalog)
+                .map_err(|error| anyhow!(error.to_string()))?;
             write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
             state.route = Route::Session;
             state.session_step = 0;
-            state.modal = Some("fake-session-started".to_string());
-            state.active_fake_session = Some(FakeSession {
-                id: SESSION_ID.to_string(),
-                content_id: catalog.entries[state.selected_index].id.clone(),
-                status: "started".to_string(),
-                exit_status: None,
-                value: None,
-            });
+            state.modal = Some("session-accepted".to_string());
+            state.active_session = Some(accepted);
             write_json(
                 evidence.root.join("launch.json"),
                 &json!({
-                    "kind": "launch", "lane": LANE, "targetSku": target_sku, "sessionId": SESSION_ID,
+                    "kind": "launch", "lane": LANE, "targetSku": target_sku,
+                    "sessionId": state.active_session.as_ref().map(|session| session.session_id.as_str()),
                 }),
             )?;
             write_session(&evidence.root, SessionState::Started)?;
@@ -1307,7 +1470,8 @@ fn state_json<P: Platform>(
         "runId": log.run_id,
         "route": state.route.as_str(),
         "selectedContentId": catalog.entries[state.selected_index].id,
-        "activeFakeSession": state.active_fake_session,
+        "activeSession": state.active_session,
+        "lastSessionResult": state.last_session,
         "modal": state.modal,
         "readinessGeneration": state.readiness_generation,
         "sessionStep": state.session_step,
@@ -1327,14 +1491,16 @@ fn hardware_json(hardware: &sim_platform_contract::HardwareState) -> Value {
 }
 
 fn session_state(state: &AppState) -> SessionState {
-    match state
-        .active_fake_session
+    if state.active_session.is_some() {
+        SessionState::Started
+    } else if state
+        .last_session
         .as_ref()
-        .map(|session| session.status.as_str())
+        .is_some_and(|result| result.reason == "success")
     {
-        Some("completed") => SessionState::Completed,
-        Some("failed") | Some("crashed") => SessionState::Failed,
-        _ => SessionState::Started,
+        SessionState::Completed
+    } else {
+        SessionState::Aborted
     }
 }
 
@@ -1370,8 +1536,11 @@ fn emit_route_selection(
     Ok(())
 }
 
-fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
-    let (request_id, content_sha256, kind, package_id, core_id) =
+fn launch_request(
+    entry: &sim_domain::CatalogEntry,
+    catalog: &LaunchCatalog,
+) -> Result<LaunchRequest, String> {
+    let (request_id, content_sha256, kind, package_id, core_id, profile_id) =
         match (entry.id.as_str(), entry.system.as_str()) {
             ("nebula-nes", "nes") => (
                 "nebula-nes-request",
@@ -1379,6 +1548,7 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
                 LaunchKind::Libretro,
                 None,
                 Some("generated-core"),
+                "default",
             ),
             ("mirror-ps1", "ps1") => (
                 "mirror-ps1-request",
@@ -1386,6 +1556,7 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
                 LaunchKind::Libretro,
                 None,
                 Some("generated-core"),
+                "default",
             ),
             ("orbit-garden", "portmaster") => (
                 "orbit-garden-request",
@@ -1393,6 +1564,7 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
                 LaunchKind::Portmaster,
                 Some("orbit-garden"),
                 None,
+                "generated-default",
             ),
             ("signal-workshop", "portmaster") => (
                 "signal-workshop-request",
@@ -1400,19 +1572,29 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
                 LaunchKind::Portmaster,
                 Some("signal-workshop"),
                 None,
+                "generated-default",
             ),
-            _ => return Err(anyhow!("selected demo is not allowlisted")),
+            _ => return Err("selected demo is not allowlisted".to_string()),
         };
-    let runner_id = match &kind {
-        LaunchKind::Libretro => "generated-libretro",
-        LaunchKind::Portmaster => "generated-portmaster",
-        LaunchKind::Standalone => return Err(anyhow!("standalone demo is not allowlisted")),
-    };
-    let profile_id = if package_id.is_some() {
-        "generated-default"
-    } else {
-        "default"
-    };
+    let runner = catalog
+        .runners
+        .iter()
+        .find(|runner| runner.kinds.contains(&kind))
+        .ok_or_else(|| "catalog has no approved runner for selected demo".to_string())?;
+    let core = core_id.and_then(|id| {
+        catalog
+            .cores
+            .iter()
+            .find(|core| core.id == id && core.kind == kind && core.runner_id == runner.id)
+    });
+    if core_id.is_some() && core.is_none() {
+        return Err("catalog has no compatible core for selected demo".to_string());
+    }
+    let profile = catalog
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| "catalog has no selected profile".to_string())?;
     Ok(LaunchRequest {
         schema: launch_contract::REQUEST_SCHEMA.to_string(),
         format: "brickpro-launch-request".to_string(),
@@ -1434,18 +1616,18 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> Result<LaunchRequest> {
             relative: format!("{}.state", entry.id),
         },
         runner: VersionedId {
-            id: runner_id.to_string(),
-            version: "1.0.0".to_string(),
+            id: runner.id.clone(),
+            version: runner.version.clone(),
         },
         package: package_id.map(|id| VersionedId {
             id: id.to_string(),
             version: "1.0.0".to_string(),
         }),
-        core: core_id.map(|id| VersionedId {
-            id: id.to_string(),
-            version: "1.0.0".to_string(),
+        core: core.map(|core| VersionedId {
+            id: core.id.clone(),
+            version: core.version.clone(),
         }),
-        profile_id: profile_id.to_string(),
+        profile_id: profile.id.clone(),
         resume_mode: ResumeMode::Fresh,
         display: DisplaySettings {
             width: 1024,

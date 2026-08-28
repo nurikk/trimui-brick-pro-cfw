@@ -4,14 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["host"]
+default = ["host", "simulator"]
 host = ["dep:signal-hook", "dep:sim-host-platform"]
+simulator = []
 
 [dependencies]
 anyhow.workspace = true
 launch-contract = { path = "../launch-contract" }
 compatibility-recipes = { path = "../compatibility-recipes" }
 package-trust = { path = "../package-trust" }
+session-broker = { path = "../session-broker" }
 signal-hook = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
@@ -27,6 +29,8 @@ ui-model = { path = "../ui-model" }
 virtual-keyboard = { path = "../virtual-keyboard" }
 wifi-manager = { path = "../wifi-manager" }
 wifi-settings-controller = { path = "../wifi-settings-controller" }
+metadata-scraper = { path = "../metadata-scraper" }
+media-cache = { path = "../media-cache" }
 
 [[bin]]
 name = "launcher-presentation-journey"

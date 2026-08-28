@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "launcher-state-v1",
+  "title": "Artbook launcher durable state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "identity", "preferences", "favorites", "recent"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "identity": { "const": "Artbook" },
+    "preferences": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artworkMode", "metadataVisibility", "fontScale", "colorScheme"],
+      "properties": {
+        "artworkMode": { "enum": ["large", "compact", "off"] },
+        "metadataVisibility": { "enum": ["full", "compact", "hidden"] },
+        "fontScale": { "enum": ["small", "standard", "large"] },
+        "colorScheme": { "enum": ["ink", "paper", "high-contrast"] }
+      }
+    },
+    "favorites": { "type": "array", "maxItems": 512, "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "recent": {
+      "type": "array", "maxItems": 64,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["contentId", "playtimeMs"],
+        "properties": { "contentId": { "type": "string", "maxLength": 128 }, "playtimeMs": { "type": "integer", "minimum": 0 } }
+      }
+    }
+  }
+}

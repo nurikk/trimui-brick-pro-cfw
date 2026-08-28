@@ -77,7 +77,10 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     }
     let before = protected_bytes(root)?;
     let garden = ThemeGarden::authenticate(root, fixtures)?;
-    if ThemeGarden::from_cache(root, fixtures)?.browse().len() != 3 {
+    let catalog_bytes = fs::read(fixtures.join("themes.json"))?;
+    let selected =
+        garden.select_themes_json(&catalog_bytes, "minimal", "1.0.0", &fixtures.join("themes"))?;
+    if selected.name().is_empty() || ThemeGarden::from_cache(root, fixtures)?.browse().len() != 3 {
         bail!("verified offline cache could not be browsed")
     }
     let cache_dir = root.join(CACHE_PATH.trim_start_matches('/'));
@@ -104,6 +107,7 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     if garden.browse().len() != 3 {
         bail!("browse did not expose all catalog entries")
     }
+    println!("PASS themes.json adapter selected a verified local theme without network access");
     println!("PASS Browse controller exposes 3 project-authored entries");
     for entry in garden.browse() {
         let detail = garden.details(&entry.id)?;

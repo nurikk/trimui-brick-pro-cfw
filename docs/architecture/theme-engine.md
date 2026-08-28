@@ -1,71 +1,51 @@
 # Declarative theme engine
 
-`launcher-theme` is an independent Rust crate. It has no dependency on the
-launcher, platform adapters, simulator, SDL, or hardware APIs. A theme is a
-strict `theme-v1` JSON document; it is data, not an extension mechanism.
+`launcher-theme` is a data-only Rust boundary. Native `theme-v2` is the current
+contract and `theme-v1` remains readable for existing packages. Both contracts
+use a fixed 1024x768 (4:3) canvas, semantic colors, bounded visual components,
+and the bundled Lato Regular font under its OFL-1.1 license.
 
-## Model and boundary
+## Native v2
 
-The model contains project-authored MIT metadata, a fixed 1024x768 4:3 canvas,
-semantic color tokens, four typed resource references, one bounded layout
-preset, nine semantic regions, user settings, and a safe fallback policy.
-`schemas/theme-v1.schema.json` describes the wire format. Rust structs use
-`deny_unknown_fields`, and parsing performs a separate recursive duplicate-key
-check because ordinary JSON object deserialization may otherwise keep only the
-last duplicate value.
+`schemas/theme-v2.schema.json` defines typography (`project-sans`), local PNG
+assets, `image`/`text`/`textlist` components, semantic colors, layout regions,
+and fallback behavior. Assets are loaded only from the selected theme
+directory after path, file, size, image dimension, and decoded-color checks.
+There is no plugin or execution mechanism. v1 generated resource references
+remain compatibility-only and do not imply support for arbitrary fonts,
+artwork, audio, URLs, archives, scripts, or commands.
 
-Resources are references only. The accepted references are the generated
-controller mark, generated grid or flat field, a built-in generated sans
-placeholder, and built-in silence. No resource bytes are loaded or executed.
-The renderer creates neutral geometry from synthetic metadata and does not
-render logos, screenshots, box art, fonts, or downloaded content.
+## ES compatibility subset
 
-The immutable `ValidatedTheme` is produced only after all checks pass. Public
-operations are:
+`launcher-theme import --theme DIR --output DIR` accepts UTF-8 `theme.xml` with
+root `<theme formatVersion="4">`, one or more `<view>` elements, and
+`image`, `text`, and `textlist` children. Supported properties are `name`,
+`path`, `pos`, `size`, `color`, `fontSize`, and `text`, either as attributes or
+scalar child properties. Positions and sizes are two integer pixels; colors
+are `#RRGGBB`; text is capped at 256 bytes. Image paths are normalized relative
+POSIX paths and only local PNG files are supported.
 
-- `load_theme_dir` validates a directory containing only `theme.json`;
-- `preview_path_or_fallback` returns a validated theme or the built-in Artbook
-  theme with a stable `Reason`;
-- `scene` returns semantic composition data;
-- `render_png` emits deterministic 1024x768 RGBA PNG output.
+Includes, entities, variables, custom components, scripts, commands, URLs,
+archives, unknown elements/properties, duplicate components/properties,
+symlinks, traversal/absolute/backslash paths, non-UTF-8 XML, and unsupported
+encodings are rejected. The command writes a reloadable native-v2 directory: `theme.json`, copied PNG
+assets, and `compatibility-report.json`. The report lists accepted and rejected
+subset entries and is deterministic for the same input. This is an explicitly
+bounded clean-room subset, not universal EmulationStation, Batocera, or KNULLI
+compatibility.
 
-No activation state, launcher state, or user data is persisted.
+## Limits and fallback
 
-## Budgets and rejection
+Theme JSON/XML is capped at 128 KiB; traversal stops at 32 entries per
+level, 32 total files, and depth 8. XML parsing stops at 128 nodes, depth 16,
+16 attributes per tag, and 256 bytes of text per node. A theme has at most 64
+components. Each declared PNG is capped at 4 MiB and 4,194,304 pixels with
+bounded decoded RGBA data. Unknown files, invalid dimensions/color formats,
+corrupt assets, missing assets, and unsafe paths fail before rendering.
+`preview` falls back to built-in Artbook; `validate` and `import` are strict.
+Theme Garden uses the same loader for preview, activation, and fallback.
 
-The parser rejects input before rendering or arbitrary image decoding:
-
-| Item | Limit |
-| --- | ---: |
-| theme JSON | 131072 bytes |
-| files in a theme directory | 32 (only `theme.json` is supported) |
-| declared resource bytes | 65536 bytes total and per resource |
-| rendered RGBA surface | 3145728 bytes |
-| layout regions | 16 |
-| visible games | 12 |
-| text fields | 32 bytes for names/references, 64 for authors |
-| font scale | 80–160 percent |
-
-Absolute, current-directory, parent, backslash, NUL, symlink, archive/media,
-unknown-file, URL-like, script-like, command-like, and unsupported resource
-inputs are rejected. Region bounds, color tokens, enums, schema identity, and
-metadata are checked before a `ValidatedTheme` exists. Errors contain the
-stable machine-readable `Reason` enum and a human-readable message.
-
-## Fallback
-
-`preview_path_or_fallback` never returns a partial candidate. Missing,
-malformed, duplicate-key, unknown-field, unsafe-path, symlink, unsupported-file,
-setting, layout, resource, and budget failures all select the built-in safe
-Artbook theme and expose the corresponding reason. The fallback uses a
-neutral generated splash policy. The `validate` command remains strict and
-returns nonzero for invalid input; `preview` renders the fallback and returns
-zero so an integration can safely preview an untrusted selection.
-
-## Clean-room and provenance
-
-This implementation and the three checked-in JSON documents are
-project-authored under MIT. They contain source-only geometry and synthetic
-text. No third-party theme, font, image, audio, logo, or web/API material is
-used. The theme directories intentionally contain no binary assets and no
-artifact record is added to the distribution inventory.
+Checked-in visual fixtures are project-authored. The only bundled third-party
+visual dependency is Lato Regular, distributed with its OFL-1.1 license in
+`crates/host-platform/assets/fonts/Lato-OFL-1.1.txt`. No third-party themes,
+logos, screenshots, or renderer code are shipped.

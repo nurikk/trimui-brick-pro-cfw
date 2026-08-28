@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 png.workspace = true
-sdl2.workspace = true
+sdl2 = { workspace = true, features = ["ttf"] }
 serde.workspace = true
 serde_json.workspace = true
 sim-domain = { path = "../domain" }

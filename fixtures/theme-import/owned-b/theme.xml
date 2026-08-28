@@ -1,0 +1,7 @@
+<theme formatVersion="4" name="Signal Bloom">
+  <view name="system">
+    <image name="hero" path="assets/art.png" pos="48 88" size="300 220"/>
+    <text name="title" pos="380 88" size="600 52" color="#EDF2FA" fontSize="42" text="Signal Bloom"/>
+    <textlist name="games" pos="420 140" size="560 180" color="#F0B35B" fontSize="22" text="PROJECT COLLECTION"/>
+  </view>
+</theme>

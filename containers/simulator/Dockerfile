@@ -11,6 +11,7 @@ RUN rustup component add rustfmt clippy \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         libsdl2-dev=2.26.5+dfsg-1 \
+        libsdl2-ttf-dev=2.20.1+dfsg-2 \
         xvfb=2:21.1.7-3+deb12u13 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +29,7 @@ RUN cargo build --release --locked \
     && install -Dm755 target/release/sim-launcher /usr/local/bin/sim-launcher \
     && install -Dm755 target/release/sim-control /usr/local/bin/sim-control \
     && install -Dm755 target/release/package-manager /usr/local/bin/package-manager \
-    && { rustc --version; cargo --version; rustup component list --installed; dpkg-query -W -f='${Package}=${Version}\n' libsdl2-dev xvfb; } \
+    && { rustc --version; cargo --version; rustup component list --installed; dpkg-query -W -f='${Package}=${Version}\n' libsdl2-dev libsdl2-ttf-dev xvfb; } \
        > /usr/share/trimui-sim-versions.txt
 
 COPY scripts/sim-entrypoint.sh /usr/local/bin/sim-entrypoint

@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use launcher_theme::{load_theme_dir, render_png};
+use launcher_theme::{load_theme_dir, render_png, DirectCatalogTransport, ThemesCatalog};
 use package_manager::{install_with_validation, uninstall, TransactionOptions, TrustContext};
 use package_trust::{RepositoryMetadata, TrustStore, VerificationTime, VerifiedTarget};
 use serde::{Deserialize, Serialize};
@@ -236,6 +236,40 @@ impl ThemeGarden {
 
     pub fn browse(&self) -> Vec<&CatalogEntry> {
         self.catalog.themes.iter().collect()
+    }
+
+    pub fn select_themes_json(
+        &self,
+        bytes: &[u8],
+        id: &str,
+        version: &str,
+        fixture_root: &Path,
+    ) -> Result<launcher_theme::ValidatedTheme> {
+        let catalog =
+            ThemesCatalog::parse(bytes).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let entry = catalog
+            .select(id, version)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if let Some(fixture) = entry.locator.strip_prefix("fixture:") {
+            let theme_path = fixture_root.join(fixture);
+            return load_theme_dir(&theme_path).map_err(|error| anyhow::anyhow!(error.to_string()));
+        }
+        ThemesCatalog::load_theme(&catalog, id, version, &DirectCatalogTransport)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))
+    }
+
+    pub fn fetch_themes_json<T: launcher_theme::CatalogTransport>(
+        &self,
+        bytes: &[u8],
+        id: &str,
+        version: &str,
+        transport: &T,
+    ) -> Result<Vec<u8>> {
+        let catalog =
+            ThemesCatalog::parse(bytes).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        catalog
+            .fetch(id, version, transport)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
 
     pub fn details(&self, id: &str) -> Result<Detail> {

@@ -1,0 +1,27 @@
+{
+  "format": "themes-catalog-v1",
+  "schemaVersion": 1,
+  "themes": [
+    {
+      "id": "artbook",
+      "name": "Artbook",
+      "version": "1.0.0",
+      "locator": "fixture:artbook",
+      "author": "Project Authors"
+    },
+    {
+      "id": "high-contrast",
+      "name": "High Contrast",
+      "version": "1.0.0",
+      "locator": "fixture:high-contrast",
+      "author": "Project Authors"
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal Grid",
+      "version": "1.0.0",
+      "locator": "fixture:minimal",
+      "author": "Project Authors"
+    }
+  ]
+}

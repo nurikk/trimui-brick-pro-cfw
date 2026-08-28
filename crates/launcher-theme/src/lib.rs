@@ -1,8 +1,8 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     fs,
     io::BufWriter,
-    path::{Component, Path, PathBuf},
+    path::{Component as PathComponent, Path, PathBuf},
 };
 
 use png::{BitDepth, ColorType, Encoder};
@@ -11,11 +11,24 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use serde_json::{de::Deserializer as JsonDeserializer, Value};
+pub mod catalog;
+pub mod importer;
+pub use catalog::{
+    CatalogTransport, DirectCatalogTransport, ThemesCatalog, ThemesCatalogEntry,
+    MAX_THEME_DOWNLOAD_BYTES, THEMES_CATALOG_FORMAT,
+};
+pub use importer::{
+    import_emulationstation_theme, import_es_theme_dir, CompatibilityReport, ImportedTheme,
+};
+
+#[cfg(test)]
+mod tests;
 
 pub const CANVAS_WIDTH: u32 = 1024;
 pub const CANVAS_HEIGHT: u32 = 768;
 pub const MAX_JSON_BYTES: usize = 128 * 1024;
 pub const MAX_FILES: usize = 32;
+pub const MAX_THEME_DEPTH: usize = 8;
 pub const MAX_RESOURCE_BYTES: u64 = 64 * 1024;
 pub const MAX_RENDER_BYTES: u64 = CANVAS_WIDTH as u64 * CANVAS_HEIGHT as u64 * 4;
 pub const SCHEMA: &str = "theme-v1";
@@ -41,6 +54,10 @@ pub enum Reason {
     InvalidSetting,
     InvalidLayout,
     UnsupportedResource,
+    InvalidXml,
+    UnsupportedXml,
+    InvalidAsset,
+    BudgetAsset,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,6 +107,12 @@ pub struct Theme {
     pub layout: Layout,
     pub settings: Settings,
     pub fallback: Fallback,
+    #[serde(default)]
+    pub typography: Option<Typography>,
+    #[serde(default)]
+    pub assets: Option<Assets>,
+    #[serde(default)]
+    pub components: Option<Vec<Component>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -99,6 +122,62 @@ pub struct Metadata {
     pub author: String,
     pub license: String,
     pub provenance: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Typography {
+    pub family: String,
+    #[serde(rename = "titleSize")]
+    pub title_size: u16,
+    #[serde(rename = "bodySize")]
+    pub body_size: u16,
+    #[serde(rename = "smallSize")]
+    pub small_size: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetSpec {
+    pub path: String,
+    #[serde(rename = "maxBytes")]
+    pub max_bytes: u32,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Assets {
+    pub background: Option<AssetSpec>,
+    #[serde(rename = "systemArt")]
+    pub system_art: Option<AssetSpec>,
+    #[serde(rename = "boxArt")]
+    pub box_art: Option<AssetSpec>,
+    pub screenshot: Option<AssetSpec>,
+    pub controller: Option<AssetSpec>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ComponentKind {
+    Image,
+    Text,
+    Textlist,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Component {
+    pub id: String,
+    pub kind: ComponentKind,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    pub path: Option<String>,
+    pub text: Option<String>,
+    pub color: Option<String>,
+    #[serde(rename = "fontSize")]
+    pub font_size: Option<u16>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -247,15 +326,34 @@ pub enum OnInvalid {
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct ValidatedTheme(Theme);
+pub struct ValidatedTheme {
+    theme: Theme,
+    #[serde(skip)]
+    assets: Vec<LoadedAsset>,
+}
+
+#[derive(Clone, Debug)]
+struct LoadedAsset {
+    path: String,
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
 
 impl ValidatedTheme {
     pub fn theme(&self) -> &Theme {
-        &self.0
+        &self.theme
     }
 
     pub fn name(&self) -> &str {
-        &self.0.metadata.name
+        &self.theme.metadata.name
+    }
+
+    pub fn asset(&self, path: &str) -> Option<(&[u8], u32, u32)> {
+        self.assets
+            .iter()
+            .find(|asset| asset.path == path)
+            .map(|asset| (asset.pixels.as_slice(), asset.width, asset.height))
     }
 }
 
@@ -272,7 +370,30 @@ pub struct Scene {
     pub canvas: Canvas,
     pub settings: Settings,
     pub regions: Vec<SceneRegion>,
+    pub components: Vec<SceneComponent>,
+    pub assets: Vec<SceneAsset>,
     pub synthetic: SyntheticMetadata,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SceneAsset {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    #[serde(skip_serializing)]
+    pub pixels: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SceneComponent {
+    pub id: String,
+    pub kind: String,
+    pub bounds: Bounds,
+    pub path: Option<String>,
+    pub text: Option<String>,
+    pub color: Option<String>,
+    #[serde(rename = "fontSize")]
+    pub font_size: Option<u16>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -470,12 +591,134 @@ fn hex_color(value: &str, label: &str) -> Result<[u8; 4], ThemeError> {
     Ok([rgb[0], rgb[1], rgb[2], 255])
 }
 
+fn validate_asset_path(value: &str) -> Result<(), ThemeError> {
+    if value.len() > 128 || value.ends_with('/') || value.contains("//") {
+        return Err(ThemeError::new(
+            Reason::InvalidPath,
+            "asset path is not normalized",
+        ));
+    }
+    validate_relative_path(Path::new(value))
+}
+
+fn declared_assets(theme: &Theme) -> Vec<AssetSpec> {
+    theme
+        .assets
+        .as_ref()
+        .map(|assets| {
+            [
+                assets.background.clone(),
+                assets.system_art.clone(),
+                assets.box_art.clone(),
+                assets.screenshot.clone(),
+                assets.controller.clone(),
+            ]
+            .into_iter()
+            .flatten()
+            .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn decode_asset(path: &str, bytes: &[u8]) -> Result<LoadedAsset, ThemeError> {
+    if !path.to_ascii_lowercase().ends_with(".png") {
+        return Err(ThemeError::new(
+            Reason::UnsupportedResource,
+            "only PNG theme assets are supported",
+        ));
+    }
+    let mut decoder = png::Decoder::new_with_limits(
+        std::io::Cursor::new(bytes),
+        png::Limits {
+            bytes: (MAX_RESOURCE_BYTES * 64) as usize,
+        },
+    );
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder
+        .read_info()
+        .map_err(|_| ThemeError::new(Reason::InvalidAsset, format!("asset {path} is not a PNG")))?;
+    let info = reader.info();
+    let width = info.width;
+    let height = info.height;
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 4 * 1024 * 1024 {
+        return Err(ThemeError::new(
+            Reason::BudgetAsset,
+            format!("asset {path} dimensions exceed limits"),
+        ));
+    }
+    let mut raw = vec![0; reader.output_buffer_size()];
+    let frame = reader
+        .next_frame(&mut raw)
+        .map_err(|_| ThemeError::new(Reason::InvalidAsset, format!("asset {path} is corrupt")))?;
+    let pixels = match reader.output_color_type() {
+        (png::ColorType::Rgb, png::BitDepth::Eight) => raw[..frame.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        (png::ColorType::Rgba, png::BitDepth::Eight) => raw[..frame.buffer_size()].to_vec(),
+        (png::ColorType::Grayscale, png::BitDepth::Eight) => raw[..frame.buffer_size()]
+            .iter()
+            .flat_map(|value| [*value, *value, *value, 255])
+            .collect(),
+        (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => raw[..frame.buffer_size()]
+            .chunks_exact(2)
+            .flat_map(|pixel| [pixel[0], pixel[0], pixel[0], pixel[1]])
+            .collect(),
+        _ => {
+            return Err(ThemeError::new(
+                Reason::InvalidAsset,
+                format!("asset {path} has unsupported color format"),
+            ))
+        }
+    };
+    if pixels.len() > (MAX_RESOURCE_BYTES * 64) as usize {
+        return Err(ThemeError::new(
+            Reason::BudgetAsset,
+            format!("asset {path} decoded data exceeds limits"),
+        ));
+    }
+    Ok(LoadedAsset {
+        path: path.into(),
+        width,
+        height,
+        pixels,
+    })
+}
+
 fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
-    if theme.schema != SCHEMA_URI || theme.format != SCHEMA || theme.schema_version != 1 {
+    let v1 = theme.schema == SCHEMA_URI && theme.format == SCHEMA && theme.schema_version == 1;
+    let v2 = theme.schema == "urn:project:theme-v2"
+        && theme.format == "theme-v2"
+        && theme.schema_version == 2;
+    if !v1 && !v2 {
         return Err(ThemeError::new(
             Reason::InvalidSchema,
             "unsupported theme schema",
         ));
+    }
+    if v2 {
+        let Some(typography) = &theme.typography else {
+            return Err(ThemeError::new(
+                Reason::InvalidSchema,
+                "v2 typography is required",
+            ));
+        };
+        if typography.family != "project-sans"
+            || !(12..=96).contains(&typography.title_size)
+            || !(8..=64).contains(&typography.body_size)
+            || !(8..=48).contains(&typography.small_size)
+        {
+            return Err(ThemeError::new(
+                Reason::InvalidSetting,
+                "unsupported v2 typography",
+            ));
+        }
+        if theme.components.as_ref().is_none_or(Vec::is_empty) {
+            return Err(ThemeError::new(
+                Reason::InvalidLayout,
+                "v2 components are required",
+            ));
+        }
     }
     safe_text(&theme.metadata.name, "metadata.name", 32)?;
     safe_text(&theme.metadata.author, "metadata.author", 64)?;
@@ -616,7 +859,115 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
             "only the safe generated fallback is supported",
         ));
     }
-    Ok(ValidatedTheme(theme))
+    if let Some(components) = &theme.components {
+        if components.len() > 64 {
+            return Err(ThemeError::new(
+                Reason::BudgetAsset,
+                "component count exceeds 64",
+            ));
+        }
+        let mut component_ids = HashSet::new();
+        for component in components {
+            safe_text(&component.id, "component id", 48)?;
+            if !component_ids.insert(component.id.clone()) {
+                return Err(ThemeError::new(
+                    Reason::InvalidLayout,
+                    "component ids must be unique",
+                ));
+            }
+            if component.width == 0
+                || component.height == 0
+                || u32::from(component.x) + u32::from(component.width) > CANVAS_WIDTH
+                || u32::from(component.y) + u32::from(component.height) > CANVAS_HEIGHT
+            {
+                return Err(ThemeError::new(
+                    Reason::InvalidLayout,
+                    "component is outside canvas",
+                ));
+            }
+            if component.kind == ComponentKind::Image && component.path.is_none() {
+                return Err(ThemeError::new(
+                    Reason::InvalidAsset,
+                    "image component has no path",
+                ));
+            }
+            if let Some(path) = &component.path {
+                validate_asset_path(path)?;
+            }
+            if let Some(color) = &component.color {
+                hex_color(color, "component color")?;
+            }
+            if component.text.as_ref().is_some_and(|text| text.len() > 256) {
+                return Err(ThemeError::new(
+                    Reason::BudgetText,
+                    "component text exceeds 256 bytes",
+                ));
+            }
+            if component
+                .font_size
+                .is_some_and(|size| !(8..=96).contains(&size))
+            {
+                return Err(ThemeError::new(
+                    Reason::InvalidSetting,
+                    "component font size is out of bounds",
+                ));
+            }
+        }
+    }
+    let declared_paths: BTreeSet<_> = declared_assets(&theme)
+        .into_iter()
+        .map(|asset| asset.path)
+        .collect();
+    if let Some(components) = &theme.components {
+        for component in components {
+            if component.kind == ComponentKind::Image
+                && component
+                    .path
+                    .as_ref()
+                    .is_some_and(|path| !declared_paths.contains(path))
+            {
+                return Err(ThemeError::new(
+                    Reason::InvalidAsset,
+                    "image component is not backed by a declared asset",
+                ));
+            }
+        }
+    }
+    if let Some(assets) = &theme.assets {
+        let mut declared_bytes = 0_u64;
+        let mut seen_asset_paths = BTreeSet::new();
+        for asset in [
+            assets.background.as_ref(),
+            assets.system_art.as_ref(),
+            assets.box_art.as_ref(),
+            assets.screenshot.as_ref(),
+            assets.controller.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            validate_asset_path(&asset.path)?;
+            if asset.max_bytes == 0 || u64::from(asset.max_bytes) > MAX_RESOURCE_BYTES * 64 {
+                return Err(ThemeError::new(
+                    Reason::BudgetAsset,
+                    "invalid asset declaration",
+                ));
+            }
+            if seen_asset_paths.insert(&asset.path) {
+                declared_bytes = declared_bytes.saturating_add(u64::from(asset.max_bytes));
+            }
+        }
+        if declared_bytes > MAX_RESOURCE_BYTES * 64 {
+            return Err(ThemeError::new(
+                Reason::BudgetAsset,
+                "declared asset budget exceeded",
+            ));
+        }
+    }
+    Ok(ValidatedTheme {
+        theme,
+        assets: Vec::new(),
+    })
 }
 
 pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
@@ -641,7 +992,8 @@ pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
         ));
     }
     let mut files = Vec::new();
-    collect_theme_files(path, path, &mut files)?;
+    let mut entries_seen = 0;
+    collect_theme_files(path, path, &mut files, 0, &mut entries_seen)?;
     if files.len() > MAX_FILES {
         return Err(ThemeError::new(
             Reason::BudgetFileCount,
@@ -652,12 +1004,19 @@ pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
         .iter()
         .find(|(relative, _)| relative == "theme.json")
         .map(|(_, path)| path);
-    let Some(theme_file) = theme_file else {
+    let xml_file = files
+        .iter()
+        .find(|(relative, _)| relative == "theme.xml")
+        .map(|(_, path)| path);
+    let Some(theme_file) = theme_file.or(xml_file) else {
         return Err(ThemeError::new(
             Reason::MissingTheme,
-            "theme.json is missing",
+            "theme.json or theme.xml is missing",
         ));
     };
+    if theme_file.extension().and_then(|ext| ext.to_str()) == Some("xml") {
+        return import_es_theme_dir(path).map(|result| result.theme);
+    }
     let size = fs::metadata(theme_file)
         .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?
         .len();
@@ -669,17 +1028,92 @@ pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
     }
     let bytes =
         fs::read(theme_file).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
-    parse_json(&bytes)
+    let mut validated = parse_json(&bytes)?;
+    let specs = declared_assets(&validated.theme);
+    let allowed: BTreeSet<String> = std::iter::once("theme.json".to_string())
+        .chain(std::iter::once("compatibility-report.json".to_string()))
+        .chain(specs.iter().map(|spec| spec.path.clone()))
+        .collect();
+    for (relative, file) in &files {
+        if !allowed.contains(relative) {
+            return Err(ThemeError::new(
+                Reason::UnsupportedFile,
+                format!("unsupported theme file {relative}"),
+            ));
+        }
+        let metadata =
+            fs::metadata(file).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+        if relative == "compatibility-report.json" {
+            if metadata.len() > MAX_JSON_BYTES as u64 {
+                return Err(ThemeError::new(
+                    Reason::BudgetJsonSize,
+                    "compatibility report exceeds 131072 bytes",
+                ));
+            }
+            let report =
+                fs::read(file).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+            serde_json::from_slice::<CompatibilityReport>(&report)
+                .map_err(|error| ThemeError::new(Reason::MalformedJson, error.to_string()))?;
+        } else if relative != "theme.json" && metadata.len() > MAX_RESOURCE_BYTES * 64 {
+            return Err(ThemeError::new(
+                Reason::BudgetAsset,
+                format!("asset {relative} exceeds byte budget"),
+            ));
+        }
+    }
+    if validated.theme.schema_version == 2 && specs.is_empty() {
+        return Err(ThemeError::new(
+            Reason::InvalidAsset,
+            "v2 theme declares no assets",
+        ));
+    }
+    for spec in specs {
+        let file = files
+            .iter()
+            .find(|(relative, _)| relative == &spec.path)
+            .map(|(_, path)| path);
+        let Some(file) = file else {
+            return Err(ThemeError::new(
+                Reason::MissingTheme,
+                format!("declared asset {} is missing", spec.path),
+            ));
+        };
+        let bytes =
+            fs::read(file).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+        if bytes.len() > spec.max_bytes as usize {
+            return Err(ThemeError::new(
+                Reason::InvalidAsset,
+                format!("asset {} failed validation", spec.path),
+            ));
+        }
+        validated.assets.push(decode_asset(&spec.path, &bytes)?);
+    }
+    Ok(validated)
 }
 
 fn collect_theme_files(
     root: &Path,
     directory: &Path,
     files: &mut Vec<(String, PathBuf)>,
+    depth: usize,
+    entries_seen: &mut usize,
 ) -> Result<(), ThemeError> {
+    if depth > MAX_THEME_DEPTH {
+        return Err(ThemeError::new(
+            Reason::BudgetFileCount,
+            "theme directory depth exceeds 8",
+        ));
+    }
     let entries =
         fs::read_dir(directory).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
     for entry in entries {
+        *entries_seen += 1;
+        if *entries_seen > MAX_FILES {
+            return Err(ThemeError::new(
+                Reason::BudgetFileCount,
+                "theme directory entry budget exceeded",
+            ));
+        }
         let entry = entry.map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
         let path = entry.path();
         let relative = path
@@ -695,21 +1129,15 @@ fn collect_theme_files(
             ));
         }
         if metadata.is_dir() {
-            return Err(ThemeError::new(
-                Reason::UnsupportedFile,
-                format!(
-                    "nested theme directory {} is unsupported",
-                    relative.display()
-                ),
-            ));
-        }
-        if !metadata.is_file() || relative != Path::new("theme.json") {
+            collect_theme_files(root, &path, files, depth + 1, entries_seen)?;
+        } else if metadata.is_file() {
+            files.push((relative.to_string_lossy().into_owned(), path));
+        } else {
             return Err(ThemeError::new(
                 Reason::UnsupportedFile,
                 format!("unsupported theme file {}", relative.display()),
             ));
         }
-        files.push((relative.to_string_lossy().into_owned(), path));
     }
     Ok(())
 }
@@ -724,7 +1152,10 @@ fn validate_relative_path(path: &Path) -> Result<(), ThemeError> {
     for component in path.components() {
         if matches!(
             component,
-            Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            PathComponent::CurDir
+                | PathComponent::ParentDir
+                | PathComponent::RootDir
+                | PathComponent::Prefix(_)
         ) {
             return Err(ThemeError::new(
                 Reason::InvalidPath,
@@ -742,7 +1173,21 @@ fn validate_relative_path(path: &Path) -> Result<(), ThemeError> {
 }
 
 pub fn safe_artbook() -> Result<ValidatedTheme, ThemeError> {
-    parse_json(include_bytes!("../../../themes/default/theme.json"))
+    let mut theme = parse_json(include_bytes!("../../../themes/default/theme.json"))?;
+    for spec in declared_assets(theme.theme()) {
+        let bytes = match spec.path.as_str() {
+            "assets/art.png" => include_bytes!("../../../themes/default/assets/art.png").as_slice(),
+            "assets/box-art.png" => {
+                include_bytes!("../../../themes/default/assets/box-art.png").as_slice()
+            }
+            "assets/screenshot.png" => {
+                include_bytes!("../../../themes/default/assets/screenshot.png").as_slice()
+            }
+            _ => continue,
+        };
+        theme.assets.push(decode_asset(&spec.path, bytes)?);
+    }
+    Ok(theme)
 }
 
 pub fn preview_or_fallback(path: Option<&Path>) -> Result<Preview, ThemeError> {
@@ -771,11 +1216,11 @@ pub fn preview_path_or_fallback(path: &Path) -> Result<Preview, ThemeError> {
 pub fn scene(theme: &ValidatedTheme) -> Scene {
     Scene {
         schema: "theme-scene/v1",
-        theme: theme.0.metadata.name.clone(),
-        canvas: theme.0.canvas.clone(),
-        settings: theme.0.settings.clone(),
+        theme: theme.theme.metadata.name.clone(),
+        canvas: theme.theme.canvas.clone(),
+        settings: theme.theme.settings.clone(),
         regions: theme
-            .0
+            .theme
             .layout
             .regions
             .iter()
@@ -792,6 +1237,37 @@ pub fn scene(theme: &ValidatedTheme) -> Scene {
                 semantic: semantic(region.kind),
             })
             .collect(),
+        components: theme
+            .theme
+            .components
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|component| SceneComponent {
+                id: component.id.clone(),
+                kind: component_kind_name(component.kind),
+                bounds: Bounds {
+                    x: component.x,
+                    y: component.y,
+                    width: component.width,
+                    height: component.height,
+                },
+                path: component.path.clone(),
+                text: component.text.clone(),
+                color: component.color.clone(),
+                font_size: component.font_size,
+            })
+            .collect(),
+        assets: theme
+            .assets
+            .iter()
+            .map(|asset| SceneAsset {
+                path: asset.path.clone(),
+                width: asset.width,
+                height: asset.height,
+                pixels: asset.pixels.clone(),
+            })
+            .collect(),
         synthetic: SyntheticMetadata {
             system: "Generated System",
             title: "Generated Demo 1",
@@ -800,6 +1276,15 @@ pub fn scene(theme: &ValidatedTheme) -> Scene {
             release_date: "1993-09-14",
         },
     }
+}
+
+fn component_kind_name(kind: ComponentKind) -> String {
+    match kind {
+        ComponentKind::Image => "image",
+        ComponentKind::Text => "text",
+        ComponentKind::Textlist => "textlist",
+    }
+    .into()
 }
 
 fn semantic(kind: RegionKind) -> String {
@@ -833,7 +1318,7 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
     let mut output = encoder
         .write_header()
         .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
-    let colors = &theme.0.colors;
+    let colors = &theme.theme.colors;
     let background = hex_color(&colors.background, "background").unwrap_or([0, 0, 0, 255]);
     let surface = hex_color(&colors.surface, "surface").unwrap_or(background);
     let accent = hex_color(&colors.accent, "accent").unwrap_or(background);
@@ -844,7 +1329,7 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
     for y in 0..CANVAS_HEIGHT as u16 {
         for x in 0..CANVAS_WIDTH as u16 {
             let mut color = background;
-            for region in &theme.0.layout.regions {
+            for region in &theme.theme.layout.regions {
                 if !region.visible
                     || x < region.x
                     || y < region.y
@@ -876,6 +1361,31 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
             }
             let offset = (y as usize * CANVAS_WIDTH as usize + x as usize) * 4;
             data[offset..offset + 4].copy_from_slice(&color);
+        }
+    }
+    if let Some(asset) = theme.assets.first() {
+        for region in &theme.theme.layout.regions {
+            if !region.visible
+                || !matches!(
+                    region.kind,
+                    RegionKind::SystemArt
+                        | RegionKind::BoxArtPlaceholder
+                        | RegionKind::ScreenshotPlaceholder
+                )
+            {
+                continue;
+            }
+            for y in 0..u32::from(region.height) {
+                for x in 0..u32::from(region.width) {
+                    let sx = x * asset.width / u32::from(region.width);
+                    let sy = y * asset.height / u32::from(region.height);
+                    let source = ((sy * asset.width + sx) * 4) as usize;
+                    let target =
+                        (((u32::from(region.y) + y) * CANVAS_WIDTH + u32::from(region.x) + x) * 4)
+                            as usize;
+                    data[target..target + 4].copy_from_slice(&asset.pixels[source..source + 4]);
+                }
+            }
         }
     }
     output

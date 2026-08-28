@@ -1,0 +1,27 @@
+{
+  "format": "themes-catalog-v1",
+  "schemaVersion": 1,
+  "themes": [
+    {
+      "id": "owned-a",
+      "name": "Orbit Atlas",
+      "version": "1.0.0",
+      "locator": "fixture:owned-a",
+      "author": "Project Authors"
+    },
+    {
+      "id": "owned-b",
+      "name": "Signal Bloom",
+      "version": "1.0.0",
+      "locator": "fixture:owned-b",
+      "author": "Project Authors"
+    },
+    {
+      "id": "external-user",
+      "name": "Pocket Sketch",
+      "version": "1.0.0",
+      "locator": "fixture:external-user",
+      "author": "Project Authors"
+    }
+  ]
+}

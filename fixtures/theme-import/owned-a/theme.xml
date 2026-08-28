@@ -1,0 +1,7 @@
+<theme formatVersion="4" name="Orbit Atlas">
+  <view name="system">
+    <image name="hero" path="assets/art.png" pos="32 72" size="360 250"/>
+    <text name="title" pos="420 72" size="560 52" color="#EDF2FA" fontSize="42" text="Orbit Atlas"/>
+    <textlist name="games" pos="420 140" size="560 180" color="#F0B35B" fontSize="22" text="PROJECT COLLECTION"/>
+  </view>
+</theme>

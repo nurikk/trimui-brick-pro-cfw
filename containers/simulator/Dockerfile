@@ -24,8 +24,10 @@ COPY themes ./themes
 COPY sim ./sim
 COPY keys/update.pub ./keys/update.pub
 RUN cargo build --release --locked \
+    && cargo build --release --locked -p package-manager \
     && install -Dm755 target/release/sim-launcher /usr/local/bin/sim-launcher \
     && install -Dm755 target/release/sim-control /usr/local/bin/sim-control \
+    && install -Dm755 target/release/package-manager /usr/local/bin/package-manager \
     && { rustc --version; cargo --version; rustup component list --installed; dpkg-query -W -f='${Package}=${Version}\n' libsdl2-dev xvfb; } \
        > /usr/share/trimui-sim-versions.txt
 

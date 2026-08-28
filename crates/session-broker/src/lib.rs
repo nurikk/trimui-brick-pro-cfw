@@ -156,6 +156,17 @@ pub trait SessionBrokerClient {
     fn save_vault_restore(&mut self, _confirmed: bool) -> Result<(), BrokerError> {
         Err(BrokerError::new("save vault is unavailable"))
     }
+
+    fn save_sync_status(&mut self) -> Result<save_sync::SyncStatus, BrokerError> {
+        Err(BrokerError::new("save synchronization is unavailable"))
+    }
+
+    fn save_sync_resolve(
+        &mut self,
+        _action: save_sync::ResolutionAction,
+    ) -> Result<save_sync::ResolutionReceipt, BrokerError> {
+        Err(BrokerError::new("save synchronization is unavailable"))
+    }
 }
 
 pub fn accepted_handle(request: &BrokerRequest) -> SessionHandle {

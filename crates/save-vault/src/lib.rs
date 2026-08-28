@@ -96,6 +96,13 @@ pub struct SnapshotFile {
     pub source: PathBuf,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaterialFile {
+    pub kind: SaveKind,
+    pub relative: String,
+    pub bytes: Vec<u8>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SaveKindPolicy {
     pub allow_empty: bool,
@@ -610,6 +617,140 @@ impl SaveVault {
             .filter(|manifest| manifest.anomaly == AnomalyStatus::Valid)
             .map(|_| pointer.generation)
     }
+    pub fn manifest(&self, generation: u64) -> Option<GenerationManifest> {
+        self.read_manifest(generation)
+    }
+
+    pub fn material(&self, generation: u64) -> Result<Vec<MaterialFile>, SaveVaultError> {
+        let manifest = self
+            .read_manifest(generation)
+            .ok_or_else(|| err("save generation is unavailable"))?;
+        manifest
+            .artifacts
+            .iter()
+            .map(|artifact| {
+                let object = self.root.join("objects").join(&artifact.object);
+                Ok(MaterialFile {
+                    kind: artifact.kind,
+                    relative: artifact.source_relative.clone(),
+                    bytes: fs::read(object).map_err(error)?,
+                })
+            })
+            .collect()
+    }
+
+    pub fn commit_material(
+        &self,
+        identity: Identity<'_>,
+        files: &[MaterialFile],
+        reason: SnapshotReason,
+    ) -> Result<SnapshotOutcome, SaveVaultError> {
+        let _lock = self.acquire_lock()?;
+        self.validate_layout()?;
+        validate_token(identity.content_version)?;
+        validate_token(identity.runner_version)?;
+        if let Some(core) = identity.core_version {
+            validate_token(core)?;
+        }
+        if files.len() > 64 {
+            return Err(err("save file count exceeds bound"));
+        }
+        let generation = self.next_generation()?;
+        let stage = self
+            .root
+            .join(".staging")
+            .join(format!("generation-{generation}"));
+        let target = self
+            .root
+            .join("generations")
+            .join(format!("generation-{generation}"));
+        if symlink(&stage) || symlink(&target) || stage.exists() || target.exists() {
+            return Err(err("material generation boundary is invalid"));
+        }
+        fs::create_dir(&stage).map_err(error)?;
+        fs::set_permissions(&stage, fs::Permissions::from_mode(self.mode.dir_mode()))
+            .map_err(error)?;
+        let result = (|| {
+            let mut relatives = BTreeSet::new();
+            let mut artifacts = Vec::with_capacity(files.len());
+            for file in files {
+                validate_source_relative(file.kind, &file.relative)?;
+                if !relatives.insert(file.relative.clone())
+                    || file.bytes.len() as u64 > MAX_FILE_BYTES
+                {
+                    return Err(err("material artifact identity is invalid"));
+                }
+                let hash = digest(&file.bytes);
+                let object = format!("{hash}.bin");
+                self.publish_object(&hash, &file.bytes)?;
+                artifacts.push(ArtifactRecord {
+                    content_id: format!("sha256:{hash}"),
+                    kind: file.kind,
+                    source_relative: file.relative.clone(),
+                    size: file.bytes.len() as u64,
+                    sha256: hash,
+                    object,
+                });
+            }
+            let manifest = GenerationManifest {
+                schema: SCHEMA.into(),
+                format: FORMAT.into(),
+                schema_version: 1,
+                generation,
+                parent_generation: self.current_generation(),
+                content_version: identity.content_version.into(),
+                runner_version: identity.runner_version.into(),
+                core_version: identity.core_version.map(str::to_owned),
+                reason,
+                timestamp_ms: now_ms(),
+                anomaly: AnomalyStatus::Valid,
+                retention: if reason.protected() {
+                    RetentionClass::Protected
+                } else {
+                    RetentionClass::Recent
+                },
+                artifacts,
+            };
+            validate_manifest(&manifest)?;
+            self.verify_manifest_objects(&manifest)?;
+            write_json(
+                &stage.join("manifest.json"),
+                &manifest,
+                self.mode.file_mode(),
+            )?;
+            write_file(
+                &stage.join("commit.marker"),
+                COMMIT_MARKER,
+                self.mode.file_mode(),
+            )?;
+            sync_dir(&stage)?;
+            fs::rename(&stage, &target).map_err(error)?;
+            sync_dir(
+                target
+                    .parent()
+                    .ok_or_else(|| err("material generation has no parent"))?,
+            )?;
+            Ok(SnapshotOutcome {
+                generation,
+                status: AnomalyStatus::Valid,
+                committed: true,
+            })
+        })();
+        if result.is_err() && stage.exists() && !symlink(&stage) {
+            let _ = fs::remove_dir_all(&stage);
+        }
+        result
+    }
+
+    pub fn promote(&self, generation: u64) -> Result<(), SaveVaultError> {
+        let _lock = self.acquire_lock()?;
+        if self.read_manifest(generation).is_none() {
+            return Err(err("save generation is unavailable"));
+        }
+        publish_current(&self.root, generation, self.mode.file_mode())?;
+        self.prune(generation)
+    }
+
     fn read_manifest(&self, generation: u64) -> Option<GenerationManifest> {
         let path = self
             .root

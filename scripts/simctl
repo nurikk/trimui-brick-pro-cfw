@@ -140,6 +140,10 @@ validate_command() {
             validate_name "$2" ;;
         save-vault.history|save-vault.preview)
             [ "$#" -eq 0 ] || usage ;;
+        save-sync.status) [ "$#" -eq 0 ] || usage ;;
+        save-sync.resolve)
+            [ "$#" -eq 2 ] && [ "$1" = --action ] || usage
+            case "$2" in keep-local|keep-remote|keep-both) ;; *) usage ;; esac ;;
         save-vault.restore)
             [ "$#" -eq 2 ] && [ "$1" = --confirmed ] || usage
             validate_bool "$2" ;;

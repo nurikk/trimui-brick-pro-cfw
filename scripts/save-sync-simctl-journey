@@ -1,0 +1,83 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+. "$ROOT/scripts/docker-worktree.sh"
+DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT")
+IMAGE=trimui-brick-pro-cfw-simulator:${DOCKER_NAMESPACE}
+TMP_BASE=${TMPDIR:-/tmp}
+case "$TMP_BASE" in
+    "$ROOT"|"$ROOT"/*) printf '%s\n' "save-sync-simctl-journey: TMPDIR must be outside the repository" >&2; exit 2 ;;
+esac
+WORK=$(mktemp -d "$TMP_BASE/trimui-save-sync-simctl.XXXXXX")
+CURRENT_RUN=
+
+fail() {
+    printf '%s\n' "save-sync-simctl-journey: $*" >&2
+    exit 2
+}
+
+clean_data() {
+    run=$1
+    docker run --rm --network none --user 10001:10001 \
+        --mount "type=bind,src=$run/data,dst=/data" \
+        --entrypoint /bin/sh "$IMAGE" -c 'rm -rf /data/*' >/dev/null
+}
+
+cleanup() {
+    if [ -n "$CURRENT_RUN" ] && [ -d "$CURRENT_RUN" ]; then
+        "$ROOT/scripts/sim" stop --backend=dummy --run-dir "$CURRENT_RUN" --wait-ready 30 >/dev/null 2>&1 || true
+        clean_data "$CURRENT_RUN" >/dev/null 2>&1 || true
+    fi
+    rm -rf -- "$WORK"
+}
+trap cleanup EXIT HUP INT TERM
+
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+check_status() {
+    jq -e '
+        .version == "sim-control/v1" and .ok == true
+        and (.result | type) == "object"
+        and .result.state == "conflict"
+        and .result.transportOutcome == "deterministic-ancestry"
+        and .result.actions == ["keep-local", "keep-remote", "keep-both"]
+        and (.result.local | type) == "object"
+        and (.result.remote | type) == "object"
+    ' "$1" >/dev/null || fail "status response is not structured save-sync conflict state"
+}
+
+check_resolution() {
+    action=$2
+    case "$action" in
+        keep-local) expected=local-canonical ;;
+        keep-remote) expected=remote-canonical ;;
+        keep-both) expected=both-retained-local-canonical ;;
+    esac
+    jq -e --arg action "$action" --arg expected "$expected" '
+        .version == "sim-control/v1" and .ok == true
+        and (.result | type) == "object"
+        and .result.action == $action
+        and .result.state == $expected
+        and (.result.canonicalGeneration | type) == "number"
+        and (.result.preservedHashPrefixes | length) == 2
+    ' "$1" >/dev/null || fail "resolution response is not structured save-sync action state"
+}
+
+for action in keep-local keep-remote keep-both; do
+    CURRENT_RUN=$WORK/$action
+    mkdir -p "$CURRENT_RUN"
+    "$ROOT/scripts/sim" run --backend=dummy --run-dir "$CURRENT_RUN" --wait-ready 30 --detach
+    "$ROOT/scripts/simctl" --socket "$CURRENT_RUN/control.sock" save-sync.status >"$WORK/$action-status.json"
+    check_status "$WORK/$action-status.json"
+    "$ROOT/scripts/simctl" --socket "$CURRENT_RUN/control.sock" save-sync.resolve --action "$action" >"$WORK/$action-resolve.json"
+    check_resolution "$WORK/$action-resolve.json" "$action"
+    "$ROOT/scripts/sim" stop --backend=dummy --run-dir "$CURRENT_RUN" --wait-ready 30
+    [ ! -e "$CURRENT_RUN/control.sock" ] || fail "control socket survived scoped stop for $action"
+    clean_data "$CURRENT_RUN"
+    rm -rf -- "$CURRENT_RUN"
+    CURRENT_RUN=
+    printf '%s\n' "PASS save-sync.$action"
+done
+
+printf '%s\n' "save-sync simctl journey passed: status and all resolution actions"

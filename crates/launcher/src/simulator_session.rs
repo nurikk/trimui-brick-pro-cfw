@@ -1,6 +1,10 @@
 use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
 use launch_contract::{validate, Catalog, LaunchRequest};
+use save_sync::{
+    Candidate, CandidateStatus, Device, Exchange, Lineage, ResolutionAction, SaveTarget,
+    SyncReconciler,
+};
 use save_vault::{
     Catalog as SaveCatalog, Identity as SaveIdentity, SaveKind, SaveVault, SnapshotFile,
     SnapshotReason,
@@ -13,6 +17,7 @@ use session_broker::{
     accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary, SessionBrokerClient,
     SessionHandle, SessionResult,
 };
+use sha2::Digest;
 
 const CAPABILITIES: &[u8] =
     include_bytes!("../../../fixtures/session-broker/generated-v1/resume-capabilities.json");
@@ -22,6 +27,7 @@ pub(crate) struct SimulatorSessionAdapter {
     store: ResumeStore,
     vault: SaveVault,
     source_root: PathBuf,
+    sync_exchange: PathBuf,
 }
 
 impl Default for SimulatorSessionAdapter {
@@ -58,18 +64,83 @@ impl SimulatorSessionAdapter {
         ] {
             fs::set_permissions(path, fs::Permissions::from_mode(0o644)).expect("save source mode");
         }
+        let source_root = root.join("live");
+        let vault = SaveVault::for_simulator(
+            root.join("save-vault"),
+            &source_root,
+            SaveCatalog::default(),
+        )
+        .expect("save vault");
+        vault
+            .snapshot(
+                SaveIdentity {
+                    content_version: "sim-content",
+                    runner_version: "sim-runner",
+                    core_version: None,
+                },
+                &[SnapshotFile {
+                    kind: SaveKind::Save,
+                    relative: "saves/active.save".into(),
+                    source: source_root.join("saves/active.save"),
+                }],
+                SnapshotReason::NormalExit,
+            )
+            .expect("initial save snapshot");
+        let sync_exchange = root.join("save-sync");
+        let exchange = Exchange::new(&sync_exchange).expect("save sync exchange");
+        let reconciler = SyncReconciler::new(
+            &vault,
+            exchange,
+            SaveTarget {
+                logical_id: "generated-save".into(),
+                content_id: "sim-content".into(),
+                relative: "saves/active.save".into(),
+                kind: SaveKind::Save,
+            },
+        )
+        .expect("save sync reconciler");
+        let local = reconciler
+            .local_candidate(Device {
+                id: "brick-sim".into(),
+                name: "Simulator Brick".into(),
+            })
+            .expect("local save candidate");
+        let payload = b"synthetic-remote-save-v1";
+        let remote = Candidate {
+            schema: save_sync::SCHEMA.into(),
+            format: save_sync::FORMAT.into(),
+            schema_version: 1,
+            logical_id: local.logical_id.clone(),
+            content_id: local.content_id.clone(),
+            device: Device {
+                id: "brick-peer".into(),
+                name: "Peer Brick".into(),
+            },
+            generation: 2,
+            hash: format!("{:x}", sha2::Sha256::digest(payload)),
+            lineage: Lineage {
+                parent_hash: None,
+                ancestry: vec![],
+            },
+            save_kind: SaveKind::Save,
+            timestamp_ms: local.timestamp_ms + 1,
+            size: payload.len() as u64,
+            validator: None,
+            status: CandidateStatus::Candidate,
+            deleted: false,
+        };
+        reconciler
+            .exchange()
+            .stage_remote(remote, payload, false)
+            .expect("remote save candidate");
         Self {
             active: None,
             store: ResumeStore::for_simulator(root.join("resume"), config)
                 .expect("resume store")
                 .to_owned(),
-            vault: SaveVault::for_simulator(
-                root.join("save-vault"),
-                root.join("live"),
-                SaveCatalog::default(),
-            )
-            .expect("save vault"),
-            source_root: root.join("live"),
+            vault,
+            source_root,
+            sync_exchange,
         }
     }
 
@@ -242,6 +313,49 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         })
     }
 
+    fn save_sync_status(&mut self) -> Result<save_sync::SyncStatus, BrokerError> {
+        let reconciler = self.sync_reconciler()?;
+        let local = reconciler
+            .local_candidate(Device {
+                id: "brick-sim".into(),
+                name: "Simulator Brick".into(),
+            })
+            .map_err(|error| BrokerError::new(error.to_string()))?;
+        let remote = reconciler
+            .exchange()
+            .quarantined()
+            .map_err(|error| BrokerError::new(error.to_string()))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| BrokerError::new("no quarantined save candidate"))?;
+        reconciler
+            .reconcile(&local, &remote, save_sync::SyncGate::Ready)
+            .map_err(|error| BrokerError::new(error.to_string()))
+    }
+
+    fn save_sync_resolve(
+        &mut self,
+        action: ResolutionAction,
+    ) -> Result<save_sync::ResolutionReceipt, BrokerError> {
+        let reconciler = self.sync_reconciler()?;
+        let local = reconciler
+            .local_candidate(Device {
+                id: "brick-sim".into(),
+                name: "Simulator Brick".into(),
+            })
+            .map_err(|error| BrokerError::new(error.to_string()))?;
+        let remote = reconciler
+            .exchange()
+            .quarantined()
+            .map_err(|error| BrokerError::new(error.to_string()))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| BrokerError::new("no quarantined save candidate"))?;
+        reconciler
+            .resolve(&local, &remote, action)
+            .map_err(|error| BrokerError::new(error.to_string()))
+    }
+
     fn save_vault_restore(&mut self, confirmed: bool) -> Result<(), BrokerError> {
         let generation = self
             .vault
@@ -251,5 +365,22 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .restore(generation, confirmed)
             .map(|_| ())
             .map_err(|error| BrokerError::new(error.to_string()))
+    }
+}
+
+impl SimulatorSessionAdapter {
+    fn sync_reconciler(&self) -> Result<SyncReconciler<'_>, BrokerError> {
+        SyncReconciler::new(
+            &self.vault,
+            Exchange::new(&self.sync_exchange)
+                .map_err(|error| BrokerError::new(error.to_string()))?,
+            SaveTarget {
+                logical_id: "generated-save".into(),
+                content_id: "sim-content".into(),
+                relative: "saves/active.save".into(),
+                kind: SaveKind::Save,
+            },
+        )
+        .map_err(|error| BrokerError::new(error.to_string()))
     }
 }

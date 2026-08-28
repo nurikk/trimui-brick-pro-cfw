@@ -122,6 +122,11 @@ fn command_args<'a>(
         "presentation" => Ok(("presentation", presentation_args(args)?)),
         "screenshot" => Ok(("screenshot", artifact_args(args)?)),
         "checkpoint" => Ok(("checkpoint", artifact_args(args)?)),
+        "save-sync.status" => {
+            require_empty(args)?;
+            Ok(("save-sync.status", json!({})))
+        }
+        "save-sync.resolve" => Ok(("save-sync.resolve", save_sync_args(args)?)),
         "save-vault.history" => {
             require_empty(args)?;
             Ok(("save-vault.history", json!({})))
@@ -148,6 +153,19 @@ fn command_args<'a>(
         "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
     }
+}
+
+fn save_sync_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() != 2
+        || args[0] != "--action"
+        || !["keep-local", "keep-remote", "keep-both"].contains(&args[1].as_str())
+    {
+        return Err((
+            "usage",
+            "--action keep-local|keep-remote|keep-both is required".into(),
+        ));
+    }
+    Ok(json!({"action": args[1]}))
 }
 
 fn require_empty(args: &[String]) -> Result<(), (&'static str, String)> {
@@ -326,6 +344,10 @@ fn presentation_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         "wifi-manual",
         "wifi-progress",
         "wifi-error",
+        "save-sync-status",
+        "save-sync-keep-local",
+        "save-sync-keep-remote",
+        "save-sync-keep-both",
         "save-vault-history",
         "save-vault-preview",
         "save-vault-confirm",

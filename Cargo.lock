@@ -160,11 +160,11 @@ dependencies = [
 name = "compatibility-recipes"
 version = "0.1.0"
 dependencies = [
- "save-vault",
  "display-profile",
  "emulator-catalog",
  "input-profile",
  "package-trust",
+ "save-vault",
  "serde",
  "serde_json",
  "settings-schema",
@@ -570,10 +570,10 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "package-manager"
 version = "0.1.0"
 dependencies = [
- "save-vault",
  "anyhow",
  "hex",
  "package-trust",
+ "save-vault",
  "serde",
  "serde_json",
  "sha2",
@@ -718,6 +718,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "save-sync"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "save-vault",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "save-vault"
 version = "0.1.0"
 dependencies = [
@@ -797,11 +808,12 @@ dependencies = [
 name = "session-broker"
 version = "0.1.0"
 dependencies = [
- "save-vault",
  "launch-contract",
  "libc",
  "package-manager",
  "package-trust",
+ "save-sync",
+ "save-vault",
  "serde",
  "serde_json",
  "sha2",
@@ -966,7 +978,6 @@ dependencies = [
 name = "sim-launcher"
 version = "0.1.0"
 dependencies = [
- "save-vault",
  "anyhow",
  "compatibility-recipes",
  "launch-contract",
@@ -976,11 +987,14 @@ dependencies = [
  "metadata-scraper",
  "package-trust",
  "png",
+ "save-sync",
+ "save-vault",
  "serde",
  "serde_json",
  "session-broker",
  "settings-schema",
  "settings-ui",
+ "sha2",
  "signal-hook",
  "sim-domain",
  "sim-host-platform",
@@ -1180,10 +1194,10 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 name = "update-agent"
 version = "0.1.0"
 dependencies = [
- "save-vault",
  "anyhow",
  "boot-state",
  "minisign-verify",
+ "save-vault",
  "serde",
  "serde_json",
  "sha2",

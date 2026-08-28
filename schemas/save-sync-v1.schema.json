@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-save-sync-v1.schema.json",
+  "title": "Trimui Brick Pro conflict-aware save synchronization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "logicalId", "contentId", "device", "generation", "hash", "lineage", "saveKind", "timestampMs", "size", "validator", "status", "deleted"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-save-sync-v1.schema.json"},
+    "format": {"const": "trimui-save-sync"},
+    "schemaVersion": {"const": 1},
+    "logicalId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "device": {"$ref": "#/$defs/device"},
+    "generation": {"type": "integer", "minimum": 1},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "lineage": {"$ref": "#/$defs/lineage"},
+    "saveKind": {"enum": ["sram", "save", "state", "declared-state"]},
+    "timestampMs": {"type": "integer", "minimum": 1, "description": "UI evidence only; never a winner selector."},
+    "size": {"type": "integer", "minimum": 0, "maximum": 67108864},
+    "validator": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 255}]},
+    "status": {"enum": ["candidate", "quarantined", "conflict", "canonical", "resolved"]},
+    "deleted": {"type": "boolean"}
+  },
+  "$defs": {
+    "device": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9._ -]{1,64}$"}
+      }
+    },
+    "lineage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parentHash", "ancestry"],
+      "properties": {
+        "parentHash": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{64}$"}]},
+        "ancestry": {"type": "array", "maxItems": 32, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+      }
+    }
+  }
+}

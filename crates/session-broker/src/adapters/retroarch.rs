@@ -14,11 +14,12 @@ pub fn plan(
 ) -> Result<LaunchPlan, String> {
     if request.runner.id != "generated-libretro"
         || request.runner.version != "1.0.0"
-        || request
-            .core
-            .as_ref()
-            .map(|core| (core.id.as_str(), core.version.as_str()))
-            != Some(("generated-core", "1.0.0"))
+        || !request.core.as_ref().is_some_and(|core| {
+            matches!(
+                (core.id.as_str(), core.version.as_str()),
+                ("generated-core", "1.0.0") | ("generated-retained-core", "1.0.0")
+            )
+        })
         || !catalog.runners.iter().any(|runner| {
             runner.id == "generated-libretro"
                 && runner.version == "1.0.0"
@@ -46,7 +47,10 @@ pub fn plan(
                 .to_string(),
             "-L".to_string(),
             fixture_root
-                .join("cores/generated-core.so")
+                .join(format!(
+                    "cores/{}.so",
+                    request.core.as_ref().expect("validated core").id
+                ))
                 .display()
                 .to_string(),
             paths.content.display().to_string(),

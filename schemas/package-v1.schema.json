@@ -138,10 +138,9 @@
       "additionalProperties": false,
       "properties": {
         "preserve": {
-          "const": [
-            "/roms",
-            "/data/saves",
-            "/data/states"
+          "oneOf": [
+            {"const": ["/roms", "/data/saves", "/data/states"]},
+            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume"]}
           ]
         },
         "remove": {

@@ -121,6 +121,8 @@ fn command_args<'a>(
         "presentation" => Ok(("presentation", presentation_args(args)?)),
         "screenshot" => Ok(("screenshot", artifact_args(args)?)),
         "checkpoint" => Ok(("checkpoint", artifact_args(args)?)),
+        "autosave" => Ok(("autosave", autosave_args(args)?)),
+        "resume" => Ok(("resume", resume_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
     }
 }
@@ -320,6 +322,74 @@ fn artifact_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         return Err(("usage", "--name must be a safe basename".into()));
     }
     Ok(json!({"name": args[1]}))
+}
+
+fn autosave_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() < 2
+        || args[0] != "--reason"
+        || !["normal-exit", "pre-suspend", "low-battery", "periodic"].contains(&args[1].as_str())
+    {
+        return Err(("usage", "--reason is required and typed".into()));
+    }
+    let mut value = json!({"reason": args[1]});
+    if args.len() > 2 {
+        if args.len() != 4
+            || args[2] != "--fault"
+            || !["none", "artifact", "metadata", "promotion", "pointer"].contains(&args[3].as_str())
+        {
+            return Err(("usage", "--fault is not allowlisted".into()));
+        }
+        value["fault"] = json!(args[3]);
+    }
+    Ok(value)
+}
+
+fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() < 4
+        || args[0] != "--content-id"
+        || args[2] != "--decision"
+        || ![
+            "nebula-nes",
+            "mirror-ps1",
+            "orbit-garden",
+            "signal-workshop",
+        ]
+        .contains(&args[1].as_str())
+        || ![
+            "resume",
+            "retained-matching-core",
+            "cold-start-sram",
+            "cancel",
+        ]
+        .contains(&args[3].as_str())
+    {
+        return Err(("usage", "resume arguments are not allowlisted".into()));
+    }
+    let mut value = json!({"contentId": args[1], "decision": args[3]});
+    let mut index = 4;
+    while index < args.len() {
+        if index + 1 >= args.len() {
+            return Err(("usage", "resume identity overrides are invalid".into()));
+        }
+        let field = match args[index].as_str() {
+            "--runner-id" if valid_name(&args[index + 1]) => "runnerId",
+            "--runner-version" if valid_version(&args[index + 1]) => "runnerVersion",
+            "--core-id" if valid_name(&args[index + 1]) => "coreId",
+            "--core-version" if valid_version(&args[index + 1]) => "coreVersion",
+            _ => return Err(("usage", "resume identity overrides are invalid".into())),
+        };
+        value[field] = json!(args[index + 1]);
+        index += 2;
+    }
+    Ok(value)
+}
+
+fn valid_version(version: &str) -> bool {
+    let parts: Vec<_> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 fn valid_name(name: &str) -> bool {

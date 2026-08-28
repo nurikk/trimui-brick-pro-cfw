@@ -141,27 +141,6 @@ pub fn append_json_line(path: &Path, value: &serde_json::Value) -> io::Result<()
     append_bytes(path, &line)
 }
 
-pub fn write_resume(path: &Path, value: &serde_json::Value) -> io::Result<()> {
-    if fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "resume target is a symlink",
-        ));
-    }
-    let bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
-    let temporary = durable_temp(path, &bytes)?;
-    match fs::rename(&temporary, path) {
-        Ok(()) => sync_parent(path),
-        Err(error) => {
-            let _ = fs::remove_file(&temporary);
-            Err(error)
-        }
-    }
-}
-
 fn append_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
     if fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_symlink())

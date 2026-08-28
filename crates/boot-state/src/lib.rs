@@ -246,11 +246,12 @@ pub fn prepare_pending(root: &Path, slot: Slot, release: &str, sequence: u64) ->
     store(root, generation, &state)
 }
 
-pub fn protected_hashes(root: &Path) -> Result<[String; 3]> {
+pub fn protected_hashes(root: &Path) -> Result<[String; 4]> {
     Ok([
         tree_hash(&root.join("roms"))?,
         tree_hash(&root.join("data/saves"))?,
         tree_hash(&root.join("data/states"))?,
+        tree_hash(&root.join("data/resume"))?,
     ])
 }
 
@@ -259,21 +260,34 @@ fn tree_hash(path: &Path) -> Result<String> {
         bail!("protected path is missing: {}", path.display())
     }
     let mut entries = Vec::new();
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let child = entry.path();
-        if !child.is_file() {
-            bail!("protected tree contains non-file entry")
-        }
-        entries.push((entry.file_name(), fs::read(child)?));
-    }
+    collect_files(path, Path::new(""), &mut entries)?;
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     let mut digest = Sha256::new();
     for (name, bytes) in entries {
-        digest.update(name.as_encoded_bytes());
+        digest.update(name.as_bytes());
         digest.update([0]);
         digest.update((bytes.len() as u64).to_le_bytes());
         digest.update(bytes);
     }
     Ok(hex(&digest.finalize()))
+}
+
+fn collect_files(path: &Path, relative: &Path, entries: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let child = entry.path();
+        let metadata = fs::symlink_metadata(&child)?;
+        let child_relative = relative.join(entry.file_name());
+        if metadata.is_dir() {
+            collect_files(&child, &child_relative, entries)?;
+        } else if metadata.is_file() {
+            entries.push((
+                child_relative.to_string_lossy().into_owned(),
+                fs::read(child)?,
+            ));
+        } else {
+            bail!("protected tree contains unsupported filesystem object")
+        }
+    }
+    Ok(())
 }

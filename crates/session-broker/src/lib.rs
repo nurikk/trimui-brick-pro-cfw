@@ -1,9 +1,30 @@
-use std::fmt;
+pub mod resume;
+
+use std::{fmt, time::Duration};
 
 use launch_contract::{Catalog, LaunchRequest};
 use serde::Serialize;
 
 pub const HANDLE_SCHEMA: &str = "trimui-session-broker-handle/v1";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LifecycleCheckpointPolicy {
+    periodic_interval: Duration,
+}
+
+impl Default for LifecycleCheckpointPolicy {
+    fn default() -> Self {
+        Self {
+            periodic_interval: Duration::from_secs(30),
+        }
+    }
+}
+
+impl LifecycleCheckpointPolicy {
+    pub const fn periodic_interval(self) -> Duration {
+        self.periodic_interval
+    }
+}
 
 pub type BrokerRequest = LaunchRequest;
 
@@ -66,6 +87,37 @@ pub trait SessionBrokerClient {
     ) -> Result<SessionHandle, BrokerError>;
 
     fn complete(&mut self, exit_code: i32, duration_ms: u64) -> Result<SessionResult, BrokerError>;
+
+    fn checkpoint(
+        &mut self,
+        _reason: resume::CheckpointReason,
+        _fault: resume::CommitFault,
+    ) -> Result<resume::ResumeRecord, BrokerError> {
+        Err(BrokerError::new("resume checkpoint is unavailable"))
+    }
+
+    fn resume_entries(
+        &mut self,
+        requests: &[BrokerRequest],
+    ) -> Result<Vec<resume::ResumeSummary>, BrokerError> {
+        let _ = requests;
+        Err(BrokerError::new("resume listing is unavailable"))
+    }
+
+    fn resume_choices(
+        &mut self,
+        _request: &BrokerRequest,
+    ) -> Result<Vec<resume::ResumeDecision>, BrokerError> {
+        Err(BrokerError::new("resume choices are unavailable"))
+    }
+
+    fn resume_decision(
+        &mut self,
+        _request: BrokerRequest,
+        _decision: resume::ResumeDecision,
+    ) -> Result<resume::ResumeResult, BrokerError> {
+        Err(BrokerError::new("resume decision is unavailable"))
+    }
 }
 
 pub fn accepted_handle(request: &BrokerRequest) -> SessionHandle {

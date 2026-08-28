@@ -14,7 +14,8 @@ const MAX_FILES: usize = 64;
 const MAX_EXPANDED_BYTES: u64 = 1_048_576;
 const PACKAGE_STATE: &str = ".brickpro/package-state";
 const PACKAGE_ROOT: &str = ".brickpro/packages";
-const PRESERVED: [&str; 3] = ["/roms", "/data/saves", "/data/states"];
+const PRESERVED: [&str; 4] = ["/roms", "/data/saves", "/data/states", "/data/resume"];
+const LEGACY_PRESERVED: [&str; 3] = ["/roms", "/data/saves", "/data/states"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -285,7 +286,7 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     {
         bail!("runtime namespace is invalid")
     }
-    if manifest.uninstall.preserve != PRESERVED
+    if !valid_preserve(&manifest.uninstall.preserve)
         || manifest.uninstall.remove != ["immutable", "runtime", "cache", "staging"]
     {
         bail!("uninstall rules do not preserve the protected storage boundary")
@@ -583,6 +584,17 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     }
     fs::remove_file(state_path)?;
     Ok(())
+}
+
+fn valid_preserve(values: &[String]) -> bool {
+    values
+        .iter()
+        .map(String::as_str)
+        .eq(PRESERVED.iter().copied())
+        || values
+            .iter()
+            .map(String::as_str)
+            .eq(LEGACY_PRESERVED.iter().copied())
 }
 
 fn validate_activation_record(record: &ActivationRecord, id: &str) -> Result<()> {

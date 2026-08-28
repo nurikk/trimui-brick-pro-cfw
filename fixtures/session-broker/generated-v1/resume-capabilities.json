@@ -1,0 +1,12 @@
+{
+  "$schema": "https://example.invalid/trimui-resume-capabilities-v1.schema.json",
+  "format": "brickpro-resume-capabilities",
+  "schemaVersion": 1,
+  "entries": [
+    {"contentId": "nebula-nes", "kind": "libretro", "capability": "native-state"},
+    {"contentId": "mirror-ps1", "kind": "libretro", "capability": "native-state", "retainedCore": {"id": "generated-retained-core", "version": "1.0.0"}},
+    {"contentId": "orbit-garden", "kind": "portmaster", "capability": "broker-state"},
+    {"contentId": "signal-workshop", "kind": "portmaster", "capability": "broker-state"},
+    {"contentId": "generated-content-1", "kind": "standalone", "capability": "sram-only"}
+  ]
+}

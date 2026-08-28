@@ -99,7 +99,7 @@ pub enum ResumeMode {
     Auto,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct VersionedId {
     pub id: String,

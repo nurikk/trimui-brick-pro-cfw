@@ -445,12 +445,14 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
     fs::create_dir_all(root.join("roms"))?;
     fs::create_dir_all(root.join("data/saves"))?;
     fs::create_dir_all(root.join("data/states"))?;
+    fs::create_dir_all(root.join("data/resume"))?;
     fs::create_dir_all(root.join(".brickpro/data"))?;
     fs::create_dir_all(root.join(".brickpro/system/slots/A"))?;
     fs::create_dir_all(root.join(".brickpro/system/slots/B"))?;
     fs::write(root.join("roms/README.synthetic"), b"protected\n")?;
     fs::write(root.join("data/saves/save.synthetic"), b"protected\n")?;
     fs::write(root.join("data/states/state.synthetic"), b"protected\n")?;
+    fs::write(root.join("data/resume/current.synthetic"), b"protected\n")?;
     fs::write(
         root.join(".brickpro/data/prior-release-readable"),
         b"prior-release-readable-v1\n",
@@ -504,7 +506,7 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf)> {
     Ok((manifest, payload, signature))
 }
 
-fn assert_recovered(root: &Path, before: &[String; 3]) -> Result<()> {
+fn assert_recovered(root: &Path, before: &[String; 4]) -> Result<()> {
     let (selected, reason, attempts) = select(root)?;
     if selected != Slot::A || reason != "current" || attempts != 0 {
         bail!("last-known-good selection was not recovered")

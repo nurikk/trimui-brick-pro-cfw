@@ -59,6 +59,10 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
             b"synthetic-state-boundary".as_slice(),
         ),
         (
+            "data/resume/keep.record",
+            b"synthetic-resume-boundary".as_slice(),
+        ),
+        (
             "data/settings.json",
             b"synthetic-settings-boundary".as_slice(),
         ),
@@ -258,7 +262,7 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     if before != protected_bytes(root)? {
         bail!("lifecycle operation changed protected bytes")
     }
-    println!("PASS protected ROM/save/state/settings bytes are byte-identical");
+    println!("PASS protected ROM/save/state/resume/settings bytes are byte-identical");
     println!(
         "PASS Theme Garden synthetic journey paths {} {}",
         CACHE_PATH, STAGING_PATH
@@ -280,6 +284,7 @@ fn protected_bytes(root: &Path) -> Result<Vec<Vec<u8>>> {
         "roms/keep.bin",
         "data/saves/keep.save",
         "data/states/keep.state",
+        "data/resume/keep.record",
         "data/settings.json",
     ]
     .into_iter()

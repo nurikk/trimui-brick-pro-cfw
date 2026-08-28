@@ -2,7 +2,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
     io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::{
+        fd::AsRawFd,
+        unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    },
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -14,6 +17,7 @@ pub const SCHEMA: &str = "https://example.invalid/trimui-save-vault-v1.schema.js
 pub const FORMAT: &str = "brickpro-save-vault";
 pub const MAX_GENERATIONS: usize = 8;
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const COMMIT_MARKER: &[u8] = b"brickpro-save-vault-commit-v1\n";
 type ObjectBytes = Vec<(String, Vec<u8>)>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,6 +157,9 @@ pub struct RestorePreview {
     pub new_size: u64,
     pub old_hash_status: String,
     pub new_hash_status: String,
+    pub old_hash_prefix: String,
+    pub new_hash_prefix: String,
+    pub affected_kinds: Vec<SaveKind>,
     pub reason: SnapshotReason,
     pub timestamp_ms: u64,
 }
@@ -284,7 +291,22 @@ impl SaveVault {
                 .map_err(error)?;
         }
         fs::set_permissions(&self.root, fs::Permissions::from_mode(self.mode.dir_mode()))
-            .map_err(error)
+            .map_err(error)?;
+        let lock = self.root.join("operation.lock");
+        if symlink(&lock) {
+            return Err(err("vault operation lock boundary is invalid"));
+        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(self.mode.file_mode())
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&lock)
+            .map_err(error)?;
+        fs::set_permissions(&lock, fs::Permissions::from_mode(self.mode.file_mode()))
+            .map_err(error)?;
+        file.sync_all().map_err(error)
     }
     fn validate_layout(&self) -> Result<(), SaveVaultError> {
         for name in ["objects", "generations", "quarantine", ".staging"] {
@@ -297,10 +319,31 @@ impl SaveVault {
                 return Err(err("vault directory mode or boundary is invalid"));
             }
         }
+        let lock = fs::symlink_metadata(self.root.join("operation.lock")).map_err(error)?;
+        if lock.file_type().is_symlink()
+            || !lock.is_file()
+            || lock.permissions().mode() & 0o7777 != self.mode.file_mode()
+        {
+            return Err(err("vault operation lock mode or boundary is invalid"));
+        }
         Ok(())
     }
 
+    fn acquire_lock(&self) -> Result<OperationLock, SaveVaultError> {
+        OperationLock::acquire(&self.root, self.mode.file_mode())
+    }
+
     pub fn snapshot(
+        &self,
+        identity: Identity<'_>,
+        files: &[SnapshotFile],
+        reason: SnapshotReason,
+    ) -> Result<SnapshotOutcome, SaveVaultError> {
+        let _lock = self.acquire_lock()?;
+        self.snapshot_locked(identity, files, reason)
+    }
+
+    fn snapshot_locked(
         &self,
         identity: Identity<'_>,
         files: &[SnapshotFile],
@@ -325,56 +368,68 @@ impl SaveVault {
             .root
             .join("generations")
             .join(format!("generation-{generation}"));
-        let _ = fs::remove_dir_all(&stage);
+        if symlink(&stage) || symlink(&target) {
+            return Err(err("snapshot destination boundary is invalid"));
+        }
+        if stage.exists() {
+            fs::remove_dir_all(&stage).map_err(error)?;
+        }
+        if target.exists() {
+            return Err(err("snapshot generation already exists"));
+        }
         fs::create_dir(&stage).map_err(error)?;
         fs::set_permissions(&stage, fs::Permissions::from_mode(self.mode.dir_mode()))
             .map_err(error)?;
-        let result = self.snapshot_inner(generation, identity, files, reason);
-        match result {
-            Ok((manifest, objects)) => {
-                for (hash, bytes) in objects {
-                    self.publish_object(&hash, &bytes)?;
-                }
-                write_json(
-                    &stage.join("manifest.json"),
-                    &manifest,
-                    self.mode.file_mode(),
-                )?;
-                write_file(
-                    &stage.join("commit.marker"),
-                    b"brickpro-save-vault-commit-v1\n",
-                    self.mode.file_mode(),
-                )?;
-                sync_dir(&stage)?;
-                let quarantine = manifest.anomaly == AnomalyStatus::Quarantined;
-                let destination = if quarantine {
-                    self.root
-                        .join("quarantine")
-                        .join(format!("generation-{generation}"))
-                } else {
-                    target
-                };
-                fs::rename(&stage, &destination).map_err(error)?;
-                sync_dir(
-                    destination
-                        .parent()
-                        .ok_or_else(|| err("vault destination has no parent"))?,
-                )?;
-                if !quarantine {
-                    publish_current(&self.root, generation, self.mode.file_mode())?;
-                    self.prune(generation)?;
-                }
-                Ok(SnapshotOutcome {
-                    generation,
-                    status: manifest.anomaly,
-                    committed: !quarantine,
-                })
+        let result = (|| {
+            let (manifest, objects) = self.snapshot_inner(generation, identity, files, reason)?;
+            for (hash, bytes) in objects {
+                self.publish_object(&hash, &bytes)?;
             }
-            Err(error) => {
-                let _ = fs::remove_dir_all(&stage);
-                Err(error)
+            reject_source_tree(&self.source_root)?;
+            self.verify_snapshot_sources(&manifest, files)?;
+            self.verify_manifest_objects(&manifest)?;
+            write_json(
+                &stage.join("manifest.json"),
+                &manifest,
+                self.mode.file_mode(),
+            )?;
+            write_file(
+                &stage.join("commit.marker"),
+                COMMIT_MARKER,
+                self.mode.file_mode(),
+            )?;
+            sync_dir(&stage)?;
+            let quarantine = manifest.anomaly == AnomalyStatus::Quarantined;
+            let destination = if quarantine {
+                self.root
+                    .join("quarantine")
+                    .join(format!("generation-{generation}"))
+            } else {
+                target
+            };
+            if symlink(&destination) || destination.exists() {
+                return Err(err("snapshot destination already exists"));
             }
+            fs::rename(&stage, &destination).map_err(error)?;
+            sync_dir(
+                destination
+                    .parent()
+                    .ok_or_else(|| err("vault destination has no parent"))?,
+            )?;
+            if !quarantine {
+                publish_current(&self.root, generation, self.mode.file_mode())?;
+                self.prune(generation)?;
+            }
+            Ok(SnapshotOutcome {
+                generation,
+                status: manifest.anomaly,
+                committed: !quarantine,
+            })
+        })();
+        if result.is_err() && stage.exists() && !symlink(&stage) {
+            let _ = fs::remove_dir_all(&stage);
         }
+        result
     }
     fn snapshot_inner(
         &self,
@@ -383,11 +438,12 @@ impl SaveVault {
         files: &[SnapshotFile],
         reason: SnapshotReason,
     ) -> Result<(GenerationManifest, ObjectBytes), SaveVaultError> {
-        let parent = self.current_generation();
+        let current = self.current_generation();
+        let parent = self.parent_generation(current);
         let mut artifacts = Vec::new();
         let mut objects = Vec::new();
         let mut anomaly = AnomalyStatus::Valid;
-        let prior = parent.and_then(|number| self.read_manifest(number));
+        let prior = current.and_then(|number| self.read_manifest(number));
         let mut relatives = BTreeSet::new();
         for item in files {
             validate_source_relative(item.kind, &item.relative)?;
@@ -450,6 +506,49 @@ impl SaveVault {
         };
         Ok((manifest, objects))
     }
+    fn parent_generation(&self, current: Option<u64>) -> Option<u64> {
+        self.history()
+            .into_iter()
+            .find(|manifest| manifest.parent_generation.is_none())
+            .map(|manifest| manifest.generation)
+            .or(current)
+    }
+    fn verify_snapshot_sources(
+        &self,
+        manifest: &GenerationManifest,
+        files: &[SnapshotFile],
+    ) -> Result<(), SaveVaultError> {
+        for item in files {
+            let artifact = manifest
+                .artifacts
+                .iter()
+                .find(|artifact| artifact.source_relative == item.relative)
+                .ok_or_else(|| err("snapshot source is missing from manifest"))?;
+            let (_, size, hash) = read_stable(&item.source)?;
+            if size != artifact.size || hash != artifact.sha256 {
+                return Err(err("save source changed before publication"));
+            }
+        }
+        Ok(())
+    }
+    fn verify_object(&self, hash: &str, size: u64) -> Result<(), SaveVaultError> {
+        let object = self.root.join("objects").join(format!("{hash}.bin"));
+        let metadata = fs::symlink_metadata(&object).map_err(error)?;
+        if metadata.file_type().is_symlink()
+            || !metadata.is_file()
+            || metadata.len() != size
+            || digest(&fs::read(&object).map_err(error)?) != hash
+        {
+            return Err(err("content object verification failed"));
+        }
+        Ok(())
+    }
+    fn verify_manifest_objects(&self, manifest: &GenerationManifest) -> Result<(), SaveVaultError> {
+        for artifact in &manifest.artifacts {
+            self.verify_object(&artifact.sha256, artifact.size)?;
+        }
+        Ok(())
+    }
     fn publish_object(&self, hash: &str, bytes: &[u8]) -> Result<(), SaveVaultError> {
         validate_hash(hash)?;
         let path = self.root.join("objects").join(format!("{hash}.bin"));
@@ -465,9 +564,15 @@ impl SaveVault {
             return Ok(());
         }
         let temp = self.root.join("objects").join(format!(".{hash}.tmp"));
-        let _ = fs::remove_file(&temp);
+        if symlink(&temp) {
+            return Err(err("content object staging boundary is invalid"));
+        }
+        if temp.exists() {
+            fs::remove_file(&temp).map_err(error)?;
+        }
         write_file(&temp, bytes, self.mode.file_mode())?;
-        fs::rename(temp, path).map_err(error)?;
+        fs::rename(&temp, &path).map_err(error)?;
+        self.verify_object(hash, bytes.len() as u64)?;
         sync_dir(&self.root.join("objects"))
     }
     fn next_generation(&self) -> Result<u64, SaveVaultError> {
@@ -496,9 +601,14 @@ impl SaveVault {
         }
         let bytes = fs::read(path).ok()?;
         let pointer: CurrentPointer = serde_json::from_slice(&bytes).ok()?;
-        (pointer.schema == "brickpro-save-vault-current/v1"
-            && pointer.checksum == pointer_checksum(pointer.generation))
-        .then_some(pointer.generation)
+        if pointer.schema != "brickpro-save-vault-current/v1"
+            || pointer.checksum != pointer_checksum(pointer.generation)
+        {
+            return None;
+        }
+        self.read_manifest(pointer.generation)
+            .filter(|manifest| manifest.anomaly == AnomalyStatus::Valid)
+            .map(|_| pointer.generation)
     }
     fn read_manifest(&self, generation: u64) -> Option<GenerationManifest> {
         let path = self
@@ -510,16 +620,11 @@ impl SaveVault {
         }
         let manifest: GenerationManifest =
             serde_json::from_slice(&fs::read(path.join("manifest.json")).ok()?).ok()?;
-        validate_manifest(&manifest).ok()?;
-        for artifact in &manifest.artifacts {
-            let object = self.root.join("objects").join(&artifact.object);
-            if symlink(&object)
-                || fs::metadata(&object).ok()?.len() != artifact.size
-                || digest(&fs::read(object).ok()?) != artifact.sha256
-            {
-                return None;
-            }
+        if manifest.generation != generation || manifest.anomaly != AnomalyStatus::Valid {
+            return None;
         }
+        validate_manifest(&manifest).ok()?;
+        self.verify_manifest_objects(&manifest).ok()?;
         Some(manifest)
     }
     pub fn history(&self) -> Vec<GenerationManifest> {
@@ -544,32 +649,69 @@ impl SaveVault {
         let manifest = self
             .read_manifest(generation)
             .ok_or_else(|| err("recovery generation is unavailable"))?;
-        let first = manifest
+        let current = manifest
             .artifacts
-            .first()
-            .ok_or_else(|| err("recovery generation has no data"))?;
-        let source = self.source_root.join(&first.source_relative);
-        let current = if source.is_file() {
-            read_stable(&source).ok()
+            .iter()
+            .map(|artifact| read_stable(&self.source_root.join(&artifact.source_relative)).ok())
+            .collect::<Vec<_>>();
+        let old_size = manifest
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.size)
+            .sum();
+        let new_size = current.iter().flatten().map(|(_, size, _)| *size).sum();
+        let new_hash_status = if current.iter().all(Option::is_some)
+            && current
+                .iter()
+                .zip(&manifest.artifacts)
+                .all(|(current, artifact)| {
+                    current
+                        .as_ref()
+                        .is_some_and(|value| value.2 == artifact.sha256)
+                }) {
+            "matches"
+        } else if current.iter().any(Option::is_none) {
+            "unavailable"
         } else {
-            None
+            "different"
+        };
+        let affected_kinds = manifest
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.kind)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if manifest.artifacts.is_empty() {
+            return Err(err("recovery generation has no data"));
+        }
+        let old_hash_prefix = hash_prefix(&aggregate_digest(
+            manifest
+                .artifacts
+                .iter()
+                .map(|artifact| artifact.sha256.clone()),
+        ));
+        let new_hash_prefix = if current.iter().all(Option::is_some) {
+            hash_prefix(&aggregate_digest(
+                current
+                    .iter()
+                    .filter_map(|value| value.as_ref().map(|value| value.2.clone())),
+            ))
+        } else {
+            "unavailable".into()
         };
         Ok(RestorePreview {
             generation,
             content_version: manifest.content_version,
             runner_version: manifest.runner_version,
             core_version: manifest.core_version,
-            old_size: first.size,
-            new_size: current.as_ref().map_or(0, |value| value.1),
+            old_size,
+            new_size,
             old_hash_status: "verified".into(),
-            new_hash_status: if current
-                .as_ref()
-                .is_some_and(|value| value.2 == first.sha256)
-            {
-                "matches".into()
-            } else {
-                "different".into()
-            },
+            new_hash_status: new_hash_status.into(),
+            old_hash_prefix,
+            new_hash_prefix,
+            affected_kinds,
             reason: manifest.reason,
             timestamp_ms: manifest.timestamp_ms,
         })
@@ -579,6 +721,7 @@ impl SaveVault {
         generation: u64,
         confirmed: bool,
     ) -> Result<RestorePreview, SaveVaultError> {
+        let _lock = self.acquire_lock()?;
         let preview = self.preview(generation)?;
         if !confirmed {
             return Err(err("restore requires explicit confirmation"));
@@ -589,13 +732,14 @@ impl SaveVault {
         let files = manifest
             .artifacts
             .iter()
+            .filter(|artifact| self.source_root.join(&artifact.source_relative).is_file())
             .map(|artifact| SnapshotFile {
                 kind: artifact.kind,
                 relative: artifact.source_relative.clone(),
                 source: self.source_root.join(&artifact.source_relative),
             })
             .collect::<Vec<_>>();
-        let before_restore = self.snapshot(
+        let before_restore = self.snapshot_locked(
             Identity {
                 content_version: &manifest.content_version,
                 runner_version: &manifest.runner_version,
@@ -611,10 +755,23 @@ impl SaveVault {
         let result = (|| {
             for (index, artifact) in manifest.artifacts.iter().enumerate() {
                 let source = self.source_root.join(&artifact.source_relative);
-                let original = fs::read(&source).map_err(error)?;
+                let original = match fs::symlink_metadata(&source) {
+                    Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                        return Err(err("restore source is not a regular file"));
+                    }
+                    Ok(_) => Some(fs::read(&source).map_err(error)?),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(io_error) => return Err(error(io_error)),
+                };
                 backups.push((source.clone(), original));
                 let object = self.root.join("objects").join(&artifact.object);
                 let temp = source.with_file_name(format!(".restore-{generation}-{index}.tmp"));
+                if symlink(&temp) {
+                    return Err(err("restore staging boundary is invalid"));
+                }
+                if temp.exists() {
+                    fs::remove_file(&temp).map_err(error)?;
+                }
                 write_file(
                     &temp,
                     &fs::read(&object).map_err(error)?,
@@ -623,7 +780,7 @@ impl SaveVault {
                 if read_stable(&temp)?.2 != artifact.sha256 {
                     return Err(err("restore verification failed"));
                 }
-                fs::rename(temp, &source).map_err(error)?;
+                fs::rename(&temp, &source).map_err(error)?;
                 sync_dir(
                     source
                         .parent()
@@ -632,59 +789,97 @@ impl SaveVault {
             }
             Ok(())
         })();
-        if result.is_err() {
-            for (source, bytes) in backups {
-                let temp = source.with_file_name(".restore-revert.tmp");
-                if write_file(&temp, &bytes, self.mode.file_mode()).is_ok() {
-                    let _ = fs::rename(temp, source);
-                }
+        if let Err(original_error) = result {
+            if let Err(rollback_error) = restore_backups(&backups, self.mode.file_mode()) {
+                return Err(err(format!(
+                    "restore failed and rollback failed: {rollback_error}"
+                )));
             }
+            return Err(original_error);
         }
-        result.map(|()| preview)
+        Ok(preview)
     }
     fn prune(&self, current: u64) -> Result<(), SaveVaultError> {
         let manifests = self.history();
         if manifests.len() <= MAX_GENERATIONS {
             return Ok(());
         }
-        let protected = manifests
+        let by_generation = manifests
             .iter()
-            .filter(|m| m.retention == RetentionClass::Protected)
-            .map(|m| m.generation)
-            .collect::<BTreeSet<_>>();
-        let keep_recent = manifests
+            .map(|manifest| (manifest.generation, manifest))
+            .collect::<BTreeMap<_, _>>();
+        let mut keep = manifests
             .iter()
             .rev()
             .take(MAX_GENERATIONS)
-            .map(|m| m.generation)
+            .map(|manifest| manifest.generation)
             .collect::<BTreeSet<_>>();
-        for manifest in manifests {
-            if manifest.generation != current
-                && !protected.contains(&manifest.generation)
-                && !keep_recent.contains(&manifest.generation)
-            {
-                fs::remove_dir_all(
-                    self.root
-                        .join("generations")
-                        .join(format!("generation-{}", manifest.generation)),
-                )
-                .map_err(error)?;
+        keep.insert(current);
+        keep.extend(
+            manifests
+                .iter()
+                .filter(|manifest| manifest.retention == RetentionClass::Protected)
+                .map(|manifest| manifest.generation),
+        );
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for generation in keep.clone() {
+                if let Some(Some(parent)) = by_generation
+                    .get(&generation)
+                    .map(|manifest| manifest.parent_generation)
+                {
+                    changed |= keep.insert(parent);
+                }
             }
         }
-        let referenced = self
+        for manifest in &manifests {
+            if !keep.contains(&manifest.generation) {
+                let path = self
+                    .root
+                    .join("generations")
+                    .join(format!("generation-{}", manifest.generation));
+                if symlink(&path) {
+                    return Err(err("retention generation boundary is invalid"));
+                }
+                fs::remove_dir_all(path).map_err(error)?;
+            }
+        }
+        let mut referenced = self
             .history()
             .into_iter()
             .flat_map(|m| m.artifacts.into_iter().map(|a| a.object))
             .collect::<BTreeSet<_>>();
-        for entry in fs::read_dir(self.root.join("objects"))
-            .map_err(error)?
-            .flatten()
-        {
+        for entry in fs::read_dir(self.root.join("quarantine")).map_err(error)? {
+            let entry = entry.map_err(error)?;
+            let path = entry.path();
+            if committed(&path) {
+                if let Ok(manifest) = serde_json::from_slice::<GenerationManifest>(
+                    &fs::read(path.join("manifest.json")).map_err(error)?,
+                ) {
+                    if validate_manifest(&manifest).is_ok()
+                        && manifest.anomaly == AnomalyStatus::Quarantined
+                    {
+                        referenced.extend(
+                            manifest
+                                .artifacts
+                                .into_iter()
+                                .map(|artifact| artifact.object),
+                        );
+                    }
+                }
+            }
+        }
+        for entry in fs::read_dir(self.root.join("objects")).map_err(error)? {
+            let entry = entry.map_err(error)?;
             if entry
                 .file_name()
                 .to_str()
                 .is_some_and(|name| !referenced.contains(name))
             {
+                if symlink(&entry.path()) {
+                    return Err(err("object retention boundary is invalid"));
+                }
                 fs::remove_file(entry.path()).map_err(error)?;
             }
         }
@@ -710,7 +905,7 @@ impl SaveVault {
                 &mut files,
             )?;
         }
-        vault.snapshot(
+        let outcome = vault.snapshot(
             Identity {
                 content_version: "standard",
                 runner_version: "broker",
@@ -718,7 +913,11 @@ impl SaveVault {
             },
             &files,
             reason,
-        )
+        )?;
+        if reason.protected() && !outcome.committed {
+            return Err(err("protected save snapshot was quarantined"));
+        }
+        Ok(outcome)
     }
     pub fn standard_integrity(root: &Path) -> Result<String, SaveVaultError> {
         let vault = Self::new(
@@ -730,6 +929,7 @@ impl SaveVault {
     }
 
     pub fn integrity_digest(&self) -> Result<String, SaveVaultError> {
+        let _lock = self.acquire_lock()?;
         let mut files = Vec::new();
         collect_all(&self.root, Path::new(""), &mut files)?;
         files.sort_by(|left, right| left.0.cmp(&right.0));
@@ -741,6 +941,72 @@ impl SaveVault {
             hash.update(bytes);
         }
         Ok(format!("{:x}", hash.finalize()))
+    }
+}
+
+fn restore_backups(
+    backups: &[(PathBuf, Option<Vec<u8>>)],
+    mode: u32,
+) -> Result<(), SaveVaultError> {
+    for (index, (source, bytes)) in backups.iter().enumerate() {
+        match bytes {
+            Some(bytes) => {
+                let temp = source.with_file_name(format!(".restore-revert-{index}.tmp"));
+                if symlink(&temp) {
+                    return Err(err("restore rollback staging boundary is invalid"));
+                }
+                if temp.exists() {
+                    fs::remove_file(&temp).map_err(error)?;
+                }
+                write_file(&temp, bytes, mode)?;
+                fs::rename(&temp, source).map_err(error)?;
+            }
+            None => {
+                if symlink(source) {
+                    return Err(err("restore rollback source boundary is invalid"));
+                }
+                if source.exists() {
+                    fs::remove_file(source).map_err(error)?;
+                }
+            }
+        }
+        sync_dir(
+            source
+                .parent()
+                .ok_or_else(|| err("restore rollback source has no parent"))?,
+        )?;
+    }
+    Ok(())
+}
+
+struct OperationLock {
+    file: File,
+}
+impl OperationLock {
+    fn acquire(root: &Path, mode: u32) -> Result<Self, SaveVaultError> {
+        let path = root.join("operation.lock");
+        if symlink(&path) {
+            return Err(err("vault operation lock boundary is invalid"));
+        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(mode)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(error)?;
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return Err(error(std::io::Error::last_os_error()));
+        }
+        Ok(Self { file })
+    }
+}
+impl Drop for OperationLock {
+    fn drop(&mut self) {
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
     }
 }
 
@@ -874,6 +1140,10 @@ fn validate_manifest(manifest: &GenerationManifest) -> Result<(), SaveVaultError
         || manifest.schema_version != 1
         || manifest.generation == 0
         || manifest.timestamp_ms == 0
+        || manifest
+            .parent_generation
+            .is_some_and(|parent| parent >= manifest.generation)
+        || manifest.artifacts.len() > 64
     {
         return Err(err("save manifest identity is invalid"));
     }
@@ -882,8 +1152,12 @@ fn validate_manifest(manifest: &GenerationManifest) -> Result<(), SaveVaultError
     if let Some(core) = &manifest.core_version {
         validate_token(core)?;
     }
+    let mut relatives = BTreeSet::new();
     for artifact in &manifest.artifacts {
         validate_source_relative(artifact.kind, &artifact.source_relative)?;
+        if !relatives.insert(artifact.source_relative.clone()) || artifact.size > MAX_FILE_BYTES {
+            return Err(err("save artifact identity is invalid"));
+        }
         validate_hash(&artifact.sha256)?;
         if artifact.content_id != format!("sha256:{}", artifact.sha256)
             || artifact.object != format!("{}.bin", artifact.sha256)
@@ -898,7 +1172,7 @@ fn committed(path: &Path) -> bool {
         && path.is_dir()
         && !symlink(&path.join("commit.marker"))
         && !symlink(&path.join("manifest.json"))
-        && path.join("commit.marker").is_file()
+        && fs::read(path.join("commit.marker")).ok().as_deref() == Some(COMMIT_MARKER)
         && path.join("manifest.json").is_file()
 }
 fn read_stable(path: &Path) -> Result<(Vec<u8>, u64, String), SaveVaultError> {
@@ -936,8 +1210,11 @@ fn read_stable(path: &Path) -> Result<(Vec<u8>, u64, String), SaveVaultError> {
 fn publish_current(root: &Path, generation: u64, mode: u32) -> Result<(), SaveVaultError> {
     let path = root.join("current.json");
     let temp = root.join(".current.json.tmp");
-    if (temp.exists() && symlink(&temp)) || (path.exists() && symlink(&path)) {
+    if symlink(&temp) || symlink(&path) {
         return Err(err("current pointer boundary is invalid"));
+    }
+    if temp.exists() {
+        fs::remove_file(&temp).map_err(error)?;
     }
     let bytes = serde_json::to_vec(&CurrentPointer {
         schema: "brickpro-save-vault-current/v1".into(),
@@ -964,6 +1241,7 @@ fn write_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), SaveVaultError
         .write(true)
         .create_new(true)
         .mode(mode)
+        .custom_flags(libc::O_NOFOLLOW)
         .open(path)
         .map_err(error)?;
     file.write_all(bytes).map_err(error)?;
@@ -1000,6 +1278,17 @@ fn symlink(path: &Path) -> bool {
 }
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+fn aggregate_digest(hashes: impl IntoIterator<Item = String>) -> String {
+    let mut digest = Sha256::new();
+    for hash in hashes {
+        digest.update(hash.as_bytes());
+        digest.update([0]);
+    }
+    format!("{:x}", digest.finalize())
+}
+fn hash_prefix(hash: &str) -> String {
+    hash[..12].to_owned()
 }
 fn now_ms() -> u64 {
     SystemTime::now()

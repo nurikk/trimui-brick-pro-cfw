@@ -5494,6 +5494,12 @@
         "version": "1.1.4"
       },
       {
+        "checksum": null,
+        "name": "save-vault",
+        "source": null,
+        "version": "0.1.0"
+      },
+      {
         "checksum": "3b498da7d14d1ad6c839729bd4ad6fc11d90a57583605f3b4df2cd709a9cd380",
         "name": "sdl2",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -5504,12 +5510,6 @@
         "name": "sdl2-sys",
         "source": "registry+https://github.com/rust-lang/crates.io-index",
         "version": "0.37.0"
-      },
-      {
-        "checksum": null,
-        "name": "save-vault",
-        "source": null,
-        "version": "0.1.0"
       },
       {
         "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
@@ -5819,7 +5819,7 @@
       }
     ],
     "path": "../Cargo.lock",
-    "sha256": "58cac46b00b47bba3d1e6e02c819ffe442b254b6748f7b4f9e514e9d0f81e512"
+    "sha256": "7a37fffced8f6e25cc409efdcc12cb822fbbc49fb1fb3a21abca1d5a27946bd1"
   },
   "repository": {
     "commit": "local-clean-room-pending-parent-delivery",

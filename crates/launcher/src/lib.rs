@@ -2207,6 +2207,9 @@ fn save_vault_json(state: &AppState) -> Value {
             "newSize": value.new_size,
             "oldHashStatus": value.old_hash_status,
             "newHashStatus": value.new_hash_status,
+            "oldHashPrefix": value.old_hash_prefix,
+            "newHashPrefix": value.new_hash_prefix,
+            "affectedKinds": value.affected_kinds,
             "reason": value.reason,
             "timestampMs": value.timestamp_ms,
         })

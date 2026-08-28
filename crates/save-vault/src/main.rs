@@ -172,14 +172,29 @@ fn journey() -> Result<(), String> {
         }
     }
     let history = vault.history();
-    if history.len() > 10
-        || !history
-            .iter()
-            .any(|item| item.retention == save_vault::RetentionClass::Protected)
+    let protected_count = history
+        .iter()
+        .filter(|item| item.retention == save_vault::RetentionClass::Protected)
+        .count();
+    if history
+        .iter()
+        .filter(|item| item.retention == save_vault::RetentionClass::Recent)
+        .count()
+        > save_vault::MAX_GENERATIONS + 1
+        || history.len() > save_vault::MAX_GENERATIONS + protected_count + 1
+        || protected_count == 0
+        || history.iter().any(|item| {
+            item.parent_generation.is_some_and(|parent| {
+                !history
+                    .iter()
+                    .any(|candidate| candidate.generation == parent)
+            })
+        })
     {
-        return Err("retention was not bounded with protected points".into());
+        return Err("retention was not bounded with protected points and parents".into());
     }
-    println!("PASS deterministic retention keeps recent and protected generations");
+    println!("PASS deterministic retention keeps recent, protected, and parent generations");
+    concurrency_journey(&root)?;
 
     fs::write(source.join("saves/slot.sav"), b"changed-save-x").map_err(|e| e.to_string())?;
     let preview = vault
@@ -188,6 +203,9 @@ fn journey() -> Result<(), String> {
     if preview.old_hash_status != "verified"
         || preview.content_version != "content-v1"
         || preview.new_size == 0
+        || preview.old_hash_prefix.len() != 12
+        || preview.new_hash_prefix.len() != 12
+        || preview.affected_kinds != vec![SaveKind::Save, SaveKind::State]
     {
         return Err("restore preview is incomplete".into());
     }
@@ -226,6 +244,19 @@ fn journey() -> Result<(), String> {
     }
     println!("PASS controller buttons history/preview/confirm/restore are sanitized");
 
+    let blocked = root.join("protected-failure");
+    fs::create_dir_all(blocked.join("data/saves")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(blocked.join("data/states")).map_err(|e| e.to_string())?;
+    fs::write(blocked.join("data/saves/a.sav"), b"").map_err(|e| e.to_string())?;
+    fs::write(blocked.join("data/states/a.state"), b"state").map_err(|e| e.to_string())?;
+    if SaveVault::snapshot_standard(&blocked, SnapshotReason::PreUpdate).is_ok() {
+        return Err("protected anomaly was allowed to continue".into());
+    }
+    if fs::read(blocked.join("data/saves/a.sav")).map_err(|e| e.to_string())? != b"" {
+        return Err("protected snapshot failure changed live data".into());
+    }
+    println!("PASS protected pre-operation anomaly blocks replacement");
+
     let production = root.join("production");
     fs::create_dir_all(production.join("data/saves")).map_err(|e| e.to_string())?;
     fs::create_dir_all(production.join("data/states")).map_err(|e| e.to_string())?;
@@ -239,6 +270,72 @@ fn journey() -> Result<(), String> {
     check_mode(&production.join(".brickpro/save-vault"), 0o700, 0o600)?;
     println!("PASS production policy 0700/0600 and pre-update snapshot");
     let _ = fs::remove_dir_all(&root);
+    Ok(())
+}
+
+fn concurrency_journey(root: &Path) -> Result<(), String> {
+    let root = root.join("concurrency");
+    fs::create_dir_all(root.join("live/saves")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(root.join("live/states")).map_err(|e| e.to_string())?;
+    fs::write(root.join("live/saves/slot.sav"), b"concurrent-save").map_err(|e| e.to_string())?;
+    fs::write(root.join("live/states/slot.state"), b"concurrent-state")
+        .map_err(|e| e.to_string())?;
+    let source = root.join("live");
+    let vault_a = SaveVault::for_simulator(root.join("vault"), &source, Catalog::default())
+        .map_err(|e| e.to_string())?;
+    let vault_b = SaveVault::for_simulator(root.join("vault"), &source, Catalog::default())
+        .map_err(|e| e.to_string())?;
+    let files = files(&source);
+    let (left, right) = std::thread::scope(|scope| -> Result<_, String> {
+        let left = scope.spawn(|| {
+            vault_a.snapshot(
+                Identity {
+                    content_version: "concurrent",
+                    runner_version: "runner",
+                    core_version: None,
+                },
+                &files,
+                SnapshotReason::PreUpdate,
+            )
+        });
+        let right = scope.spawn(|| {
+            vault_b.snapshot(
+                Identity {
+                    content_version: "concurrent",
+                    runner_version: "runner",
+                    core_version: None,
+                },
+                &files,
+                SnapshotReason::PrePackage,
+            )
+        });
+        Ok((
+            left.join()
+                .map_err(|_| "left snapshot thread panicked".to_string())?,
+            right
+                .join()
+                .map_err(|_| "right snapshot thread panicked".to_string())?,
+        ))
+    })?;
+    let left = left.map_err(|e| e.to_string())?;
+    let right = right.map_err(|e| e.to_string())?;
+    if !left.committed || !right.committed || left.generation == right.generation {
+        return Err("concurrent snapshots reused or lost a generation".into());
+    }
+    let history = vault_a.history();
+    if history.len() != 2
+        || vault_a.current_generation() != Some(left.generation.max(right.generation))
+        || history.iter().any(|manifest| {
+            manifest.parent_generation.is_some_and(|parent| {
+                !history
+                    .iter()
+                    .any(|candidate| candidate.generation == parent)
+            })
+        })
+    {
+        return Err("concurrent publication corrupted current history".into());
+    }
+    println!("PASS concurrent snapshots serialize generation and parent publication");
     Ok(())
 }
 
@@ -344,17 +441,27 @@ impl<'a> Controller<'a> {
     }
     fn presentation(&self) -> String {
         format!(
-            "screen={} generation={} oldSize={} newSize={} hashStatus={} reason={:?}",
+            "screen={} generation={} oldSize={} newSize={} oldHashPrefix={} newHashPrefix={} hashStatus={} runner={} core={:?} affectedKinds={:?} reason={:?} timestampMs={}",
             self.screen,
             self.generation,
             self.preview.as_ref().map_or(0, |p| p.old_size),
             self.preview.as_ref().map_or(0, |p| p.new_size),
+            self.preview.as_ref().map_or("hidden", |p| p.old_hash_prefix.as_str()),
+            self.preview.as_ref().map_or("hidden", |p| p.new_hash_prefix.as_str()),
             self.preview
                 .as_ref()
                 .map_or("hidden", |p| p.old_hash_status.as_str()),
             self.preview
                 .as_ref()
-                .map_or(SnapshotReason::NormalExit, |p| p.reason)
+                .map_or("hidden", |p| p.runner_version.as_str()),
+            self.preview.as_ref().and_then(|p| p.core_version.as_deref()),
+            self.preview
+                .as_ref()
+                .map_or_else(|| "hidden".into(), |p| format!("{:?}", p.affected_kinds)),
+            self.preview
+                .as_ref()
+                .map_or(SnapshotReason::NormalExit, |p| p.reason),
+            self.preview.as_ref().map_or(0, |p| p.timestamp_ms)
         )
     }
 }

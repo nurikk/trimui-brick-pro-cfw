@@ -228,12 +228,15 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))?;
         Ok(SaveVaultPreview {
             generation: preview.generation,
-            runner_version: format!("generated-{}", preview.runner_version),
+            runner_version: preview.runner_version,
             core_version: preview.core_version,
             old_size: preview.old_size,
             new_size: preview.new_size,
             old_hash_status: preview.old_hash_status,
             new_hash_status: preview.new_hash_status,
+            old_hash_prefix: preview.old_hash_prefix,
+            new_hash_prefix: preview.new_hash_prefix,
+            affected_kinds: preview.affected_kinds,
             reason: format!("{:?}", preview.reason).to_ascii_lowercase(),
             timestamp_ms: preview.timestamp_ms,
         })

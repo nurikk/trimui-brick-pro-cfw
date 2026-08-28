@@ -3,6 +3,7 @@ pub mod resume;
 use std::{fmt, time::Duration};
 
 use launch_contract::{Catalog, LaunchRequest};
+use save_vault::SaveKind;
 use serde::Serialize;
 
 pub const HANDLE_SCHEMA: &str = "trimui-session-broker-handle/v1";
@@ -25,6 +26,9 @@ pub struct SaveVaultPreview {
     pub new_size: u64,
     pub old_hash_status: String,
     pub new_hash_status: String,
+    pub old_hash_prefix: String,
+    pub new_hash_prefix: String,
+    pub affected_kinds: Vec<SaveKind>,
     pub reason: String,
     pub timestamp_ms: u64,
 }

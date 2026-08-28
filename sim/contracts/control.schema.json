@@ -16,7 +16,7 @@
       "properties": {
         "version": { "const": "sim-control/v1" },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
-        "command": { "enum": ["wait-ready", "state", "button", "hardware.set", "fault.set", "adapter", "screenshot", "checkpoint"] },
+        "command": { "enum": ["wait-ready", "state", "button", "hardware.set", "fault.set", "adapter", "presentation", "screenshot", "checkpoint"] },
         "args": { "type": "object" }
       },
       "allOf": [
@@ -26,6 +26,7 @@
         { "if": { "properties": { "command": { "const": "hardware.set" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/hardwareArgs" } } } },
         { "if": { "properties": { "command": { "const": "fault.set" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/faultArgs" } } } },
         { "if": { "properties": { "command": { "const": "adapter" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/adapterArgs" } } } },
+        { "if": { "properties": { "command": { "const": "presentation" } } }, "then": { "properties": { "args": { "$ref": "#/$defs/presentationArgs" } } } },
         { "if": { "properties": { "command": { "enum": ["screenshot", "checkpoint"] } } }, "then": { "properties": { "args": { "$ref": "#/$defs/artifactArgs" } } } }
       ]
     },
@@ -60,22 +61,24 @@
     },
     "state": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema", "runId", "route", "selectedContentId", "activeFakeSession", "modal", "readinessGeneration", "hardware", "faults"],
+      "required": ["schema", "runId", "route", "selectedContentId", "activeFakeSession", "modal", "readinessGeneration", "hardware", "faults", "presentation"],
       "properties": {
         "schema": { "const": "sim-state/v1" },
         "runId": { "type": "string", "pattern": "^run-[0-9]+$" },
-        "route": { "enum": ["catalog", "session"] },
+        "route": { "enum": ["library", "systems", "games", "catalog", "session"] },
         "selectedContentId": { "pattern": "^generated-[a-z0-9-]+$" },
         "activeFakeSession": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["id", "contentId", "status", "exitStatus", "value"], "properties": { "id": { "type": "string" }, "contentId": { "type": "string" }, "status": { "enum": ["started", "completed", "failed", "crashed"] }, "exitStatus": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0, "maximum": 255 }] }, "value": { "oneOf": [{ "type": "null" }, { "type": "integer" }] } } }] },
         "modal": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
         "readinessGeneration": { "type": "integer", "minimum": 1 },
         "hardware": { "$ref": "#/$defs/hardwareState" },
-        "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] } }
+        "faults": { "type": "array", "uniqueItems": true, "items": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] } },
+        "presentation": { "type": "object", "additionalProperties": false, "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp"], "properties": { "schema": { "const": "launcher-presentation/v1" }, "identity": { "const": "Artbook" }, "route": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "focus": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" }, "title": { "type": "string" }, "selectedLabel": { "type": "string" }, "menu": { "type": "array" }, "gameRows": { "type": "array" }, "selectedGame": {}, "regions": { "type": "array", "minItems": 9 }, "palette": { "type": "object" }, "theme": { "type": "object" }, "themeFallback": {}, "generatedAssets": { "type": "array" }, "settings": {}, "wifi": {}, "scraper": { "type": "object" }, "modal": {}, "splash": { "type": "string" }, "affordances": { "type": "object" }, "controllerHelp": { "type": "array" } } }
       }
     },
     "hardwareState": { "type": "object", "additionalProperties": false, "required": ["battery", "storage", "radio", "suspend"], "properties": { "battery": { "type": "object", "additionalProperties": false, "required": ["percent", "charging"], "properties": { "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" } } }, "storage": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "enum": ["available", "full"] } } }, "radio": { "type": "object", "additionalProperties": false, "required": ["enabled", "connected"], "properties": { "enabled": { "type": "boolean" }, "connected": { "type": "boolean" } } }, "suspend": { "type": "object", "additionalProperties": false, "required": ["state", "result"], "properties": { "state": { "enum": ["active", "suspended"] }, "result": { "enum": ["none", "success", "failed"] } } } } },
     "faultArgs": { "type": "object", "additionalProperties": false, "required": ["name", "enabled"], "properties": { "name": { "enum": ["adapter-fail", "adapter-crash", "input-drop", "suspend-fail"] }, "enabled": { "type": "boolean" } } },
     "adapterArgs": { "type": "object", "additionalProperties": false, "required": ["action", "status", "value"], "properties": { "action": { "enum": ["complete", "fail", "exit", "crash"] }, "status": { "type": "integer", "minimum": 0, "maximum": 255 }, "value": { "type": "integer", "minimum": -1000000, "maximum": 1000000 } } },
-    "artifactArgs": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$" } } }
+    "artifactArgs": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$" } } },
+    "presentationArgs": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["home", "systems", "games", "favorites", "search", "settings", "settings-form", "recovery", "modal", "scraper-settings", "scraper-game", "scraper-queue", "scraper-progress", "scraper-paused", "scraper-resumed", "scraper-ambiguity", "scraper-complete", "scraper-cancel", "wifi-scan", "wifi-access-points", "wifi-password", "wifi-hidden", "wifi-manual", "wifi-progress", "wifi-error", "fallback"] } } }
   }
 }

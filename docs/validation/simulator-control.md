@@ -21,6 +21,9 @@ scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
 scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
 scripts/simctl --socket "$RUN/control.sock" hardware set battery.percent=5 storage.mode=full
+scripts/simctl --socket "$RUN/control.sock" presentation --action settings-form
+scripts/simctl --socket "$RUN/control.sock" presentation --action wifi-password
+scripts/simctl --socket "$RUN/control.sock" presentation --action scraper-ambiguity
 scripts/simctl --socket "$RUN/control.sock" fault set adapter-fail
 scripts/simctl --socket "$RUN/control.sock" fault clear adapter-fail
 scripts/simctl --socket "$RUN/control.sock" screenshot --name low-battery
@@ -48,9 +51,12 @@ an `exec` or path-bearing request fails.
 
 `state` returns `sim-state/v1` semantic state: current `library`, `systems`,
 or `games` route, selected generated content ID, active fake session and result, modal/status, readiness generation,
-typed virtual hardware, and enabled named faults. The state object is also
-written beside each requested artifact. Validate it with the `state` definition
-in `control.schema.json`; no pixels are inspected.
+typed virtual hardware, enabled named faults, and a `launcher-presentation/v1`
+Artbook screen. The screen is built from generated `ui-model`, Artbook theme,
+`settings-ui`, and Wi-Fi controller projections. `presentation --action` accepts
+only the generated route/workflow allowlist and carries no values or secrets.
+The state object is also written beside each requested artifact. Validate it with
+the `state` definition in `control.schema.json`; no pixels are inspected.
 
 ## Current supported flow and limits
 

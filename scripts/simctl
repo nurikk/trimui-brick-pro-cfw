@@ -113,6 +113,12 @@ validate_command() {
                 esac
                 shift 2
             done ;;
+        presentation)
+            [ "$#" -eq 2 ] && [ "$1" = --action ] || usage
+            case "$2" in
+                home|systems|games|favorites|search|settings|settings-form|recovery|modal|scraper-settings|scraper-game|scraper-queue|scraper-progress|scraper-paused|scraper-resumed|scraper-ambiguity|scraper-complete|scraper-cancel|wifi-scan|wifi-access-points|wifi-password|wifi-hidden|wifi-manual|wifi-progress|wifi-error|fallback) ;;
+                *) usage ;;
+            esac ;;
         screenshot|checkpoint)
             [ "$#" -eq 2 ] && [ "$1" = --name ] || usage
             validate_name "$2" ;;

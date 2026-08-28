@@ -20,12 +20,17 @@ use launch_contract::{
 use package_manager::TrustContext;
 use package_trust::VerifiedTarget;
 use serde::Serialize;
-use session_broker::SessionResult;
+use session_broker::{
+    resume::{CheckpointReason, CommitFault, ResumeCapabilityConfig, ResumeStore},
+    LifecycleCheckpointPolicy, SessionResult,
+};
 use sha2::{Digest, Sha256};
 
 const JOURNEYS: &[&str] = &[
     "success",
     "standalone",
+    "standalone-sram-only",
+    "standalone-undeclared",
     "portmaster",
     "portmaster-success",
     "portmaster-rejection",
@@ -192,7 +197,9 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
     let mut catalog =
         parse_catalog_json(&catalog_bytes).map_err(|_| "catalog fixture is invalid".to_string())?;
     let request_name = match journey {
-        "standalone" => "standalone.synthetic.json",
+        "standalone" | "standalone-sram-only" | "standalone-undeclared" => {
+            "standalone.synthetic.json"
+        }
         "portmaster"
         | "portmaster-success"
         | "portmaster-rejection"
@@ -231,6 +238,9 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         "escape" => request.content_path.relative = "../outside.bin".to_string(),
         "hash-mismatch" => request.content_sha256 = "0".repeat(64),
         "portmaster-rejection" => catalog.schema_version = 2,
+        "standalone-undeclared" => {
+            request.content_id = "generated-undeclared-1".to_string();
+        }
         "portmaster-mismatch" => {
             install_portmaster_fixture(&root)?;
             let package = request
@@ -248,7 +258,10 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         }
         _ => {}
     }
-    let mut broker = Broker::new(root.join("host-root"));
+    let mut broker = Broker::new(
+        root.join("host-root"),
+        root.join("resume-capabilities.json"),
+    );
     let output = match journey {
         "restart" | "marker-mismatch" | "start-time-mismatch" => {
             broker.seed_recovery_fixture(journey)?;
@@ -278,7 +291,12 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
             }
             Output::Session(result)
         }
-        "standalone" | "portmaster" | "portmaster-success" | "success" => {
+        "standalone"
+        | "standalone-sram-only"
+        | "standalone-undeclared"
+        | "portmaster"
+        | "portmaster-success"
+        | "success" => {
             Output::Session(broker.launch(request, catalog, journey, RunMode::Success, Fault::None))
         }
         "portmaster-nonzero" => {
@@ -346,6 +364,21 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         }
         _ => return Err("unsupported journey".to_string()),
     };
+    if journey == "standalone-sram-only" {
+        let record_path = root.join("host-root/data/resume/generations/generation-1/record.json");
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(record_path).map_err(|_| "SRAM-only record missing")?)
+                .map_err(|_| "SRAM-only record is invalid")?;
+        if record["capability"] != "sram-only" {
+            return Err("declared standalone capability was not SRAM-only".to_string());
+        }
+    }
+    if journey == "standalone-undeclared"
+        && (matches!(&output, Output::Session(result) if result.resume_published)
+            || root.join("host-root/data/resume/current.json").exists())
+    {
+        return Err("undeclared standalone became resumable".to_string());
+    }
     let _ = fs::remove_dir_all(root);
     Ok(output)
 }
@@ -354,6 +387,7 @@ struct Broker {
     phase: Phase,
     platform: state::LogicalPlatform,
     fixture_root: PathBuf,
+    resume: ResumeStore,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -398,16 +432,36 @@ struct Identity {
 }
 
 impl Broker {
-    fn new(fixture_root: PathBuf) -> Self {
+    fn new(fixture_root: PathBuf, config_path: PathBuf) -> Self {
+        let config = ResumeCapabilityConfig::parse(
+            &fs::read(config_path).expect("generated resume capability configuration"),
+        )
+        .expect("generated resume capability configuration");
+        let resume =
+            ResumeStore::new(fixture_root.join("data/resume"), config).expect("resume store");
         Self {
             phase: Phase::Idle,
             platform: state::LogicalPlatform::new(),
             fixture_root,
+            resume,
         }
     }
 
     fn mark_busy(&mut self) {
         self.phase = Phase::Running;
+    }
+
+    fn checkpoint(&self, request: &LaunchRequest, reason: CheckpointReason, state: &[u8]) -> bool {
+        self.resume
+            .checkpoint(
+                request,
+                reason,
+                state,
+                b"generated-session-sram-v1",
+                b"generated-resume-screenshot-v1",
+                CommitFault::None,
+            )
+            .is_ok()
     }
 
     fn reject_busy(&self, journey: &str) -> journal::Rejection {
@@ -610,7 +664,12 @@ impl Broker {
             );
         }
         let started = Instant::now();
-        let (mut outcome, duration_ms) = wait_for_child(&mut child, mode, started);
+        let checkpoint_state = serde_json::to_vec(&self.platform.snapshot()).unwrap_or_default();
+        let lifecycle_policy = LifecycleCheckpointPolicy::default();
+        let (mut outcome, duration_ms) =
+            wait_for_child(&mut child, mode, started, lifecycle_policy, || {
+                self.checkpoint(&request, CheckpointReason::Periodic, &checkpoint_state);
+            });
         let cleanup = stop_owned_group(&identity);
         let reap = child.wait().is_ok();
         if !cleanup || !reap {
@@ -714,15 +773,13 @@ impl Broker {
             safe_default = true;
         }
         let fields = outcome.finish_fields();
-        let save_ok = if fields.reason == "success" && confirms_save {
-            write_file_sync(
+        let successful = fields.reason == "success";
+        if successful && confirms_save {
+            let _ = write_file_sync(
                 &resolve_path_unchecked(&self.fixture_root, &request.save_path),
                 b"generated-session-save-v1",
-            )
-            .is_ok()
-        } else {
-            false
-        };
+            );
+        }
         let activity = self.fixture_root.join("data/activity");
         let metadata_ok = append_metadata(&activity, request, adapter, fields.duration_ms);
         let mut result = SessionResult {
@@ -744,23 +801,11 @@ impl Broker {
             exit_code: fields.exit_code,
             signal: fields.signal,
         };
+        let snapshot_bytes = serde_json::to_vec(&self.platform.snapshot()).unwrap_or_default();
+        result.resume_published =
+            successful && self.checkpoint(request, CheckpointReason::NormalExit, &snapshot_bytes);
         let result_path = activity.join("sessions/results.jsonl");
         let result_ok = journal::append_result(&result_path, &result).is_ok();
-        let resume_allowed = result_ok
-            && metadata_ok
-            && save_ok
-            && confirms_save
-            && request.resume_mode != launch_contract::ResumeMode::Fresh
-            && result.reason == "success";
-        if resume_allowed {
-            let resume = serde_json::json!({
-                "requestId": request.request_id.as_str(),
-                "adapter": adapter,
-                "usable": true
-            });
-            result.resume_published =
-                journal::write_resume(&activity.join("resume.json"), &resume).is_ok();
-        }
         let completed_ok = {
             record.phase = journal::JournalPhase::Completed;
             journal::transition(&journal_path, &mut record).is_ok()
@@ -1277,13 +1322,24 @@ fn current_start_time() -> Option<u64> {
     proc_start_time(std::process::id())
 }
 
-fn wait_for_child(child: &mut Child, mode: RunMode, started: Instant) -> (Outcome, u64) {
+fn wait_for_child<F: FnMut()>(
+    child: &mut Child,
+    mode: RunMode,
+    started: Instant,
+    lifecycle_policy: LifecycleCheckpointPolicy,
+    mut periodic_checkpoint: F,
+) -> (Outcome, u64) {
     let deadline = match mode {
         RunMode::Timeout => Some(Duration::from_millis(50)),
         RunMode::Cancel | RunMode::Grandchild => Some(Duration::from_millis(20)),
         _ => None,
     };
+    let mut periodic_deadline = started + lifecycle_policy.periodic_interval();
     loop {
+        if Instant::now() >= periodic_deadline {
+            periodic_checkpoint();
+            periodic_deadline += lifecycle_policy.periodic_interval();
+        }
         if let Ok(Some(status)) = child.try_wait() {
             return (status_outcome(status), started.elapsed().as_millis() as u64);
         }

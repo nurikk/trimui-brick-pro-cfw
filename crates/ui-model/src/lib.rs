@@ -176,9 +176,20 @@ pub struct GameSummary {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeProjection {
+    pub content_id: String,
+    pub label: String,
+    pub status: String,
+    pub screenshot: String,
+    pub choices: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MenuCommand {
     Navigate(Route),
+    Resume(GameId),
     OpenSystem(SystemId),
     Launch(GameId),
     ToggleFavorite(GameId),
@@ -531,6 +542,7 @@ pub struct UiState {
     pub menu: MenuState,
     pub settings_menu_projection: Vec<MenuEntry>,
     pub systems: Vec<SystemSummary>,
+    pub resume_entries: Vec<ResumeProjection>,
     pub games: Vec<GameSummary>,
     pub selected_system: Option<SystemId>,
     pub search_query: String,
@@ -561,6 +573,7 @@ impl UiState {
             menu: MenuState::empty(),
             settings_menu_projection: Vec::new(),
             systems,
+            resume_entries: Vec::new(),
             games,
             selected_system: None,
             search_query: String::new(),
@@ -725,6 +738,7 @@ pub enum Action {
     Back,
     SetSearchQuery { query: String },
     ToggleFavorite { game_id: GameId },
+    SetResumeEntries { entries: Vec<ResumeProjection> },
     SetPreference(PreferenceChange),
     SetAffordances(PlatformAffordances),
     SetCapabilities(PlatformCapabilities),
@@ -839,6 +853,11 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
         Action::ToggleFavorite { game_id } => toggle_favorite(&mut next, game_id),
         Action::SetPreference(change) => set_preference(&mut next, change),
         Action::SetAffordances(affordances) => next.affordances = affordances,
+        Action::SetResumeEntries { entries } => {
+            next.resume_entries = entries;
+            let route = next.route.clone();
+            next.menu = menu_for_route(&route, &next);
+        }
         Action::SetCapabilities(capabilities) => {
             next.capabilities = capabilities;
             let route = next.route.clone();
@@ -928,6 +947,7 @@ fn confirm_modal(state: &mut UiState) {
 fn execute_command(state: &mut UiState, command: MenuCommand) {
     match command {
         MenuCommand::Navigate(route) => navigate(state, route),
+        MenuCommand::Resume(game_id) => launch(state, game_id),
         MenuCommand::OpenSystem(system_id) => {
             state.selected_system = Some(system_id);
             navigate(state, Route::Games);
@@ -970,7 +990,12 @@ fn set_preference(state: &mut UiState, change: PreferenceChange) {
 fn launch(state: &mut UiState, game_id: GameId) {
     if !state.capabilities.session {
         state.modal = Some(unavailable(Capability::Session));
-    } else if state.games.iter().any(|game| game.id == game_id) {
+    } else if state.games.iter().any(|game| game.id == game_id)
+        || state
+            .resume_entries
+            .iter()
+            .any(|entry| entry.content_id == game_id.0)
+    {
         state.session = SessionState::Requested(game_id);
     }
 }
@@ -1111,6 +1136,7 @@ fn route_capability(route: &Route) -> Option<Capability> {
     match route {
         Route::Systems | Route::Games | Route::Search => Some(Capability::Catalog),
         Route::Favorites | Route::Recent => Some(Capability::Favorites),
+        Route::GameSwitcher => Some(Capability::Session),
         Route::Scraper(_) => Some(Capability::Scraper),
         Route::Wifi(_) => Some(Capability::Wifi),
         _ => None,
@@ -1199,7 +1225,22 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
             })
             .collect(),
         Route::Settings => state.settings_menu_projection.clone(),
-        Route::GameSwitcher => vec![entry("home", "Home", Route::Home, true, None)],
+        Route::GameSwitcher => {
+            let mut entries = state
+                .resume_entries
+                .iter()
+                .map(|resume| MenuEntry {
+                    id: MenuId::new(resume.content_id.clone()),
+                    label: resume.label.clone(),
+                    command: MenuCommand::Resume(GameId::new(resume.content_id.clone())),
+                    enabled: resume.status == "available",
+                    disabled_reason: None,
+                    selected: false,
+                })
+                .collect::<Vec<_>>();
+            entries.push(entry("home", "Home", Route::Home, true, None));
+            entries
+        }
         Route::Recovery => vec![entry("home", "Return to Home", Route::Home, true, None)],
         Route::Scraper(_) | Route::Wifi(_) => vec![entry("home", "Home", Route::Home, true, None)],
     };

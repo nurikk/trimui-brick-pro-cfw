@@ -243,7 +243,7 @@ fn validate_layout(layout: &Layout, root: &Path) -> Result<Migration> {
     }
     inspect_tree(root, &layout.filesystem)?;
     verify_migration_sources(root, &migration)?;
-    for protected in ["roms", "data/saves", "data/states"] {
+    for protected in ["roms", "data/saves", "data/states", "data/resume"] {
         if !root.join(protected).is_dir() {
             bail!("required synthetic storage tree is missing")
         }
@@ -493,7 +493,7 @@ fn verify_protected_trees(root: &Path) -> Result<()> {
 
 fn protected_snapshot(root: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>> {
     let mut snapshot = Vec::new();
-    for tree in ["roms", "data/saves", "data/states"] {
+    for tree in ["roms", "data/saves", "data/states", "data/resume"] {
         collect_files(&root.join(tree), Path::new(tree), &mut snapshot)?;
     }
     snapshot.sort_by(|left, right| left.0.cmp(&right.0));

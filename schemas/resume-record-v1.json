@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-resume-record-v1.schema.json",
+  "title": "Brick Pro broker-owned resume record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "generation", "contentId", "contentSha256", "runner", "core", "capability", "reason", "timestampMs", "state", "sram", "screenshot"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-resume-record-v1.schema.json"},
+    "format": {"const": "brickpro-resume-record"},
+    "schemaVersion": {"const": 1},
+    "generation": {"type": "integer", "minimum": 1},
+    "contentId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "contentSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "runner": {"$ref": "#/$defs/versionedId"},
+    "core": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/versionedId"}]},
+    "capability": {"enum": ["sram-only", "native-state", "broker-state"]},
+    "reason": {"enum": ["normal-exit", "pre-suspend", "low-battery", "periodic"]},
+    "timestampMs": {"type": "integer", "minimum": 1},
+    "state": {"$ref": "#/$defs/artifact"},
+    "sram": {"$ref": "#/$defs/artifact"},
+    "screenshot": {"$ref": "#/$defs/artifact"}
+  },
+  "$defs": {
+    "versionedId": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version"],
+      "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}, "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 32}}
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false, "required": ["relative", "size", "sha256"],
+      "properties": {"relative": {"type": "string", "pattern": "^[^/\\\\.][^/\\\\]*(/[^/\\\\.][^/\\\\]*)*$", "maxLength": 255}, "size": {"type": "integer", "minimum": 0}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    }
+  }
+}

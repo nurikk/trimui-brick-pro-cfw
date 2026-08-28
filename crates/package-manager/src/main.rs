@@ -50,11 +50,16 @@ fn demo(fixtures: &Path) -> Result<()> {
     fs::create_dir_all(root.join("roms"))?;
     fs::create_dir_all(root.join("data/saves"))?;
     fs::create_dir_all(root.join("data/states"))?;
+    fs::create_dir_all(root.join("data/resume"))?;
     fs::write(root.join("roms/keep.txt"), b"generated-rom-boundary")?;
     fs::write(root.join("data/saves/keep.sav"), b"generated-save-boundary")?;
     fs::write(
         root.join("data/states/keep.state"),
         b"generated-state-boundary",
+    )?;
+    fs::write(
+        root.join("data/resume/keep.record"),
+        b"generated-resume-boundary",
     )?;
     let protected_before = protected_bytes(&root)?;
     let state = root.join(".brickpro/trust-state.json");
@@ -112,7 +117,7 @@ fn demo(fixtures: &Path) -> Result<()> {
     if protected_before != protected_bytes(&root)? {
         bail!("uninstall changed protected data")
     }
-    println!("PASS uninstall preserves ROM/save/state bytes");
+    println!("PASS uninstall preserves ROM/save/state/resume bytes");
 
     let interrupted = install(
         &root,
@@ -522,6 +527,7 @@ fn protected_bytes(root: &Path) -> Result<Vec<Vec<u8>>> {
         "roms/keep.txt",
         "data/saves/keep.sav",
         "data/states/keep.state",
+        "data/resume/keep.record",
     ]
     .into_iter()
     .map(|path| fs::read(root.join(path)))

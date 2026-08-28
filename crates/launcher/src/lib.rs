@@ -29,7 +29,10 @@ use launcher_theme::ValidatedTheme;
 use package_trust::VerificationTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use session_broker::{SessionBrokerClient, SessionHandle, SessionResult};
+use session_broker::{
+    resume::{CheckpointReason, CommitFault, ResumeDecision},
+    LifecycleCheckpointPolicy, SessionBrokerClient, SessionHandle, SessionResult,
+};
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
@@ -297,6 +300,30 @@ struct ArtifactArgs {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct AutosaveArgs {
+    reason: CheckpointReason,
+    #[serde(default)]
+    fault: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResumeArgs {
+    #[serde(rename = "contentId")]
+    content_id: String,
+    decision: String,
+    #[serde(default, rename = "runnerId")]
+    runner_id: Option<String>,
+    #[serde(default, rename = "runnerVersion")]
+    runner_version: Option<String>,
+    #[serde(default, rename = "coreId")]
+    core_id: Option<String>,
+    #[serde(default, rename = "coreVersion")]
+    core_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PresentationArgs {
     action: String,
 }
@@ -397,7 +424,9 @@ where
         evidence_path,
         keep_alive,
         stop,
-        Box::new(simulator_session::SimulatorSessionAdapter::default()),
+        Box::new(simulator_session::SimulatorSessionAdapter::with_root(
+            evidence_path.join("data"),
+        )),
         make_platform,
     )
 }
@@ -583,6 +612,8 @@ fn run_session<P: Platform>(
     };
     launcher_state::save(&state_root, &state.persisted)
         .map_err(|error| anyhow!(error.to_string()))?;
+    refresh_resume_projection(&mut state, &catalog, &launch_catalog)
+        .map_err(|error| anyhow!(error))?;
     refresh_presentation_affordances(&mut state.presentation, &platform)
         .map_err(|error| anyhow!(error))?;
     let screen = screen_for_state(&state, &catalog)?;
@@ -640,11 +671,21 @@ fn run_session<P: Platform>(
     )?;
 
     let mut fixture_done = false;
+    let lifecycle_policy = LifecycleCheckpointPolicy::default();
+    let mut periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
     loop {
         if stop.load(Ordering::SeqCst) {
             break;
         }
         let mut did_work = false;
+        if state.active_session.is_some() && Instant::now() >= periodic_deadline {
+            let _ = state
+                .broker
+                .checkpoint(CheckpointReason::Periodic, CommitFault::None);
+            let _ = refresh_resume_projection(&mut state, &catalog, &launch_catalog);
+            periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
+            did_work = true;
+        }
         if !fixture_done {
             if let Some(event) = platform
                 .next_button_event()
@@ -763,7 +804,27 @@ fn handle_request<P: Platform>(
             .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
+            let checkpoint_reason = if args
+                .suspend
+                .as_ref()
+                .is_some_and(|change| change.state == Some(SuspendState::Suspended))
+            {
+                Some(CheckpointReason::PreSuspend)
+            } else if args
+                .battery
+                .as_ref()
+                .and_then(|change| change.percent)
+                .is_some_and(|percent| percent <= 10)
+            {
+                Some(CheckpointReason::LowBattery)
+            } else {
+                None
+            };
             apply_hardware(platform, log, args)?;
+            if let Some(reason) = checkpoint_reason {
+                let _ = state.broker.checkpoint(reason, CommitFault::None);
+                refresh_resume_projection(state, catalog, launch_catalog)?;
+            }
             refresh_presentation_affordances(&mut state.presentation, platform)?;
             state_json(platform, evidence, log, catalog, state)
         }),
@@ -772,7 +833,7 @@ fn handle_request<P: Platform>(
             state_json(platform, evidence, log, catalog, state)
         }),
         "adapter" => parse::<AdapterArgs>(request.args).and_then(|args| {
-            adapter_result(log, state, args)?;
+            adapter_result(log, state, catalog, launch_catalog, args)?;
             write_session(&evidence.root, session_state(state))
                 .map_err(|error| error.to_string())?;
             state_json(platform, evidence, log, catalog, state)
@@ -795,6 +856,27 @@ fn handle_request<P: Platform>(
                 "screenshot",
             )
         }),
+        "autosave" => parse::<AutosaveArgs>(request.args).and_then(|args| {
+            let fault = match args.fault.as_deref() {
+                None | Some("none") => CommitFault::None,
+                Some("artifact") => CommitFault::Artifact,
+                Some("metadata") => CommitFault::Metadata,
+                Some("promotion") => CommitFault::Promotion,
+                Some("pointer") => CommitFault::Pointer,
+                Some(_) => return Err("unknown autosave fault".into()),
+            };
+            state
+                .broker
+                .checkpoint(args.reason, fault)
+                .map(|record| json!({"generation": record.generation, "reason": record.reason}))
+                .map_err(|error| error.to_string())
+                .and_then(|value| {
+                    refresh_resume_projection(state, catalog, launch_catalog)?;
+                    Ok(value)
+                })
+        }),
+        "resume" => parse::<ResumeArgs>(request.args)
+            .and_then(|args| resume_control(state, catalog, launch_catalog, args)),
         "checkpoint" => parse::<ArtifactArgs>(request.args).and_then(|args| {
             capture_artifact(
                 platform,
@@ -820,6 +902,61 @@ fn handle_request<P: Platform>(
     Ok(())
 }
 
+fn refresh_resume_projection(
+    state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+) -> Result<(), String> {
+    let requests = catalog
+        .entries
+        .iter()
+        .map(|entry| launch_request(entry, launch_catalog))
+        .collect::<Result<Vec<_>, _>>()?;
+    let summaries = state
+        .broker
+        .resume_entries(&requests)
+        .map_err(|error| error.to_string())?;
+    let entries = summaries
+        .into_iter()
+        .map(|summary| ui_model::ResumeProjection {
+            label: resume_label(&summary.content_id),
+            content_id: summary.content_id,
+            status: summary.status,
+            screenshot: format!("generated-resume-{}", summary.generation),
+            choices: summary
+                .choices
+                .into_iter()
+                .map(resume_decision_name)
+                .collect(),
+        })
+        .collect();
+    state.presentation.ui = ui_model::reduce(
+        &state.presentation.ui,
+        UiAction::SetResumeEntries { entries },
+    );
+    Ok(())
+}
+
+fn resume_decision_name(decision: ResumeDecision) -> String {
+    match decision {
+        ResumeDecision::Resume => "resume",
+        ResumeDecision::RetainedMatchingCore => "retained-matching-core",
+        ResumeDecision::ColdStartSram => "cold-start-sram",
+        ResumeDecision::Cancel => "cancel",
+    }
+    .into()
+}
+
+fn resume_label(content_id: &str) -> String {
+    match content_id {
+        "nebula-nes" => "Nebula Notes".into(),
+        "mirror-ps1" => "Mirror Museum".into(),
+        "orbit-garden" => "Orbit Garden".into(),
+        "signal-workshop" => "Signal Workshop".into(),
+        _ => "Unavailable checkpoint".into(),
+    }
+}
+
 fn refresh_presentation_affordances<P: Platform>(
     state: &mut PresentationState,
     platform: &P,
@@ -837,12 +974,18 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
 
     let action = args.action.as_str();
     match action {
-        "home" => reduce_route(state, ui_model::Route::Home),
+        "home" => {
+            reduce_route(state, ui_model::Route::Home);
+            state.route = Route::Library;
+        }
         "systems" => reduce_route(state, ui_model::Route::Systems),
         "games" => reduce_route(state, ui_model::Route::Games),
         "favorites" => reduce_route(state, ui_model::Route::Favorites),
         "recent" => reduce_route(state, ui_model::Route::Recent),
-        "resume" => reduce_route(state, ui_model::Route::Recent),
+        "resume" => {
+            reduce_route(state, ui_model::Route::GameSwitcher);
+            state.route = Route::GameSwitcher;
+        }
         "favorite" => {
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
@@ -1080,6 +1223,109 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
     Ok(())
 }
 
+fn resume_control(
+    state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    args: ResumeArgs,
+) -> Result<Value, String> {
+    let decision = match args.decision.as_str() {
+        "resume" => ResumeDecision::Resume,
+        "retained-matching-core" => ResumeDecision::RetainedMatchingCore,
+        "cold-start-sram" => ResumeDecision::ColdStartSram,
+        "cancel" => ResumeDecision::Cancel,
+        _ => return Err("resume decision is not allowlisted".into()),
+    };
+    let entry = catalog
+        .entries
+        .iter()
+        .find(|entry| entry.id == args.content_id)
+        .ok_or_else(|| "resume content is not allowlisted".to_string())?;
+    let mut request = launch_request(entry, launch_catalog).map_err(|error| error.to_string())?;
+    if let Some(runner_id) = args.runner_id {
+        request.runner.id = runner_id;
+    }
+    if let Some(runner_version) = args.runner_version {
+        request.runner.version = runner_version;
+    }
+    if let Some(core_id) = args.core_id {
+        request.core = Some(VersionedId {
+            id: core_id,
+            version: args.core_version.unwrap_or_else(|| "1.0.0".to_string()),
+        });
+    } else if let Some(core_version) = args.core_version {
+        if let Some(core) = request.core.as_mut() {
+            core.version = core_version;
+        }
+    }
+    request.resume_mode = if matches!(
+        decision,
+        ResumeDecision::Cancel | ResumeDecision::ColdStartSram
+    ) {
+        ResumeMode::Fresh
+    } else {
+        ResumeMode::Resume
+    };
+    let choices = state
+        .broker
+        .resume_choices(&request)
+        .map_err(|error| error.to_string())?;
+    if !choices.contains(&decision) {
+        state.modal = Some("resume-unavailable".into());
+        return Ok(json!({
+            "accepted": false,
+            "reason": "resume choice is unavailable",
+            "availableChoices": choices,
+        }));
+    }
+    let result = match state.broker.resume_decision(request.clone(), decision) {
+        Ok(result) => result,
+        Err(error) => {
+            state.modal = Some("resume-unavailable".into());
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                UiAction::ShowModal(ui_model::ModalState::Info {
+                    title: "Resume unavailable".into(),
+                    message: "This checkpoint is unavailable or incompatible.".into(),
+                }),
+            );
+            return Ok(json!({"accepted": false, "reason": error.to_string()}));
+        }
+    };
+    if decision == ResumeDecision::Cancel {
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::Navigate(ui_model::Route::Home),
+        );
+        state.route = Route::Library;
+        return Ok(json!({"accepted": true, "decision": "cancel"}));
+    }
+    let effective_core = result.effective_core.clone();
+    if let Some(core) = effective_core.clone() {
+        request.core = Some(core);
+    }
+    let accepted = state
+        .broker
+        .submit(request, launch_catalog)
+        .map_err(|error| error.to_string())?;
+    state.active_session = Some(accepted);
+    state.last_session = None;
+    state.route = Route::Session;
+    state.presentation.ui = ui_model::reduce(
+        &state.presentation.ui,
+        UiAction::Navigate(ui_model::Route::Games),
+    );
+    state.modal = Some("resume-accepted".into());
+    Ok(json!({
+        "accepted": true,
+        "decision": args.decision,
+        "availableChoices": choices,
+        "effectiveCore": effective_core,
+        "generation": result.generation,
+        "usedSram": result.used_sram,
+    }))
+}
+
 fn reduce_route(state: &mut AppState, route: ui_model::Route) {
     state.presentation.ui =
         ui_model::reduce(&state.presentation.ui, ui_model::Action::Navigate(route));
@@ -1203,6 +1449,8 @@ fn set_fault(log: &mut EventLog, state: &mut AppState, args: FaultArgs) -> Resul
 fn adapter_result(
     log: &mut EventLog,
     state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
     args: AdapterArgs,
 ) -> Result<(), String> {
     if !["complete", "fail", "exit", "crash"].contains(&args.action.as_str()) {
@@ -1237,6 +1485,7 @@ fn adapter_result(
         .map_err(|error| error.to_string())?;
     state.active_session = None;
     state.last_session = Some(result.clone());
+    refresh_resume_projection(state, catalog, launch_catalog)?;
     state
         .persisted
         .recent
@@ -1306,9 +1555,36 @@ fn handle_button<P: Platform>(
         return Ok(());
     }
 
+    let route_before_presentation = state.route.clone();
     handle_presentation_button(&mut state.presentation, event.button)?;
+    if matches!(state.presentation.ui.route, ui_model::Route::GameSwitcher) {
+        state.route = Route::GameSwitcher;
+    } else if matches!(state.presentation.ui.route, ui_model::Route::Home)
+        && state.route == Route::GameSwitcher
+    {
+        state.route = Route::Library;
+    }
+    if matches!(state.presentation.ui.route, ui_model::Route::GameSwitcher)
+        && matches!(event.button, Button::Primary)
+    {
+        if let ui_model::SessionState::Requested(game_id) = state.presentation.ui.session.clone() {
+            let _ = resume_control(
+                state,
+                catalog,
+                launch_catalog,
+                ResumeArgs {
+                    content_id: game_id.0,
+                    decision: "resume".into(),
+                    runner_id: None,
+                    runner_version: None,
+                    core_id: None,
+                    core_version: None,
+                },
+            );
+        }
+    }
     let input_started = Instant::now();
-    let mut route_changed = false;
+    let mut route_changed = state.route != route_before_presentation;
     let mut selection_changed = false;
     match (state.route.clone(), event.button) {
         (Route::Library, Button::Start) => {
@@ -1372,6 +1648,7 @@ fn handle_button<P: Platform>(
     if route_changed {
         let presentation_route = match state.route {
             Route::Library | Route::Catalog => ui_model::Route::Home,
+            Route::GameSwitcher => ui_model::Route::GameSwitcher,
             Route::Systems => ui_model::Route::Systems,
             Route::Games | Route::Session => ui_model::Route::Games,
         };
@@ -1699,6 +1976,7 @@ fn route_selection<'a>(route: &Route, catalog: &'a UiCatalog, selected_index: us
         Route::Systems => catalog.entries[selected_index].system.as_str(),
         Route::Games | Route::Session => catalog.entries[selected_index].id.as_str(),
         Route::Catalog => "library",
+        Route::GameSwitcher => "game-switcher",
     }
 }
 

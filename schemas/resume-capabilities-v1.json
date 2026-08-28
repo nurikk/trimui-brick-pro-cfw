@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-resume-capabilities-v1.schema.json",
+  "title": "Brick Pro declarative resume capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "entries"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-resume-capabilities-v1.schema.json"},
+    "format": {"const": "brickpro-resume-capabilities"},
+    "schemaVersion": {"const": 1},
+    "entries": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["contentId", "kind", "capability"], "properties": {"contentId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}, "kind": {"enum": ["libretro", "standalone", "portmaster"]}, "capability": {"enum": ["sram-only", "native-state", "broker-state"]}, "retainedCore": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}, "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}}}}}}
+  }
+}

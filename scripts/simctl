@@ -56,6 +56,13 @@ validate_name() {
     [ ${#1} -le 48 ] || usage
 }
 
+validate_version() {
+    case "$1" in
+        ''|*[!0-9.]*|*.*.*.*|.*|*.|*..*) usage ;;
+    esac
+    [ ${#1} -le 48 ] || usage
+}
+
 validate_button() {
     case "$1" in up|down|left|right|primary|secondary|start|select|menu) ;; *) usage ;; esac
 }
@@ -122,6 +129,29 @@ validate_command() {
         screenshot|checkpoint)
             [ "$#" -eq 2 ] && [ "$1" = --name ] || usage
             validate_name "$2" ;;
+        autosave)
+            [ "$#" -ge 2 ] && [ "$1" = --reason ] || usage
+            case "$2" in normal-exit|pre-suspend|low-battery|periodic) ;; *) usage ;; esac
+            shift 2
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] && [ "$1" = --fault ] || usage
+                case "$2" in none|artifact|metadata|promotion|pointer) ;; *) usage ;; esac
+                shift 2
+            done ;;
+        resume)
+            [ "$#" -ge 4 ] && [ "$1" = --content-id ] && [ "$3" = --decision ] || usage
+            case "$2" in nebula-nes|mirror-ps1|orbit-garden|signal-workshop) ;; *) usage ;; esac
+            case "$4" in resume|retained-matching-core|cold-start-sram|cancel) ;; *) usage ;; esac
+            shift 4
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] || usage
+                case "$1" in
+                    --runner-id|--core-id) validate_name "$2" ;;
+                    --runner-version|--core-version) validate_version "$2" ;;
+                    *) usage ;;
+                esac
+                shift 2
+            done ;;
         *) usage ;;
     esac
 }

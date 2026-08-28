@@ -16,13 +16,14 @@ pub struct CatalogEntry {
     pub system: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Route {
     Library,
     Systems,
     Games,
     Catalog,
+    GameSwitcher,
     Session,
 }
 
@@ -33,6 +34,7 @@ impl Route {
             Self::Systems => "systems",
             Self::Games => "games",
             Self::Catalog => "catalog",
+            Self::GameSwitcher => "game-switcher",
             Self::Session => "session",
         }
     }

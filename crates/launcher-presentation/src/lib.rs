@@ -150,6 +150,7 @@ pub struct Screen {
     pub selected_label: String,
     pub menu: Vec<ScreenItem>,
     pub game_rows: Vec<ScreenItem>,
+    pub resume: Vec<ui_model::ResumeProjection>,
     pub selected_game: Option<GameDetails>,
     pub regions: Vec<ScreenRegion>,
     pub palette: Palette,
@@ -299,6 +300,7 @@ pub fn build_with_recent(
             .unwrap_or_default(),
         menu,
         game_rows,
+        resume: state.resume_entries.clone(),
         selected_game,
         regions: scene
             .regions

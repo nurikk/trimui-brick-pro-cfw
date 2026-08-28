@@ -1,0 +1,68 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "nintendo-ds",
+  "displayName": "TrimUI Brick Pro TG4040 \u2014 Nintendo DS (Experimental)",
+  "targetSku": "TG4040",
+  "channel": "experimental",
+  "extensions": [
+    "nds"
+  ],
+  "biosRequirements": [],
+  "runtimeRequirements": [],
+  "defaultRunner": {
+    "id": "nintendo-ds-melonds-ds-runner",
+    "version": "0.1.0"
+  },
+  "defaultCore": {
+    "id": "nintendo-ds-melonds-ds-core",
+    "version": "0.1.0"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "experimental/nintendo-ds"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "experimental/nintendo-ds"
+  },
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "deviceLimits": {
+    "maxWidth": 1024,
+    "maxHeight": 768,
+    "maxControllers": 1,
+    "maxAudioChannels": 2
+  },
+  "settingsDefaults": {
+    "displayWidth": 1024,
+    "displayHeight": 768,
+    "displayMode": "integer",
+    "frameSkip": 0,
+    "rumble": false,
+    "audioLatencyMs": 64
+  },
+  "licenseProvenanceUrl": "https://github.com/melonDS-emu/melonDS",
+  "experimental": {
+    "candidate": {
+      "name": "melonDS DS",
+      "sourceUrl": "https://github.com/melonDS-emu/melonDS",
+      "sourceRef": "b86390e4428bf38ce4c1ce0e9ca446d6d25955e8",
+      "licenseUrl": "https://github.com/melonDS-emu/melonDS/blob/master/LICENSE",
+      "availability": "metadata-only",
+      "status": "unverified"
+    },
+    "evidenceLane": "public-metadata-only",
+    "baseline": {
+      "internalScale": "native-1x",
+      "postProcessing": false,
+      "speedhack": false
+    }
+  }
+}

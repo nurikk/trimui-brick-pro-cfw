@@ -73,6 +73,24 @@
       "expectedCode": "unknown_field"
     },
     {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/experimental-no-opt-in.json",
+      "channel": "experimental",
+      "expectedCode": "experimental_opt_in"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/experimental-missing-bios.json",
+      "channel": "experimental",
+      "expectedCode": "bios_missing"
+    },
+    {
+      "kind": "resolve",
+      "path": "fixtures/emulator-catalog/cases/experimental-renderer.json",
+      "channel": "experimental",
+      "expectedCode": "unsupported_renderer"
+    },
+    {
       "kind": "audit",
       "path": "catalog",
       "channel": "stable",

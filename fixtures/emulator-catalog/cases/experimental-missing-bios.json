@@ -1,0 +1,45 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "resolution-fixture",
+  "channel": "experimental",
+  "experimentalOptIn": true,
+  "contentId": "exp-dreamcast-0001",
+  "biosReady": false,
+  "systemId": "dreamcast",
+  "extension": "cdi",
+  "contentPath": {
+    "root": "roms",
+    "relative": "games/exp-dreamcast/disc.cdi"
+  },
+  "profileId": "dreamcast-experimental",
+  "requestedCapabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "deviceCapabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "overrides": {
+    "device": {},
+    "system": {},
+    "core": {},
+    "folderAncestors": [],
+    "game": {},
+    "session": {}
+  },
+  "runner": {
+    "id": "dreamcast-flycast-runner",
+    "version": "0.1.0"
+  },
+  "core": {
+    "id": "dreamcast-flycast-core",
+    "version": "0.1.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "runner",
+  "id": "psp-ppsspp-runner",
+  "version": "0.1.0",
+  "targetArchitecture": "aarch64-unknown-linux-musl",
+  "artifact": {
+    "id": "unavailable-psp-runner-aarch64-musl",
+    "sha256": null
+  },
+  "supportedSystems": [
+    "psp"
+  ],
+  "supportedContent": [
+    "iso"
+  ],
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "licenseProvenanceUrl": "https://github.com/hrydgard/ppsspp",
+  "channel": "experimental"
+}

@@ -4,9 +4,63 @@
   "schemaVersion": 1,
   "kind": "channel",
   "id": "experimental",
-  "systems": ["tg4040-lab"],
-  "runners": [{"id": "clean-room-libretro-experimental", "version": "1.1.0"}],
-  "cores": [{"id": "clean-room-gameboy-lab-core", "version": "1.1.0"}],
-  "profiles": ["lab-default"],
+  "systems": [
+    "tg4040-lab",
+    "n64",
+    "dreamcast",
+    "psp",
+    "nintendo-ds"
+  ],
+  "runners": [
+    {
+      "id": "clean-room-libretro-experimental",
+      "version": "1.1.0"
+    },
+    {
+      "id": "n64-mupen64plus-next-runner",
+      "version": "0.1.0"
+    },
+    {
+      "id": "dreamcast-flycast-runner",
+      "version": "0.1.0"
+    },
+    {
+      "id": "psp-ppsspp-runner",
+      "version": "0.1.0"
+    },
+    {
+      "id": "nintendo-ds-melonds-ds-runner",
+      "version": "0.1.0"
+    }
+  ],
+  "cores": [
+    {
+      "id": "clean-room-gameboy-lab-core",
+      "version": "1.1.0"
+    },
+    {
+      "id": "n64-mupen64plus-next-core",
+      "version": "0.1.0"
+    },
+    {
+      "id": "dreamcast-flycast-core",
+      "version": "0.1.0"
+    },
+    {
+      "id": "psp-ppsspp-core",
+      "version": "0.1.0"
+    },
+    {
+      "id": "nintendo-ds-melonds-ds-core",
+      "version": "0.1.0"
+    }
+  ],
+  "profiles": [
+    "lab-default",
+    "n64-experimental",
+    "dreamcast-experimental",
+    "psp-experimental",
+    "nintendo-ds-experimental"
+  ],
   "smokeEvidenceId": null
 }

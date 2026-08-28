@@ -1,0 +1,68 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "psp",
+  "displayName": "TrimUI Brick Pro TG4040 \u2014 PlayStation Portable (Experimental)",
+  "targetSku": "TG4040",
+  "channel": "experimental",
+  "extensions": [
+    "iso"
+  ],
+  "biosRequirements": [],
+  "runtimeRequirements": [],
+  "defaultRunner": {
+    "id": "psp-ppsspp-runner",
+    "version": "0.1.0"
+  },
+  "defaultCore": {
+    "id": "psp-ppsspp-core",
+    "version": "0.1.0"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "experimental/psp"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "experimental/psp"
+  },
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "deviceLimits": {
+    "maxWidth": 1024,
+    "maxHeight": 768,
+    "maxControllers": 1,
+    "maxAudioChannels": 2
+  },
+  "settingsDefaults": {
+    "displayWidth": 1024,
+    "displayHeight": 768,
+    "displayMode": "integer",
+    "frameSkip": 0,
+    "rumble": false,
+    "audioLatencyMs": 64
+  },
+  "licenseProvenanceUrl": "https://github.com/hrydgard/ppsspp",
+  "experimental": {
+    "candidate": {
+      "name": "PPSSPP",
+      "sourceUrl": "https://github.com/hrydgard/ppsspp",
+      "sourceRef": "fa50bb1976065c4f8b1b47af227d367fe9771555",
+      "licenseUrl": "https://github.com/hrydgard/ppsspp/blob/master/LICENSE.TXT",
+      "availability": "metadata-only",
+      "status": "unverified"
+    },
+    "evidenceLane": "public-metadata-only",
+    "baseline": {
+      "internalScale": "native-1x",
+      "postProcessing": false,
+      "speedhack": false
+    }
+  }
+}

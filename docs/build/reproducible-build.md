@@ -7,8 +7,11 @@ fingerprint and firmware allowlists are empty.
 
 ## Inputs and image
 
-The source of truth for distributed bytes is `provenance/components.json`.
-The build image is based on the exact digest-pinned Rust 1.85.1 image in
+`provenance/components.json` is the source of truth for checked-in component,
+package, license, path, type, mode, and obligation authorization. Exact output
+identity is generated for each candidate in `manifest.json`; it is not frozen in
+the checked-in authorization projection. The build image is based on the exact
+digest-pinned Rust 1.85.1 image in
 `containers/baseline/Dockerfile`; it records Rust, Cargo, the musl target,
 components, and BusyBox. Build the labeled image once before a release build:
 
@@ -44,7 +47,10 @@ outputs, repository outputs, and non-empty output directories. It never
 changes the pre-existing output-directory mode. It runs `cargo fmt --check`, locked offline
 host release and static `aarch64-unknown-linux-musl` release builds, clippy,
 host gate self-checks, JSON/shell checks, ELF checks, and the staged provenance
-audit. It produces exactly:
+audit. Supervisor fixture scenarios use a unique mode-0700 `mktemp` root under
+`/tmp` so readiness socket paths stay below `SUN_LEN`; it is removed by the
+build trap on success, failure, and signals. All release work remains under
+`$OUT`. It produces exactly:
 
 - `trimui-brick-pro-cfw-baseline.tar`
 - `manifest.json`
@@ -57,7 +63,10 @@ The archive contains only static AArch64 `bootstrap-probe`, `brick-recovery`,
 `brickpro-diagnostics`, `boot-state`, `update-agent`, and `userspace-supervisor`,
 the existing POSIX bootstrap/recovery scripts, the TG4040 compatibility JSON,
 and the generated license notice. It contains no manifest;
-`manifest.json` is an external sidecar so it cannot hash itself.
+`manifest.json` is an external sidecar so it cannot hash itself. The candidate
+manifest binds every staged file's path, type, mode, size, and SHA-256 to the
+checked-in inventory and allowlist. The candidate SPDX document is generated
+from that manifest identity and the authorized component/license records.
 
 ## Inspect and reproduce
 
@@ -107,7 +116,12 @@ done
 
 The build runs the existing host-native generated-fixture journey against its
 external, container-built host binaries before removing the temporary build
-state:
+state. The cleanup journey can exercise both successful and signal-interrupted
+long-output releases without weakening socket validation:
+
+```sh
+./scripts/test-release-cleanup
+```
 
 ```text
 $ROOT/tools/sim/journeys/bootstrap-recovery.sh $WORK/host
@@ -125,14 +139,20 @@ The archive may be extracted and audited without a device:
 ```sh
 scripts/audit-dist "$OUT/extracted" \
   policy/distribution-allowlist.json \
-  --inventory provenance/components.json
+  --inventory provenance/components.json \
+  --manifest "$OUT/manifest.json" \
+  --spdx "$OUT/brickpro-cfw.spdx.json" \
+  --checksums "$OUT/SHA256SUMS"
 for script in "$OUT/extracted"/bootstrap/*.sh; do
   dash -n "$script"
 done
 ```
 
-The build additionally parses those scripts with BusyBox `ash -n` from the
-pinned build image and parses every shipped JSON.
+The audit also verifies the candidate manifest, candidate SPDX identity, and
+checksum package before checking staged bytes. It rejects stale or tampered
+identity records, missing/extra paths, mode/type changes, and source or
+projection drift. The build additionally parses those scripts with BusyBox
+`ash -n` from the pinned build image and parses every shipped JSON.
 
 ## SD staging policy
 

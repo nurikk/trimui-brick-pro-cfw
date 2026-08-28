@@ -7,11 +7,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROVENANCE = ROOT / "scripts/provenance.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+import provenance
 
 
 def run(*args: str, expect: bool) -> subprocess.CompletedProcess[str]:
@@ -72,8 +75,6 @@ def make_fixture(
             "destinationPath": path,
             "type": "regular",
             "mode": "0644",
-            "byteSize": len(data),
-            "sha256": hashlib.sha256(data).hexdigest(),
             "linkTarget": None,
             "buildSourceRelationship": "synthetic external fixture only",
             "obligations": obligations,
@@ -88,8 +89,6 @@ def make_fixture(
             "destinationPath": "link",
             "type": "symlink",
             "mode": "0777",
-            "byteSize": len(os.fsencode("target.txt" if safe_symlink else "../outside")),
-            "sha256": None,
             "linkTarget": "target.txt" if safe_symlink else "../outside",
             "buildSourceRelationship": "synthetic external fixture only",
             "obligations": obligations,
@@ -113,8 +112,8 @@ def make_fixture(
     )
     output_dir.mkdir()
     allowlist = output_dir / "allowlist.json"
-    spdx = output_dir / "spdx.json"
-    notices = output_dir / "NOTICES.md"
+    spdx = output_dir / "brickpro-cfw.spdx.json"
+    notices = output_dir / "THIRD_PARTY_NOTICES.md"
     run(str(PROVENANCE), "generate", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(spdx), "--notices", str(notices), expect=True)
     stage = base / (
         "stage-symlink-safe" if safe_symlink else
@@ -137,15 +136,68 @@ def make_fixture(
     if not omit_source_artifact:
         (stage / "SOURCE_CODE.txt").write_bytes(source)
         os.chmod(stage / "SOURCE_CODE.txt", 0o644)
+    payload = []
+    for path in sorted(stage.rglob("*"), key=lambda item: item.relative_to(stage).as_posix()):
+        relative = path.relative_to(stage).as_posix()
+        mode = path.lstat().st_mode
+        if path.is_symlink():
+            payload.append({
+                "path": relative,
+                "type": "symlink",
+                "mode": format(os.stat(path, follow_symlinks=False).st_mode & 0o7777, "04o"),
+                "size": len(os.fsencode(os.readlink(path))),
+                "sha256": None,
+                "linkTarget": os.readlink(path),
+            })
+        elif path.is_file():
+            data = path.read_bytes()
+            payload.append({
+                "path": relative,
+                "type": "regular",
+                "mode": format(mode & 0o7777, "04o"),
+                "size": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "linkTarget": None,
+            })
+    manifest = {
+        "schema": "synthetic-candidate/v1",
+        "targetSku": "TG4040",
+        "payload": payload,
+        "provenance": {
+            "inventory": "provenance/components.json",
+            "inventorySha256": hashlib.sha256(inventory_path.read_bytes()).hexdigest(),
+            "allowlist": "policy/distribution-allowlist.json",
+            "allowlistSha256": hashlib.sha256(allowlist.read_bytes()).hexdigest(),
+        },
+    }
+    (output_dir / "manifest.json").write_bytes(provenance.json_bytes(manifest))
+    spdx.write_bytes(provenance.json_bytes(provenance.render_spdx(inventory, payload)))
+    names = ("manifest.json", spdx.name, notices.name)
+    (output_dir / "SHA256SUMS").write_text(
+        "".join(
+            f"{hashlib.sha256((output_dir / name).read_bytes()).hexdigest()}  {name}\n"
+            for name in names
+        )
+    )
     return inventory_path, allowlist, stage, output_dir
 
 
 def expect_fail(
-    stage: Path, allowlist: Path, inventory: Path | None = None, text: str | None = None
+    stage: Path,
+    allowlist: Path,
+    inventory: Path | None = None,
+    text: str | None = None,
+    package: Path | None = None,
 ) -> None:
+    output_dir = package or allowlist.parent
     args = [str(ROOT / "scripts/audit-dist"), str(stage), str(allowlist)]
     if inventory is not None:
         args.extend(["--inventory", str(inventory)])
+    args.extend([
+        "--manifest", str(output_dir / "manifest.json"),
+        "--spdx", str(output_dir / "brickpro-cfw.spdx.json"),
+        "--checksums", str(output_dir / "SHA256SUMS"),
+    ])
     result = run(*args, expect=False)
     if text and text not in result.stderr:
         raise AssertionError(f"expected {text!r} in audit error: {result.stderr}")
@@ -162,12 +214,32 @@ def main() -> None:
         before = sorted(path.relative_to(stage).as_posix() for path in stage.rglob("*"))
         run(
             str(ROOT / "scripts/audit-dist"), str(stage), str(allowlist),
-            "--inventory", str(inventory_path), expect=True,
+            "--inventory", str(inventory_path),
+            "--manifest", str(output_dir / "manifest.json"),
+            "--spdx", str(output_dir / "brickpro-cfw.spdx.json"),
+            "--checksums", str(output_dir / "SHA256SUMS"), expect=True,
         )
         assert sorted(path.relative_to(stage).as_posix() for path in stage.rglob("*")) == before
-        spdx = json.loads((output_dir / "spdx.json").read_text())
+        spdx = json.loads((output_dir / "brickpro-cfw.spdx.json").read_text())
         assert spdx["packages"] and all(not package["filesAnalyzed"] for package in spdx["packages"])
         assert spdx["files"] and len(spdx["relationships"]) == len(spdx["files"])
+        manifest_path = output_dir / "manifest.json"
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes)
+        manifest["payload"][0]["size"] += 1
+        manifest_path.write_bytes(provenance.json_bytes(manifest))
+        expect_fail(stage, allowlist, inventory_path, "candidate checksum mismatch")
+        manifest_path.write_bytes(manifest_bytes)
+        spdx_bytes = (output_dir / "brickpro-cfw.spdx.json").read_bytes()
+        (output_dir / "brickpro-cfw.spdx.json").write_bytes(spdx_bytes + b"tampered")
+        expect_fail(stage, allowlist, inventory_path, "candidate checksum mismatch")
+        (output_dir / "brickpro-cfw.spdx.json").write_bytes(spdx_bytes)
+        checksum_bytes = (output_dir / "SHA256SUMS").read_bytes()
+        (output_dir / "SHA256SUMS").write_bytes(
+            b"0" * 64 + checksum_bytes[64:]
+        )
+        expect_fail(stage, allowlist, inventory_path, "candidate checksum mismatch")
+        (output_dir / "SHA256SUMS").write_bytes(checksum_bytes)
         forged = json.loads(allowlist.read_text())
         forged["artifacts"][0]["candidateId"] = "forged-candidate"
         forged_allowlist = base / "forged-allowlist.json"
@@ -175,8 +247,10 @@ def main() -> None:
         expect_fail(stage, forged_allowlist, inventory_path, "authoritative inventory projection")
         canonical = allowlist.read_bytes()
         allowlist.write_text(allowlist.read_text().replace('"artifacts": [', '"artifacts": [{'))
-        run(str(PROVENANCE), "check", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(output_dir / "spdx.json"), "--notices", str(output_dir / "NOTICES.md"), expect=False)
-        run(str(PROVENANCE), "generate", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(output_dir / "spdx.json"), "--notices", str(output_dir / "NOTICES.md"), expect=True)
+        projection_spdx = base / "projection-spdx.json"
+        projection_notices = base / "projection-notices.md"
+        run(str(PROVENANCE), "check", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(projection_spdx), "--notices", str(projection_notices), expect=False)
+        run(str(PROVENANCE), "generate", "--inventory", str(inventory_path), "--allowlist", str(allowlist), "--spdx", str(projection_spdx), "--notices", str(projection_notices), expect=True)
         assert allowlist.read_bytes() == canonical
 
         unlisted = stage / "unlisted.txt"
@@ -227,11 +301,17 @@ def main() -> None:
         target_root.mkdir()
         target_id = target_root / "TG3040.txt"
         target_id.write_text("x\n")
-        expect_fail(target_root, Path(ROOT / "policy/distribution-allowlist.json"), text="unapproved target identifier")
+        expect_fail(
+            target_root, allowlist, inventory_path,
+            "unapproved target identifier", output_dir,
+        )
         private_root = base / "private"
         (private_root / "roms").mkdir(parents=True)
         (private_root / "roms/game.rom").write_bytes(b"x")
-        expect_fail(private_root, Path(ROOT / "policy/distribution-allowlist.json"), text="prohibited private-content path")
+        expect_fail(
+            private_root, allowlist, inventory_path,
+            "prohibited private-content path", output_dir,
+        )
 
         identity = json.loads(inventory_path.read_text())
         lock_candidates = [candidate for candidate in identity["candidates"] if "lockfilePackage" in candidate]
@@ -304,62 +384,15 @@ def main() -> None:
         id_result = run(str(PROVENANCE), "check", "--inventory", str(invalid_id_path), expect=False)
         assert "normalized lowercase identifier" in id_result.stderr
 
-        safe_symlink_inventory, safe_symlink_allowlist, safe_symlink_stage, _ = make_fixture(
+        safe_symlink_inventory, safe_symlink_allowlist, safe_symlink_stage, safe_symlink_output = make_fixture(
             base, symlink=True, safe_symlink=True
         )
         run(
             str(ROOT / "scripts/audit-dist"), str(safe_symlink_stage),
-            str(safe_symlink_allowlist), "--inventory", str(safe_symlink_inventory), expect=True,
-        )
-        wrong_symlink_inventory = json.loads(safe_symlink_inventory.read_text())
-        link_record = next(
-            item for item in wrong_symlink_inventory["distributedArtifacts"]
-            if item["type"] == "symlink"
-        )
-        link_record["byteSize"] += 1
-        wrong_symlink_inventory_path = base / "wrong-symlink-size/provenance/components.json"
-        wrong_symlink_inventory_path.parent.mkdir(parents=True)
-        shutil.copy(ROOT / "Cargo.lock", wrong_symlink_inventory_path.parent.parent / "Cargo.lock")
-        wrong_symlink_inventory_path.write_text(
-            json.dumps(wrong_symlink_inventory, indent=2, sort_keys=True) + "\n"
-        )
-        wrong_symlink_output = base / "generated-wrong-symlink-size"
-        wrong_symlink_output.mkdir()
-        wrong_symlink_allowlist = wrong_symlink_output / "allowlist.json"
-        run(
-            str(PROVENANCE), "generate", "--inventory", str(wrong_symlink_inventory_path),
-            "--allowlist", str(wrong_symlink_allowlist),
-            "--spdx", str(wrong_symlink_output / "spdx.json"),
-            "--notices", str(wrong_symlink_output / "NOTICES.md"), expect=True,
-        )
-        expect_fail(
-            safe_symlink_stage, wrong_symlink_allowlist, wrong_symlink_inventory_path,
-            "symlink metadata mismatch",
-        )
-        wrong_symlink_mode_inventory = json.loads(safe_symlink_inventory.read_text())
-        mode_record = next(
-            item for item in wrong_symlink_mode_inventory["distributedArtifacts"]
-            if item["type"] == "symlink"
-        )
-        mode_record["mode"] = "0644"
-        wrong_symlink_mode_inventory_path = base / "wrong-symlink-mode/provenance/components.json"
-        wrong_symlink_mode_inventory_path.parent.mkdir(parents=True)
-        shutil.copy(ROOT / "Cargo.lock", wrong_symlink_mode_inventory_path.parent.parent / "Cargo.lock")
-        wrong_symlink_mode_inventory_path.write_text(
-            json.dumps(wrong_symlink_mode_inventory, indent=2, sort_keys=True) + "\n"
-        )
-        wrong_symlink_mode_output = base / "generated-wrong-symlink-mode"
-        wrong_symlink_mode_output.mkdir()
-        wrong_symlink_mode_allowlist = wrong_symlink_mode_output / "allowlist.json"
-        run(
-            str(PROVENANCE), "generate", "--inventory", str(wrong_symlink_mode_inventory_path),
-            "--allowlist", str(wrong_symlink_mode_allowlist),
-            "--spdx", str(wrong_symlink_mode_output / "spdx.json"),
-            "--notices", str(wrong_symlink_mode_output / "NOTICES.md"), expect=True,
-        )
-        expect_fail(
-            safe_symlink_stage, wrong_symlink_mode_allowlist, wrong_symlink_mode_inventory_path,
-            "symlink metadata mismatch",
+            str(safe_symlink_allowlist), "--inventory", str(safe_symlink_inventory),
+            "--manifest", str(safe_symlink_output / "manifest.json"),
+            "--spdx", str(safe_symlink_output / "brickpro-cfw.spdx.json"),
+            "--checksums", str(safe_symlink_output / "SHA256SUMS"), expect=True,
         )
         symlink_inventory, symlink_allowlist, symlink_stage, _ = make_fixture(base, symlink=True)
         expect_fail(symlink_stage, symlink_allowlist, symlink_inventory, "escapes staged root")

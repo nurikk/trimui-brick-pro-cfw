@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import NoReturn, cast
 
 SCHEMA = "trimui-brick-provenance"
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 SPDX_VERSION = "SPDX-2.3"
 STATUSES = {"approved", "excluded", "blocked"}
 SPDX_IDENTIFIERS = {
@@ -440,8 +440,6 @@ def validate_inventory(inventory: dict, inventory_path: Path) -> None:
             "destinationPath",
             "type",
             "mode",
-            "byteSize",
-            "sha256",
             "linkTarget",
             "buildSourceRelationship",
             "obligations",
@@ -479,18 +477,12 @@ def validate_inventory(inventory: dict, inventory_path: Path) -> None:
         mode = require_string(artifact["mode"], f"{label}.mode")
         if not MODE.fullmatch(mode):
             fail(f"{label}.mode must be a four-digit octal mode")
-        if not isinstance(artifact["byteSize"], int) or artifact["byteSize"] < 0:
-            fail(f"{label}.byteSize must be a non-negative integer")
         if artifact["type"] == "regular":
-            if not HEX64.fullmatch(
-                require_string(artifact["sha256"], f"{label}.sha256")
-            ):
-                fail(f"{label}.sha256 must be lowercase SHA-256 for regular files")
             if artifact["linkTarget"] is not None:
                 fail(f"{label}.linkTarget must be null for regular files")
         else:
-            if artifact["sha256"] is not None or artifact["linkTarget"] is None:
-                fail(f"{label} symlink requires null sha256 and a linkTarget")
+            if artifact["linkTarget"] is None:
+                fail(f"{label} symlink requires a linkTarget")
             require_link_target(artifact["linkTarget"], f"{label}.linkTarget")
         require_string(
             artifact["buildSourceRelationship"], f"{label}.buildSourceRelationship"
@@ -537,8 +529,6 @@ def render_allowlist(inventory: dict) -> dict:
                 "destinationPath": artifact["destinationPath"],
                 "type": artifact["type"],
                 "mode": artifact["mode"],
-                "byteSize": artifact["byteSize"],
-                "sha256": artifact["sha256"],
                 "linkTarget": artifact["linkTarget"],
                 "buildSourceRelationship": artifact["buildSourceRelationship"],
                 "obligations": artifact["obligations"],
@@ -558,8 +548,13 @@ def spdx_id(prefix: str, value: str) -> str:
     return f"SPDXRef-{prefix}-{safe}"
 
 
-def render_spdx(inventory: dict) -> dict:
+def render_spdx(inventory: dict, payload: list[dict] | None = None) -> dict:
     records = approved_records(inventory)
+    identities = {item["path"]: item for item in payload or []}
+    if payload is not None and set(identities) != {
+        artifact["destinationPath"] for _, artifact in records
+    }:
+        fail("candidate payload does not exactly cover approved distributed artifacts")
     packages = []
     files = []
     relationships = []
@@ -581,6 +576,15 @@ def render_spdx(inventory: dict) -> dict:
                 }
             )
             seen_candidates.add(candidate["id"])
+        identity = identities.get(artifact["destinationPath"])
+        identity_comment = {
+            "artifactId": artifact["id"],
+            "type": artifact["type"],
+            "mode": artifact["mode"],
+            "linkTarget": artifact["linkTarget"],
+        }
+        if identity is not None:
+            identity_comment["byteSize"] = identity["size"]
         file_record = {
             "SPDXID": file_id,
             "fileName": artifact["destinationPath"],
@@ -588,21 +592,14 @@ def render_spdx(inventory: dict) -> dict:
             "licenseInfoInFiles": [candidate["licenseExpression"]],
             "copyrightText": candidate["copyrightAttribution"],
             "comment": json.dumps(
-                {
-                    "artifactId": artifact["id"],
-                    "type": artifact["type"],
-                    "mode": artifact["mode"],
-                    "byteSize": artifact["byteSize"],
-                    "linkTarget": artifact["linkTarget"],
-                },
-                sort_keys=True,
-                separators=(",", ":"),
+                identity_comment, sort_keys=True, separators=(",", ":")
             ),
         }
         if artifact["type"] == "regular":
-            file_record["checksums"] = [
-                {"algorithm": "SHA256", "checksumValue": artifact["sha256"]}
-            ]
+            if identity is not None:
+                file_record["checksums"] = [
+                    {"algorithm": "SHA256", "checksumValue": identity["sha256"]}
+                ]
         else:
             file_record["fileTypes"] = ["SYMLINK"]
         files.append(file_record)
@@ -736,8 +733,6 @@ def validate_allowlist(data: dict) -> None:
                 "destinationPath",
                 "type",
                 "mode",
-                "byteSize",
-                "sha256",
                 "linkTarget",
                 "buildSourceRelationship",
                 "obligations",
@@ -751,8 +746,6 @@ def validate_allowlist(data: dict) -> None:
                 "destinationPath",
                 "type",
                 "mode",
-                "byteSize",
-                "sha256",
                 "linkTarget",
                 "buildSourceRelationship",
                 "obligations",
@@ -788,18 +781,11 @@ def validate_allowlist(data: dict) -> None:
             or not MODE.fullmatch(require_string(artifact["mode"], f"{label}.mode"))
         ):
             fail(f"{label} has invalid type or mode")
-        if not isinstance(artifact["byteSize"], int) or artifact["byteSize"] < 0:
-            fail(f"{label}.byteSize is invalid")
         if artifact["type"] == "regular":
-            if (
-                not HEX64.fullmatch(
-                    require_string(artifact["sha256"], f"{label}.sha256")
-                )
-                or artifact["linkTarget"] is not None
-            ):
-                fail(f"{label} has invalid regular-file hash/link target")
-        elif artifact["sha256"] is not None or artifact["linkTarget"] is None:
-            fail(f"{label} has invalid symlink hash/link target")
+            if artifact["linkTarget"] is not None:
+                fail(f"{label} has invalid regular-file link target")
+        elif artifact["linkTarget"] is None:
+            fail(f"{label} has invalid symlink link target")
         if artifact["linkTarget"] is not None:
             require_link_target(artifact["linkTarget"], f"{label}.linkTarget")
         validate_obligations(artifact["obligations"], f"{label}.obligations", True)
@@ -820,7 +806,10 @@ def scan_regular_file(path: Path) -> tuple[int, str]:
             if not elf:
                 match = PRIVATE_CONTENT.search(window)
                 if match and not (
-                    (path.name == "THIRD_PARTY_NOTICES.md" and match.group(0).lower() == b".md")
+                    (
+                        path.name == "THIRD_PARTY_NOTICES.md"
+                        and match.group(0).lower() == b".md"
+                    )
                     or (
                         path.name == "compatibility.json"
                         and path.parent.name == "tg4040"
@@ -842,7 +831,125 @@ def private_or_target_problem(path: str) -> str | None:
     return None
 
 
-def audit(root: Path, allowlist_path: Path, inventory_path: Path) -> None:
+def validate_candidate_manifest(manifest: dict) -> list[dict]:
+    require_keys(
+        manifest,
+        {"schema", "targetSku", "payload", "provenance"},
+        set(manifest),
+        "candidate manifest",
+    )
+    require_string(manifest["schema"], "candidate manifest.schema")
+    if manifest["targetSku"] != "TG4040":
+        fail("candidate manifest.targetSku must be TG4040")
+    provenance = require_object(manifest["provenance"], "candidate manifest.provenance")
+    require_keys(
+        provenance,
+        {"inventory", "inventorySha256", "allowlist", "allowlistSha256"},
+        {"inventory", "inventorySha256", "allowlist", "allowlistSha256"},
+        "candidate manifest.provenance",
+    )
+    if provenance["inventory"] != "provenance/components.json":
+        fail("candidate manifest provenance names an unexpected inventory")
+    if provenance["allowlist"] != "policy/distribution-allowlist.json":
+        fail("candidate manifest provenance names an unexpected allowlist")
+    for field in ("inventorySha256", "allowlistSha256"):
+        if not HEX64.fullmatch(
+            require_string(provenance[field], f"candidate manifest.provenance.{field}")
+        ):
+            fail(f"candidate manifest.provenance.{field} must be lowercase SHA-256")
+    payload = manifest["payload"]
+    if not isinstance(payload, list):
+        fail("candidate manifest.payload must be a list")
+    paths: set[str] = set()
+    for i, raw_item in enumerate(payload):
+        label = f"candidate manifest.payload[{i}]"
+        item = require_object(raw_item, label)
+        require_keys(
+            item,
+            {"path", "type", "mode", "size", "sha256", "linkTarget"},
+            {"path", "type", "mode", "size", "sha256", "linkTarget"},
+            label,
+        )
+        path = validate_path(item["path"], f"{label}.path")
+        if path in paths:
+            fail(f"duplicate candidate payload path: {path}")
+        paths.add(path)
+        if item["type"] not in ARTIFACT_TYPES:
+            fail(f"{label}.type is unknown")
+        if not MODE.fullmatch(require_string(item["mode"], f"{label}.mode")):
+            fail(f"{label}.mode must be a four-digit octal mode")
+        if not isinstance(item["size"], int) or item["size"] < 0:
+            fail(f"{label}.size must be a non-negative integer")
+        if item["type"] == "regular":
+            if not HEX64.fullmatch(require_string(item["sha256"], f"{label}.sha256")):
+                fail(f"{label}.sha256 must be lowercase SHA-256 for regular files")
+            if item["linkTarget"] is not None:
+                fail(f"{label}.linkTarget must be null for regular files")
+        else:
+            if item["sha256"] is not None or item["linkTarget"] is None:
+                fail(f"{label} symlink requires null sha256 and a linkTarget")
+            require_link_target(item["linkTarget"], f"{label}.linkTarget")
+    return cast(list[dict], payload)
+
+
+def verify_checksum_package(
+    manifest_path: Path,
+    spdx_path: Path,
+    inventory: dict,
+    checksums_path: Path,
+    allowlist_path: Path,
+) -> None:
+    package_dir = checksums_path.parent
+    if checksums_path.is_symlink() or not checksums_path.is_file():
+        fail("candidate checksum package must be a regular file")
+    if manifest_path.parent != package_dir or spdx_path.parent != package_dir:
+        fail("candidate identity artifacts must share the checksum package directory")
+    entries: dict[str, str] = {}
+    try:
+        lines = checksums_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError as exc:
+        fail(f"cannot read candidate checksum package: {exc}")
+    for line in lines:
+        match = re.fullmatch(r"([0-9a-f]{64})  ([^/\\\n]+)\n", line)
+        if match is None:
+            fail("candidate checksum package has a malformed line")
+        digest, name = match.groups()
+        if name == checksums_path.name or name in entries:
+            fail("candidate checksum package has a duplicate or self entry")
+        entries[name] = digest
+    required = {manifest_path.name, spdx_path.name, "THIRD_PARTY_NOTICES.md"}
+    if not required <= entries.keys():
+        fail("candidate checksum package omits a required identity artifact")
+    allowlist_location = allowlist_path.absolute()
+    actual_files = {
+        path.name
+        for path in package_dir.iterdir()
+        if (path.is_file() or path.is_symlink())
+        and path.absolute() != allowlist_location
+    }
+    if actual_files != set(entries) | {checksums_path.name}:
+        fail("candidate checksum package has missing or extra regular files")
+    for name, expected_digest in entries.items():
+        path = package_dir / name
+        if path.is_symlink() or not path.is_file():
+            fail(
+                f"candidate checksum package names a missing or non-regular file: {name}"
+            )
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected_digest:
+            fail(f"candidate checksum mismatch: {name}")
+    notices = package_dir / "THIRD_PARTY_NOTICES.md"
+    if notices.read_bytes() != render_notices(inventory).encode("utf-8"):
+        fail("candidate notices drift from the authoritative provenance projection")
+
+
+def audit(
+    root: Path,
+    allowlist_path: Path,
+    inventory_path: Path,
+    manifest_path: Path,
+    spdx_path: Path,
+    checksums_path: Path,
+) -> None:
     if not root.is_dir() or root.is_symlink():
         fail("staged root must be a real directory")
     inventory = load_json(inventory_path)
@@ -855,7 +962,28 @@ def audit(root: Path, allowlist_path: Path, inventory_path: Path) -> None:
         fail("allowlist does not equal the authoritative inventory projection")
     allowlist = load_json(allowlist_path)
     validate_allowlist(allowlist)
+    manifest = load_json(manifest_path)
+    payload = validate_candidate_manifest(manifest)
+    provenance = manifest["provenance"]
+    if (
+        hashlib.sha256(inventory_path.read_bytes()).hexdigest()
+        != provenance["inventorySha256"]
+    ):
+        fail("candidate manifest inventory provenance mismatch")
+    if (
+        hashlib.sha256(allowlist_path.read_bytes()).hexdigest()
+        != provenance["allowlistSha256"]
+    ):
+        fail("candidate manifest allowlist provenance mismatch")
+    verify_checksum_package(
+        manifest_path, spdx_path, inventory, checksums_path, allowlist_path
+    )
+    if spdx_path.read_bytes() != json_bytes(render_spdx(inventory, payload)):
+        fail("candidate SBOM does not equal the candidate manifest identity projection")
     expected = {item["destinationPath"]: item for item in allowlist["artifacts"]}
+    candidate_expected = {item["path"]: item for item in payload}
+    if set(candidate_expected) != set(expected):
+        fail("candidate manifest does not exactly cover the allowlisted artifacts")
     found: set[str] = set()
     root_real = root.resolve()
 
@@ -893,7 +1021,12 @@ def audit(root: Path, allowlist_path: Path, inventory_path: Path) -> None:
                     item["type"] != "symlink"
                     or item["linkTarget"] != target
                     or item["mode"] != format(stat.S_IMODE(mode), "04o")
-                    or item["byteSize"] != entry.stat(follow_symlinks=False).st_size
+                    or candidate_expected[path]["type"] != "symlink"
+                    or candidate_expected[path]["linkTarget"] != target
+                    or candidate_expected[path]["mode"]
+                    != format(stat.S_IMODE(mode), "04o")
+                    or candidate_expected[path]["size"]
+                    != entry.stat(follow_symlinks=False).st_size
                 ):
                     fail(f"{path}: symlink metadata mismatch")
                 found.add(path)
@@ -903,12 +1036,22 @@ def audit(root: Path, allowlist_path: Path, inventory_path: Path) -> None:
                 if path not in expected:
                     fail(f"{path}: unlisted regular file")
                 item = expected[path]
-                if item["type"] != "regular":
+                if (
+                    item["type"] != "regular"
+                    or candidate_expected[path]["type"] != "regular"
+                ):
                     fail(f"{path}: wrong type")
-                if item["mode"] != format(stat.S_IMODE(mode), "04o"):
+                if item["mode"] != format(
+                    stat.S_IMODE(mode), "04o"
+                ) or candidate_expected[path]["mode"] != format(
+                    stat.S_IMODE(mode), "04o"
+                ):
                     fail(f"{path}: mode mismatch")
                 size, digest = scan_regular_file(Path(entry.path))
-                if size != item["byteSize"] or digest != item["sha256"]:
+                if (
+                    size != candidate_expected[path]["size"]
+                    or digest != candidate_expected[path]["sha256"]
+                ):
                     fail(f"{path}: size or SHA-256 mismatch")
                 found.add(path)
             else:
@@ -942,6 +1085,9 @@ def main() -> int:
     command.add_argument("root", type=Path)
     command.add_argument("allowlist", nargs="?", type=Path)
     command.add_argument("--inventory", type=Path)
+    command.add_argument("--manifest", type=Path, required=True)
+    command.add_argument("--spdx", type=Path, required=True)
+    command.add_argument("--checksums", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "generate":
@@ -952,7 +1098,14 @@ def main() -> int:
             root = Path(__file__).resolve().parents[1]
             allowlist = args.allowlist or root / "policy/distribution-allowlist.json"
             inventory = args.inventory or root / "provenance/components.json"
-            audit(args.root, allowlist, inventory)
+            audit(
+                args.root,
+                allowlist,
+                inventory,
+                args.manifest,
+                args.spdx,
+                args.checksums,
+            )
         return 0
     except (OSError, ValueError, KeyError) as exc:
         print(f"provenance audit failed: {exc}", file=sys.stderr)

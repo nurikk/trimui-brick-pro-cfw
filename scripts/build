@@ -6,6 +6,7 @@ IMAGE=trimui-brick-pro-cfw-baseline:local
 BASE_IMAGE=rust:1.85.1-bookworm@sha256:bf7d87666c4da6eace19e06d21bc4859c6e2a5c97a21ac273b0e082112753cf0
 EPOCH=${SOURCE_DATE_EPOCH-}
 WORK=
+SUPERVISOR_WORK=
 
 fail() {
     printf '%s\n' "build: $*" >&2
@@ -13,7 +14,8 @@ fail() {
 }
 
 cleanup() {
-    [ -z "${WORK:-}" ] || rm -rf "$WORK"
+    [ -z "${SUPERVISOR_WORK:-}" ] || rm -rf -- "$SUPERVISOR_WORK"
+    [ -z "${WORK:-}" ] || rm -rf -- "$WORK"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -155,9 +157,16 @@ grep -Fq '"reason":"real-fingerprint-not-approved"' "$WORK/host/recovery-denial.
 "$WORK/host/boot-state" journey --root "$WORK/host/boot-state-journey"
 "$WORK/host/boot-state" healthy-journey --root "$WORK/host/boot-state-health"
 "$WORK/host/update-agent" journey --root "$WORK/host/update-agent-journey"
+SUPERVISOR_WORK=$(mktemp -d /tmp/trimui-brick-pro-supervisor.XXXXXX)
+chmod 0700 "$SUPERVISOR_WORK"
 for scenario in healthy launcher-restart broker-restart session-failure essential-failure hal-loss shutdown; do
-    "$WORK/host/userspace-supervisor" simulate --root "$WORK/host/supervisor-$scenario" --scenario "$scenario"
+    "$WORK/host/userspace-supervisor" simulate --root "$SUPERVISOR_WORK/supervisor-$scenario" --scenario "$scenario"
+    if [ "${TRIMUI_BUILD_INJECT_FAILURE:-}" = after-supervisor ]; then
+        fail "injected supervisor fixture failure"
+    fi
 done
+rm -rf -- "$SUPERVISOR_WORK"
+SUPERVISOR_WORK=
 
 STAGE=$WORK/stage
 mkdir -p "$STAGE/usr/bin" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
@@ -181,6 +190,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 import tarfile
 from pathlib import Path
 
@@ -209,9 +219,11 @@ for path in sorted(stage.rglob("*"), key=lambda item: item.relative_to(stage).as
     data = path.read_bytes()
     payload.append({
         "path": relative,
+        "type": "regular",
         "sha256": hashlib.sha256(data).hexdigest(),
         "size": len(data),
         "mode": format(stat.S_IMODE(path.stat().st_mode), "04o"),
+        "linkTarget": None,
     })
 
 for directory in sorted((path for path in stage.rglob("*") if path.is_dir()), key=lambda item: item.relative_to(stage).as_posix()):
@@ -270,7 +282,6 @@ toolchain = {
 base = dict(metadata)
 base.update({
     "buildImage": base_image,
-    "buildImageLocalTag": image,
     "buildDefinitionSha256": build_definition_sha256,
     "buildDockerfileSha256": dockerfile_sha256,
     "sourceDateEpoch": epoch,
@@ -281,17 +292,36 @@ base.update({
     },
     "toolchain": toolchain,
     "payload": payload,
+    "provenance": {
+        "inventory": "provenance/components.json",
+        "inventorySha256": hashlib.sha256(
+            (root / "provenance/components.json").read_bytes()
+        ).hexdigest(),
+        "allowlist": "policy/distribution-allowlist.json",
+        "allowlistSha256": hashlib.sha256(
+            (root / "policy/distribution-allowlist.json").read_bytes()
+        ).hexdigest(),
+    },
 })
 manifest = out / "manifest.json"
 manifest.write_text(json.dumps(base, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
 os.chmod(manifest, 0o644)
 os.utime(manifest, (epoch, epoch))
 
-for name in ("brickpro-cfw.spdx.json", "THIRD_PARTY_NOTICES.md"):
-    source = root / (Path("provenance") / name if name.endswith(".json") else name)
-    shutil.copyfile(source, out / name)
-    os.chmod(out / name, 0o644)
-    os.utime(out / name, (epoch, epoch))
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(root / "scripts"))
+import provenance
+
+spdx = out / "brickpro-cfw.spdx.json"
+spdx.write_bytes(provenance.json_bytes(provenance.render_spdx(
+    json.loads((root / "provenance/components.json").read_text(encoding="utf-8")), payload
+)))
+os.chmod(spdx, 0o644)
+os.utime(spdx, (epoch, epoch))
+notices = out / "THIRD_PARTY_NOTICES.md"
+shutil.copyfile(root / "THIRD_PARTY_NOTICES.md", notices)
+os.chmod(notices, 0o644)
+os.utime(notices, (epoch, epoch))
 
 def digest(path):
     data = path.read_bytes()
@@ -303,7 +333,6 @@ build_info = {
     "status": "candidate-no-device-non-activating",
     "platform": base["platform"],
     "buildImage": base_image,
-    "buildImageLocalTag": image,
     "buildDefinitionSha256": build_definition_sha256,
     "buildDockerfileSha256": dockerfile_sha256,
     "toolchain": toolchain,
@@ -348,7 +377,10 @@ PY
 
 PYTHONDONTWRITEBYTECODE=1 "$ROOT/scripts/audit-dist" "$STAGE" \
     "$ROOT/policy/distribution-allowlist.json" \
-    --inventory "$ROOT/provenance/components.json" >/dev/null
+    --inventory "$ROOT/provenance/components.json" \
+    --manifest "$OUT/manifest.json" \
+    --spdx "$OUT/brickpro-cfw.spdx.json" \
+    --checksums "$OUT/SHA256SUMS" >/dev/null
 
 for script in bootstrap/boot.sh bootstrap/recovery.sh; do
     dash -n "$STAGE/$script"

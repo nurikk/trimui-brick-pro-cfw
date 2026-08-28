@@ -10,3 +10,4 @@ serde.workspace = true
 serde_json.workspace = true
 sim-domain = { path = "../domain" }
 sim-platform-contract = { path = "../platform-contract" }
+ui-model = { path = "../ui-model" }

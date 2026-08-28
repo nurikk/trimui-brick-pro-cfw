@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "launcher-presentation-v1",
+  "title": "Generated Artbook launcher presentation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "selectedGame", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp"],
+  "properties": {
+    "schema": {"const": "launcher-presentation/v1"},
+    "identity": {"const": "Artbook"},
+    "route": {"type": "string", "pattern": "^[a-z0-9-]{1,48}$"},
+    "focus": {"type": "string", "pattern": "^[a-z0-9-]{1,48}$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 80},
+    "selectedLabel": {"type": "string", "maxLength": 128},
+    "menu": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/item"}},
+    "gameRows": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/item"}},
+    "selectedGame": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/game"}]},
+    "regions": {"type": "array", "minItems": 9, "maxItems": 16, "items": {"$ref": "#/$defs/region"}},
+    "palette": {"$ref": "#/$defs/palette"},
+    "theme": {"type": "object"},
+    "themeFallback": {"oneOf": [{"type": "null"}, {"type": "string", "maxLength": 48}]},
+    "generatedAssets": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/asset"}},
+    "settings": {"oneOf": [{"type": "null"}, {"type": "object"}]},
+    "wifi": {"oneOf": [{"type": "null"}, {"type": "object"}]},
+    "scraper": {"$ref": "#/$defs/scraper"},
+    "modal": {"oneOf": [{"type": "null"}, {"type": "string", "maxLength": 128}]},
+    "splash": {"type": "string", "minLength": 1, "maxLength": 80},
+    "affordances": {"$ref": "#/$defs/affordances"},
+    "controllerHelp": {"type": "array", "maxItems": 16, "items": {"type": "object", "additionalProperties": false, "required": ["button", "label"], "properties": {"button": {"enum": ["up", "down", "left", "right", "primary", "secondary", "start", "select", "menu"]}, "label": {"type": "string", "maxLength": 64}}}}
+  },
+  "$defs": {
+    "item": {"type": "object", "additionalProperties": false, "required": ["id", "label", "selected", "enabled"], "properties": {"id": {"type": "string", "maxLength": 128}, "label": {"type": "string", "maxLength": 128}, "selected": {"type": "boolean"}, "enabled": {"type": "boolean"}}},
+    "asset": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "altText"], "properties": {"id": {"type": "string", "pattern": "^generated-[a-z0-9-]+$|^artbook-generated-[a-z0-9-]+$"}, "kind": {"enum": ["system-artwork", "system-logo", "box-art", "screenshot", "splash", "fallback"]}, "altText": {"type": "string", "maxLength": 160}}},
+    "region": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "x", "y", "width", "height", "visible"], "properties": {"id": {"type": "string", "maxLength": 32}, "kind": {"type": "string", "maxLength": 48}, "x": {"type": "integer", "minimum": 0, "maximum": 1023}, "y": {"type": "integer", "minimum": 0, "maximum": 767}, "width": {"type": "integer", "minimum": 1, "maximum": 1024}, "height": {"type": "integer", "minimum": 1, "maximum": 768}, "visible": {"type": "boolean"}}},
+    "palette": {"type": "object", "additionalProperties": false, "required": ["background", "surface", "accent", "text", "muted", "highlight"], "properties": {"background": {"$ref": "#/$defs/color"}, "surface": {"$ref": "#/$defs/color"}, "accent": {"$ref": "#/$defs/color"}, "text": {"$ref": "#/$defs/color"}, "muted": {"$ref": "#/$defs/color"}, "highlight": {"$ref": "#/$defs/color"}}},
+    "color": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 0, "maximum": 255}, {"type": "integer", "minimum": 0, "maximum": 255}, {"type": "integer", "minimum": 0, "maximum": 255}, {"const": 255}], "minItems": 4, "maxItems": 4},
+    "game": {"type": "object", "additionalProperties": false, "required": ["id", "title", "description", "rating", "releaseDate", "boxArt", "screenshot", "favorite"], "properties": {"id": {"type": "string", "pattern": "^generated-[a-z0-9-]+$"}, "title": {"type": "string"}, "description": {"type": "string"}, "rating": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 100}]}, "releaseDate": {"oneOf": [{"type": "null"}, {"type": "string"}]}, "boxArt": {"$ref": "#/$defs/asset"}, "screenshot": {"$ref": "#/$defs/asset"}, "favorite": {"type": "boolean"}}},
+    "scraper": {"type": "object", "additionalProperties": false, "required": ["route", "status", "queueCount", "progressPercent", "paused", "ambiguousCandidates"], "properties": {"route": {"type": "string"}, "status": {"type": "string"}, "queueCount": {"type": "integer", "minimum": 0}, "progressPercent": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 100}]}, "paused": {"type": "boolean"}, "ambiguousCandidates": {"type": "array", "maxItems": 16, "items": {"type": "string"}}}},
+    "affordances": {"type": "object", "additionalProperties": false, "required": ["clock", "batteryPercent", "charging"], "properties": {"clock": {"type": "string", "maxLength": 32}, "batteryPercent": {"type": "integer", "minimum": 0, "maximum": 100}, "charging": {"type": "boolean"}}}
+  }
+}

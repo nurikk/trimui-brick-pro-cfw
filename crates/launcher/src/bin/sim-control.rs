@@ -118,6 +118,7 @@ fn command_args<'a>(
             Ok(("fault.set", json!({"name": args[1], "enabled": enabled})))
         }
         "adapter" => Ok(("adapter", adapter_args(args)?)),
+        "presentation" => Ok(("presentation", presentation_args(args)?)),
         "screenshot" => Ok(("screenshot", artifact_args(args)?)),
         "checkpoint" => Ok(("checkpoint", artifact_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
@@ -264,6 +265,47 @@ fn adapter_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         index += 2;
     }
     Ok(json!({"action": args[0], "status": status, "value": value}))
+}
+
+fn presentation_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() != 2 || args[0] != "--action" {
+        return Err((
+            "usage",
+            "--action must be a generated presentation action".into(),
+        ));
+    }
+    let actions = [
+        "home",
+        "systems",
+        "games",
+        "favorites",
+        "search",
+        "settings",
+        "settings-form",
+        "recovery",
+        "modal",
+        "scraper-settings",
+        "scraper-game",
+        "scraper-queue",
+        "scraper-progress",
+        "scraper-paused",
+        "scraper-resumed",
+        "scraper-ambiguity",
+        "scraper-complete",
+        "scraper-cancel",
+        "wifi-scan",
+        "wifi-access-points",
+        "wifi-password",
+        "wifi-hidden",
+        "wifi-manual",
+        "wifi-progress",
+        "wifi-error",
+        "fallback",
+    ];
+    if !actions.contains(&args[1].as_str()) {
+        return Err(("usage", "presentation action is not allowlisted".into()));
+    }
+    Ok(json!({"action": args[1]}))
 }
 
 fn artifact_args(args: &[String]) -> Result<Value, (&'static str, String)> {

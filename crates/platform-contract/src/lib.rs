@@ -6,8 +6,8 @@
 
 use std::{fmt, path::Path};
 
+pub use launcher_presentation::Screen;
 use serde::{Deserialize, Serialize};
-use sim_domain::{CatalogEntry, Route};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -343,14 +343,6 @@ pub struct HardwareChanges {
     pub radio_connected: Option<bool>,
     pub suspend_state: Option<SuspendState>,
     pub suspend_result: Option<SuspendResult>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Screen {
-    pub route: Route,
-    pub selection: CatalogEntry,
-    pub selected_index: usize,
-    pub entry_count: usize,
 }
 
 #[derive(Clone, Debug)]

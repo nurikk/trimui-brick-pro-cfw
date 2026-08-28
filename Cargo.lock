@@ -458,6 +458,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "launcher-presentation"
+version = "0.1.0"
+dependencies = [
+ "launcher-theme",
+ "serde",
+ "settings-schema",
+ "settings-ui",
+ "ui-model",
+ "wifi-settings-controller",
+]
+
+[[package]]
 name = "launcher-theme"
 version = "0.1.0"
 dependencies = [
@@ -918,6 +930,7 @@ dependencies = [
  "serde_json",
  "sim-domain",
  "sim-platform-contract",
+ "ui-model",
 ]
 
 [[package]]
@@ -926,18 +939,28 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "launch-contract",
+ "launcher-presentation",
+ "launcher-theme",
+ "png",
  "serde",
  "serde_json",
+ "settings-schema",
+ "settings-ui",
  "signal-hook",
  "sim-domain",
  "sim-host-platform",
  "sim-platform-contract",
+ "ui-model",
+ "virtual-keyboard",
+ "wifi-manager",
+ "wifi-settings-controller",
 ]
 
 [[package]]
 name = "sim-platform-contract"
 version = "0.1.0"
 dependencies = [
+ "launcher-presentation",
  "serde",
  "sim-domain",
 ]

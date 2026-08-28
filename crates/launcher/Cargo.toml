@@ -16,3 +16,16 @@ serde_json.workspace = true
 sim-domain = { path = "../domain" }
 sim-host-platform = { path = "../host-platform", optional = true }
 sim-platform-contract = { path = "../platform-contract" }
+png.workspace = true
+launcher-presentation = { path = "../launcher-presentation" }
+launcher-theme = { path = "../launcher-theme" }
+settings-schema = { path = "../settings-schema" }
+settings-ui = { path = "../settings-ui" }
+ui-model = { path = "../ui-model" }
+virtual-keyboard = { path = "../virtual-keyboard" }
+wifi-manager = { path = "../wifi-manager" }
+wifi-settings-controller = { path = "../wifi-settings-controller" }
+
+[[bin]]
+name = "launcher-presentation-journey"
+path = "src/bin/launcher-presentation-journey.rs"

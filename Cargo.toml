@@ -11,6 +11,7 @@ members = [
     "crates/launch-contract",
     "crates/metadata-scraper",
     "crates/launcher-theme",
+    "crates/launcher-presentation",
     "crates/package-trust",
     "crates/package-manager",
     "crates/theme-garden",

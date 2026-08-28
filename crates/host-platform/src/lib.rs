@@ -173,6 +173,7 @@ pub struct HostPlatform {
     event_index: usize,
     logical_time_ms: u64,
     target_sku: String,
+    initial_splash_pending: bool,
 }
 
 impl HostPlatform {
@@ -309,6 +310,7 @@ impl HostPlatform {
             event_index: 0,
             logical_time_ms: profile.clock.start_ms,
             target_sku: profile.target_sku,
+            initial_splash_pending: true,
         })
     }
 
@@ -350,36 +352,106 @@ impl Platform for HostPlatform {
     }
 
     fn present(&mut self, screen: &Screen) -> PlatformResult<()> {
-        self.canvas
-            .set_draw_color(sdl2::pixels::Color::RGB(18, 22, 31));
+        if self.initial_splash_pending && screen.splash == "artbook-generated-splash" {
+            self.canvas.set_draw_color(rgb(screen.palette.background));
+            self.canvas.clear();
+            draw_splash(&mut self.canvas, screen);
+            self.initial_splash_pending = false;
+            self.canvas.present();
+            return Ok(());
+        }
+        self.canvas.set_draw_color(rgb(screen.palette.background));
         self.canvas.clear();
-        self.canvas
-            .set_draw_color(sdl2::pixels::Color::RGB(40, 52, 75));
-        self.canvas
-            .fill_rect(Rect::new(48, 40, 928, 96))
-            .map_err(backend_error)?;
-        for index in 0..screen.entry_count {
-            let y = 176 + (index as i32 * 104);
-            let selected = index == screen.selected_index;
-            self.canvas.set_draw_color(if selected {
-                sdl2::pixels::Color::RGB(70, 150, 220)
-            } else {
-                sdl2::pixels::Color::RGB(42, 48, 61)
-            });
+        for region in &screen.regions {
+            if !region.visible {
+                continue;
+            }
+            let fill = match region.kind.as_str() {
+                "system-art" => screen.palette.accent,
+                "game-list" | "menu" => screen.palette.surface,
+                "metadata" | "help-strip" => screen.palette.muted,
+                "clock" | "battery" => screen.palette.highlight,
+                _ => screen.palette.text,
+            };
+            self.canvas.set_draw_color(rgb(fill));
             self.canvas
-                .fill_rect(Rect::new(96, y, 832, 72))
+                .fill_rect(Rect::new(
+                    i32::from(region.x),
+                    i32::from(region.y),
+                    u32::from(region.width),
+                    u32::from(region.height),
+                ))
                 .map_err(backend_error)?;
         }
-        self.canvas.set_draw_color(match screen.route {
-            sim_domain::Route::Library => sdl2::pixels::Color::RGB(96, 210, 130),
-            sim_domain::Route::Systems => sdl2::pixels::Color::RGB(100, 170, 230),
-            sim_domain::Route::Games => sdl2::pixels::Color::RGB(140, 120, 230),
-            sim_domain::Route::Catalog => sdl2::pixels::Color::RGB(96, 210, 130),
-            sim_domain::Route::Session => sdl2::pixels::Color::RGB(240, 180, 75),
-        });
-        self.canvas
-            .fill_rect(Rect::new(96, 680, 832, 32))
-            .map_err(backend_error)?;
+        draw_text(
+            &mut self.canvas,
+            48,
+            28,
+            &screen.title,
+            screen.palette.text,
+            3,
+        );
+        draw_text(
+            &mut self.canvas,
+            768,
+            26,
+            &screen.affordances.clock,
+            screen.palette.background,
+            2,
+        );
+        let battery = format!(
+            "{}%{}",
+            screen.affordances.battery_percent,
+            if screen.affordances.charging { "+" } else { "" }
+        );
+        draw_text(
+            &mut self.canvas,
+            888,
+            26,
+            &battery,
+            screen.palette.background,
+            2,
+        );
+
+        if screen.theme_fallback.is_some() || screen.splash == "artbook-generated-fallback" {
+            draw_fallback(&mut self.canvas, screen);
+        } else if screen.route == "settings" {
+            draw_settings(&mut self.canvas, screen);
+        } else if screen.route.starts_with("wifi-") {
+            draw_wifi(&mut self.canvas, screen);
+        } else if screen.route.starts_with("scraper-") {
+            draw_scraper(&mut self.canvas, screen);
+        } else {
+            draw_catalog(&mut self.canvas, screen);
+        }
+        if let Some(modal) = &screen.modal {
+            self.canvas.set_draw_color(rgb(screen.palette.background));
+            self.canvas
+                .fill_rect(Rect::new(180, 190, 664, 300))
+                .map_err(backend_error)?;
+            draw_text(
+                &mut self.canvas,
+                224,
+                236,
+                "MODAL",
+                screen.palette.highlight,
+                3,
+            );
+            draw_text(&mut self.canvas, 224, 292, modal, screen.palette.text, 2);
+        }
+        draw_text(
+            &mut self.canvas,
+            48,
+            706,
+            &screen
+                .controller_help
+                .iter()
+                .map(|binding| format!("{}:{}", button_label(binding.button), binding.label))
+                .collect::<Vec<_>>()
+                .join("  "),
+            screen.palette.text,
+            2,
+        );
         self.canvas.present();
         Ok(())
     }
@@ -387,7 +459,7 @@ impl Platform for HostPlatform {
     fn capture_png(&mut self, path: &Path) -> PlatformResult<()> {
         let pixels = self
             .canvas
-            .read_pixels(None, PixelFormatEnum::RGBA8888)
+            .read_pixels(None, PixelFormatEnum::ABGR8888)
             .map_err(backend_error)?;
         let file = fs::File::create(path).map_err(backend_error)?;
         let mut encoder = Encoder::new(file, 1024, 768);
@@ -563,4 +635,360 @@ impl Platform for HostPlatform {
 
 fn backend_error(error: impl fmt::Display) -> PlatformError {
     PlatformError::Backend(error.to_string())
+}
+
+fn rgb(color: [u8; 4]) -> sdl2::pixels::Color {
+    sdl2::pixels::Color::RGBA(color[0], color[1], color[2], color[3])
+}
+
+fn draw_splash(canvas: &mut Canvas<Window>, screen: &Screen) {
+    draw_text(canvas, 332, 250, "ARTBOOK", screen.palette.accent, 8);
+    draw_text(canvas, 350, 360, "GENERATED SPLASH", screen.palette.text, 3);
+    draw_text(canvas, 368, 420, &screen.splash, screen.palette.muted, 2);
+}
+
+fn draw_fallback(canvas: &mut Canvas<Window>, screen: &Screen) {
+    draw_text(
+        canvas,
+        292,
+        238,
+        "SAFE FALLBACK",
+        screen.palette.highlight,
+        5,
+    );
+    draw_text(
+        canvas,
+        330,
+        330,
+        "GENERATED CONTENT",
+        screen.palette.text,
+        3,
+    );
+    draw_text(canvas, 360, 400, &screen.splash, screen.palette.muted, 2);
+    if let Some(reason) = &screen.theme_fallback {
+        draw_text(canvas, 350, 460, reason, screen.palette.highlight, 2);
+    }
+}
+
+fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
+    if screen.route == "systems" {
+        draw_text(
+            canvas,
+            64,
+            120,
+            &screen.selected_label,
+            screen.palette.background,
+            3,
+        );
+    }
+    let items = if screen.route == "systems" || screen.game_rows.is_empty() {
+        &screen.menu
+    } else {
+        &screen.game_rows
+    };
+    for (index, item) in items.iter().take(8).enumerate() {
+        let y = 92 + index as i32 * 26;
+        let color = if item.selected {
+            screen.palette.highlight
+        } else {
+            screen.palette.text
+        };
+        draw_text(canvas, 448, y, &item.label, color, 2);
+    }
+    if let Some(game) = &screen.selected_game {
+        draw_text(canvas, 548, 372, &game.title, screen.palette.text, 3);
+        draw_text(canvas, 548, 412, &game.description, screen.palette.text, 1);
+        let metadata = format!(
+            "rating {:?}  release {:?}{}",
+            game.rating,
+            game.release_date,
+            if game.favorite { "  favorite" } else { "" }
+        );
+        draw_text(canvas, 548, 468, &metadata, screen.palette.highlight, 2);
+        draw_text(canvas, 62, 372, "BOX ART", screen.palette.background, 3);
+        draw_text(canvas, 260, 404, "SCREENSHOT", screen.palette.background, 2);
+    }
+    if let Some(fallback) = &screen.theme_fallback {
+        draw_text(
+            canvas,
+            64,
+            612,
+            &format!("SAFE FALLBACK {fallback}"),
+            screen.palette.highlight,
+            2,
+        );
+    }
+}
+
+fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
+    let Some(settings) = &screen.settings else {
+        return;
+    };
+    let mut y = 96;
+    for section in &settings.sections {
+        draw_text(
+            canvas,
+            64,
+            y,
+            &section.label_key,
+            screen.palette.highlight,
+            2,
+        );
+        y += 24;
+        for control in &section.controls {
+            let value = format!("{} = {:?}", control.label_key, control.value);
+            draw_text(canvas, 96, y, &value, screen.palette.text, 1);
+            y += 18;
+            if y > 650 {
+                return;
+            }
+        }
+        y += 10;
+    }
+}
+
+fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
+    if let Some(wifi) = &screen.wifi {
+        let mut y = 108;
+        for network in wifi.networks.iter().take(8) {
+            let marker = if network.selected { ">" } else { " " };
+            let row = format!(
+                "{} {} {}%",
+                marker, network.display_ssid, network.signal_quality
+            );
+            draw_text(canvas, 64, y, &row, screen.palette.text, 2);
+            y += 30;
+        }
+        if let Some(keyboard) = &wifi.keyboard {
+            let label = if keyboard.masked {
+                "PASSWORD •••"
+            } else {
+                "NETWORK NAME"
+            };
+            draw_text(canvas, 64, 560, label, screen.palette.highlight, 3);
+        }
+        if wifi.open_confirmation {
+            draw_text(
+                canvas,
+                64,
+                610,
+                "CONFIRM OPEN NETWORK",
+                screen.palette.highlight,
+                2,
+            );
+        }
+    }
+}
+
+fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
+    let scraper = &screen.scraper;
+    draw_text(
+        canvas,
+        64,
+        116,
+        &format!("STATUS {}", scraper.status),
+        screen.palette.text,
+        3,
+    );
+    draw_text(
+        canvas,
+        64,
+        166,
+        &format!("QUEUE {}", scraper.queue_count),
+        screen.palette.text,
+        2,
+    );
+    if let Some(progress) = scraper.progress_percent {
+        draw_text(
+            canvas,
+            64,
+            216,
+            &format!("PROGRESS {}%", progress),
+            screen.palette.highlight,
+            3,
+        );
+    }
+    for (index, candidate) in scraper.ambiguous_candidates.iter().enumerate() {
+        draw_text(
+            canvas,
+            96,
+            280 + index as i32 * 30,
+            candidate,
+            screen.palette.text,
+            2,
+        );
+    }
+}
+
+fn button_label(button: ui_model::Button) -> &'static str {
+    match button {
+        ui_model::Button::Up => "UP",
+        ui_model::Button::Down => "DOWN",
+        ui_model::Button::Left => "LEFT",
+        ui_model::Button::Right => "RIGHT",
+        ui_model::Button::Primary => "A",
+        ui_model::Button::Secondary => "B",
+        ui_model::Button::Start => "START",
+        ui_model::Button::Select => "SELECT",
+        ui_model::Button::Menu => "MENU",
+    }
+}
+
+fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
+    let mut cursor = x;
+    for character in text.chars().take(72) {
+        if character == ' ' {
+            cursor += 6 * scale;
+            continue;
+        }
+        let glyph = glyph(character);
+        canvas.set_draw_color(rgb(color));
+        for (row, line) in glyph.iter().enumerate() {
+            for (column, value) in line.bytes().enumerate() {
+                if value == b'#' {
+                    let _ = canvas.fill_rect(Rect::new(
+                        cursor + column as i32 * scale,
+                        y + row as i32 * scale,
+                        scale as u32,
+                        scale as u32,
+                    ));
+                }
+            }
+        }
+        cursor += 6 * scale;
+    }
+}
+
+fn glyph(character: char) -> [&'static str; 7] {
+    match character.to_ascii_uppercase() {
+        'A' => [
+            ".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+        'B' => [
+            "####.", "#...#", "#...#", "####.", "#...#", "#...#", "####.",
+        ],
+        'C' => [
+            ".####", "#....", "#....", "#....", "#....", "#....", ".####",
+        ],
+        'D' => [
+            "####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####.",
+        ],
+        'E' => [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#####",
+        ],
+        'F' => [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#....",
+        ],
+        'G' => [
+            ".####", "#....", "#....", "#.###", "#...#", "#...#", ".###.",
+        ],
+        'H' => [
+            "#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+        'I' => [
+            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####",
+        ],
+        'J' => [
+            "..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##..",
+        ],
+        'K' => [
+            "#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#",
+        ],
+        'L' => [
+            "#....", "#....", "#....", "#....", "#....", "#....", "#####",
+        ],
+        'M' => [
+            "#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#",
+        ],
+        'N' => [
+            "#...#", "##..#", "##..#", "#.#.#", "#..##", "#..##", "#...#",
+        ],
+        'O' => [
+            ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+        'P' => [
+            "####.", "#...#", "#...#", "####.", "#....", "#....", "#....",
+        ],
+        'Q' => [
+            ".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#",
+        ],
+        'R' => [
+            "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
+        ],
+        'S' => [
+            ".####", "#....", "#....", ".###.", "....#", "....#", "####.",
+        ],
+        'T' => [
+            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
+        ],
+        'U' => [
+            "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+        'V' => [
+            "#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#..",
+        ],
+        'W' => [
+            "#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#",
+        ],
+        'X' => [
+            "#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#",
+        ],
+        'Y' => [
+            "#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#..",
+        ],
+        'Z' => [
+            "#####", "....#", "...#.", "..#..", ".#...", "#....", "#####",
+        ],
+        '0' => [
+            ".###.", "#..##", "#.#.#", "##..#", "#...#", "#...#", ".###.",
+        ],
+        '1' => [
+            "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###.",
+        ],
+        '2' => [
+            ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####",
+        ],
+        '3' => [
+            "####.", "....#", "....#", ".###.", "....#", "....#", "####.",
+        ],
+        '4' => [
+            "...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#.",
+        ],
+        '5' => [
+            "#####", "#....", "#....", "####.", "....#", "....#", "####.",
+        ],
+        '6' => [
+            ".###.", "#....", "#....", "####.", "#...#", "#...#", ".###.",
+        ],
+        '7' => [
+            "#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#...",
+        ],
+        '8' => [
+            ".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###.",
+        ],
+        '9' => [
+            ".###.", "#...#", "#...#", ".####", "....#", "....#", ".###.",
+        ],
+        '-' => [
+            ".....", ".....", ".....", ".###.", ".....", ".....", ".....",
+        ],
+        '%' => [
+            "#...#", "...#.", "..#..", ".#...", "#...#", ".....", ".....",
+        ],
+        '+' => [
+            ".....", "..#..", "..#..", ".###.", "..#..", "..#..", ".....",
+        ],
+        '.' => [
+            ".....", ".....", ".....", ".....", ".....", ".#...", ".#...",
+        ],
+        ':' => [
+            ".....", ".#...", ".#...", ".....", ".#...", ".#...", ".....",
+        ],
+        '>' => [
+            "#....", ".#...", "..#..", "...#.", "..#..", ".#...", "#....",
+        ],
+        _ => [
+            "#####", "#...#", "...#.", "..#..", "...#.", "#...#", "#####",
+        ],
+    }
 }

@@ -1,0 +1,13 @@
+[package]
+name = "launcher-presentation"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+launcher-theme = { path = "../launcher-theme" }
+settings-schema = { path = "../settings-schema" }
+settings-ui = { path = "../settings-ui" }
+ui-model = { path = "../ui-model" }
+wifi-settings-controller = { path = "../wifi-settings-controller" }
+serde.workspace = true

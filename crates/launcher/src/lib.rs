@@ -16,13 +16,20 @@ use launch_contract::{
     InputSettings, LaunchKind, LaunchRequest, LogicalPath, PathRoot, PowerSettings, ResumeMode,
     Scaling, SuspendMode, VersionedId,
 };
+use launcher_presentation::Screen as PresentationScreen;
+use launcher_theme::ValidatedTheme;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use settings_schema::{ProjectionContext, Registry};
+use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
 use sim_platform_contract::{
-    Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, Screen,
-    StorageMode, SuspendResult, SuspendState,
+    Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, StorageMode,
+    SuspendResult, SuspendState,
 };
+use ui_model::{Action as UiAction, PlatformCapabilities as UiCapabilities};
+use wifi_manager::{GeneratedWifiBackend, WifiManager};
+use wifi_settings_controller::{Metadata as WifiMetadata, WifiSettingsController};
 
 const LANE: &str = "host-native userspace simulator";
 const SESSION_ID: &str = "run-local";
@@ -31,6 +38,11 @@ const LAUNCH_CATALOG_BYTES: &[u8] =
 const GENERATED_CONTENT_SHA256: &str =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const MAX_GENERATED_ENTRIES: usize = 32;
+const SETTINGS_REGISTRY_BYTES: &[u8] =
+    include_bytes!("../../../fixtures/settings-schema/registry-v1.json");
+const WIFI_METADATA_BYTES: &[u8] =
+    include_bytes!("../../../fixtures/wifi-settings-controller/generated-v1/workflow.json");
+const WIFI_FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/wifi-manager/journeys.json");
 const FAULTS: &[&str] = &[
     "adapter-fail",
     "adapter-crash",
@@ -95,6 +107,90 @@ struct AppState {
     modal: Option<String>,
     faults: Vec<String>,
     readiness_generation: u64,
+    presentation: PresentationState,
+}
+
+struct PresentationState {
+    ui: ui_model::UiState,
+    theme: ValidatedTheme,
+    theme_fallback: Option<launcher_theme::Reason>,
+    settings: SettingsUi,
+    wifi: WifiSettingsController,
+}
+
+impl PresentationState {
+    fn new() -> Result<Self> {
+        let mut ui = ui_model::UiState::generated();
+        ui = ui_model::reduce(
+            &ui,
+            UiAction::SetCapabilities(UiCapabilities {
+                catalog: true,
+                favorites: true,
+                settings_persistence: true,
+                session: true,
+                scraper: true,
+                wifi: true,
+            }),
+        );
+        let registry = Registry::from_json(SETTINGS_REGISTRY_BYTES)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let mut context = ProjectionContext::default();
+        context.capabilities.extend([
+            "audio".into(),
+            "network".into(),
+            "theme-engine".into(),
+            "wifi".into(),
+            "scraper".into(),
+        ]);
+        let settings =
+            SettingsUi::new(registry, context).map_err(|error| anyhow!(error.to_string()))?;
+        let projection = settings
+            .scene()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let entries = projection
+            .sections
+            .iter()
+            .flat_map(|section| section.groups.iter())
+            .flat_map(|group| group.controls.iter())
+            .map(|control| ui_model::MenuEntry {
+                id: ui_model::MenuId::new(control.setting_id.clone()),
+                label: control.label_key.clone(),
+                command: ui_model::MenuCommand::Navigate(ui_model::Route::Settings),
+                enabled: control.enabled,
+                disabled_reason: None,
+                selected: false,
+            })
+            .collect();
+        ui = ui_model::reduce(&ui, UiAction::SetSettingsMenuProjection { entries });
+        let metadata = WifiMetadata::from_json(WIFI_METADATA_BYTES)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let backend = GeneratedWifiBackend::from_json(WIFI_FIXTURE_BYTES)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let wifi = WifiSettingsController::new(metadata, WifiManager::new(backend), true)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        Ok(Self {
+            ui,
+            theme: launcher_theme::safe_artbook().map_err(|error| anyhow!(error.to_string()))?,
+            theme_fallback: None,
+            settings,
+            wifi,
+        })
+    }
+
+    fn screen(&self) -> Result<PresentationScreen> {
+        let settings = self
+            .settings
+            .scene()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let wifi = self.wifi.snapshot();
+        Ok(launcher_presentation::build(
+            &self.ui,
+            &self.theme,
+            self.theme_fallback,
+            Some(&settings),
+            Some(&wifi),
+        ))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,6 +266,12 @@ struct AdapterArgs {
 #[serde(deny_unknown_fields)]
 struct ArtifactArgs {
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PresentationArgs {
+    action: String,
 }
 
 const MAX_ADAPTER_VALUE: i32 = 1_000_000;
@@ -286,8 +388,11 @@ fn run_session<P: Platform>(
         modal: None,
         faults: Vec::new(),
         readiness_generation: 1,
+        presentation: PresentationState::new()?,
     };
-    let screen = make_screen(&state.route, &catalog, state.selected_index);
+    refresh_presentation_affordances(&mut state.presentation, &platform)
+        .map_err(|error| anyhow!(error))?;
+    let screen = state.presentation.screen()?;
 
     present(&mut platform, &screen)?;
     let first_frame_us = startup_started.elapsed().as_micros();
@@ -331,6 +436,7 @@ fn run_session<P: Platform>(
         "screenshot",
     )
     .map_err(|error| anyhow!(error))?;
+    state.presentation.ui = ui_model::reduce(&state.presentation.ui, UiAction::FinishSplash);
     let initial_selection = route_selection(&state.route, &catalog, state.selected_index);
     write_route(&evidence.root, &state.route, initial_selection)?;
     emit_route_selection(
@@ -465,6 +571,7 @@ fn handle_request<P: Platform>(
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
             apply_hardware(platform, log, args)?;
+            refresh_presentation_affordances(&mut state.presentation, platform)?;
             state_json(platform, evidence, log, catalog, state)
         }),
         "fault.set" => parse::<FaultArgs>(request.args).and_then(|args| {
@@ -475,6 +582,15 @@ fn handle_request<P: Platform>(
             adapter_result(log, state, args)?;
             write_session(&evidence.root, session_state(state))
                 .map_err(|error| error.to_string())?;
+            state_json(platform, evidence, log, catalog, state)
+        }),
+        "presentation" => parse::<PresentationArgs>(request.args).and_then(|args| {
+            presentation_action(state, args)?;
+            let screen = state
+                .presentation
+                .screen()
+                .map_err(|error| error.to_string())?;
+            present(platform, &screen).map_err(|error| error.to_string())?;
             state_json(platform, evidence, log, catalog, state)
         }),
         "screenshot" => parse::<ArtifactArgs>(request.args).and_then(|args| {
@@ -508,6 +624,236 @@ fn handle_request<P: Platform>(
         Err(message) => control::send_error(&mut stream, &id, "protocol_rejected", &message)?,
     }
     Ok(())
+}
+
+fn refresh_presentation_affordances<P: Platform>(
+    state: &mut PresentationState,
+    platform: &P,
+) -> Result<(), String> {
+    let snapshot = platform.snapshot().map_err(|error| error.to_string())?;
+    let mut affordances = state.ui.affordances.clone();
+    affordances.battery.percent = snapshot.battery_level_percent;
+    affordances.battery.charging = snapshot.charging;
+    state.ui = ui_model::reduce(&state.ui, UiAction::SetAffordances(affordances));
+    Ok(())
+}
+
+fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(), String> {
+    use ui_model::{Action, AmbiguousChoice, GameId, ScraperAction, ScraperProgress, WifiAction};
+
+    let action = args.action.as_str();
+    match action {
+        "home" => reduce_route(state, ui_model::Route::Home),
+        "systems" => reduce_route(state, ui_model::Route::Systems),
+        "games" => reduce_route(state, ui_model::Route::Games),
+        "favorites" => reduce_route(state, ui_model::Route::Favorites),
+        "search" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::SetSearchQuery {
+                    query: "Generated".into(),
+                },
+            );
+        }
+        "settings" => reduce_route(state, ui_model::Route::Settings),
+        "settings-form" => {
+            reduce_route(state, ui_model::Route::Settings);
+            state
+                .presentation
+                .settings
+                .press(virtual_keyboard::Button::Primary)
+                .map_err(|e| e.to_string())?;
+        }
+        "recovery" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::ShowFallback {
+                    reason: ui_model::FallbackReason::MissingContent,
+                },
+            );
+        }
+        "modal" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::ShowModal(ui_model::ModalState::Info {
+                    title: "Generated notice".into(),
+                    message: "Project-authored simulator modal".into(),
+                }),
+            );
+        }
+        "scraper-settings" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenSettings),
+            )
+        }
+        "scraper-game" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenGame {
+                    game_id: GameId::new("generated-game-01"),
+                }),
+            )
+        }
+        "scraper-queue" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::QueueGame {
+                    game_id: GameId::new("generated-game-01"),
+                }),
+            )
+        }
+        "scraper-progress" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenBulkQueue),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::SetProgress(ScraperProgress {
+                    completed: 1,
+                    total: 3,
+                    paused: false,
+                })),
+            )
+        }
+        "scraper-paused" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::Pause),
+            )
+        }
+        "scraper-resumed" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::Resume),
+            )
+        }
+        "scraper-ambiguity" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::OpenAmbiguousChoice(AmbiguousChoice {
+                    game_id: GameId::new("generated-game-01"),
+                    candidates: vec!["Generated Match A".into(), "Generated Match B".into()],
+                })),
+            )
+        }
+        "scraper-complete" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::Complete),
+            )
+        }
+        "scraper-cancel" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Scraper(ScraperAction::Cancel),
+            )
+        }
+        "wifi-scan" => {
+            state.presentation.wifi.scan().map_err(|e| e.to_string())?;
+            state.presentation.ui =
+                ui_model::reduce(&state.presentation.ui, Action::Wifi(WifiAction::OpenScan));
+        }
+        "wifi-access-points" => {
+            state.presentation.wifi.scan().map_err(|e| e.to_string())?;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::SetAccessPoints {
+                    access_points: wifi_access_points(&state.presentation.wifi),
+                }),
+            );
+        }
+        "wifi-password" => {
+            state.presentation.wifi.scan().map_err(|e| e.to_string())?;
+            state
+                .presentation
+                .wifi
+                .press(virtual_keyboard::Button::Primary)
+                .map_err(|e| e.to_string())?;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::EnterSsid {
+                    mode: ui_model::SsidEntryMode::Manual,
+                    ssid: "Home Synthetic".into(),
+                }),
+            );
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::RequestMaskedPasswordKeyboard {
+                    ssid: "Home Synthetic".into(),
+                }),
+            );
+        }
+        "wifi-hidden" => {
+            state
+                .presentation
+                .wifi
+                .open_manual()
+                .map_err(|e| e.to_string())?;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::OpenHiddenNetwork),
+            );
+        }
+        "wifi-manual" => {
+            state
+                .presentation
+                .wifi
+                .open_manual()
+                .map_err(|e| e.to_string())?;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::OpenManualSsid),
+            );
+        }
+        "wifi-progress" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::Connect {
+                    ssid: "Home Synthetic".into(),
+                }),
+            )
+        }
+        "wifi-error" => {
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::Wifi(WifiAction::Error {
+                    message: "generated-radio-unavailable".into(),
+                }),
+            )
+        }
+        "fallback" => {
+            state.presentation.theme_fallback = Some(launcher_theme::Reason::MissingTheme);
+            state.presentation.ui = ui_model::reduce(&state.presentation.ui, Action::DismissModal);
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                Action::ShowFallback {
+                    reason: ui_model::FallbackReason::InvalidState,
+                },
+            );
+        }
+        _ => return Err("presentation action is not allowlisted".into()),
+    }
+    Ok(())
+}
+
+fn reduce_route(state: &mut AppState, route: ui_model::Route) {
+    state.presentation.ui =
+        ui_model::reduce(&state.presentation.ui, ui_model::Action::Navigate(route));
+}
+
+fn wifi_access_points(state: &WifiSettingsController) -> Vec<ui_model::AccessPoint> {
+    state
+        .snapshot()
+        .networks
+        .into_iter()
+        .map(|network| ui_model::AccessPoint {
+            ssid: network.display_ssid,
+            signal_percent: network.signal_quality,
+            secured: network.security != wifi_manager::Security::Open,
+        })
+        .collect()
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(args: Value) -> Result<T, String> {
@@ -694,6 +1040,7 @@ fn handle_button<P: Platform>(
         return Ok(());
     }
 
+    handle_presentation_button(&mut state.presentation, event.button)?;
     let input_started = Instant::now();
     let mut route_changed = false;
     let mut selection_changed = false;
@@ -751,11 +1098,22 @@ fn handle_button<P: Platform>(
         }
         _ => {}
     }
+    if route_changed {
+        let presentation_route = match state.route {
+            Route::Library | Route::Catalog => ui_model::Route::Home,
+            Route::Systems => ui_model::Route::Systems,
+            Route::Games | Route::Session => ui_model::Route::Games,
+        };
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::Navigate(presentation_route),
+        );
+    }
     if route_changed || selection_changed {
         let selection = route_selection(&state.route, catalog, state.selected_index);
         emit_route_selection(log, event.at_ms, &state.route, selection)?;
     }
-    let screen = make_screen(&state.route, catalog, state.selected_index);
+    let screen = state.presentation.screen()?;
     present(platform, &screen)?;
     log.emit(
         "input_to_frame",
@@ -824,7 +1182,10 @@ fn state_json<P: Platform>(
     state: &AppState,
 ) -> Result<Value, String> {
     let _ = evidence;
-    let _ = catalog;
+    let presentation = state
+        .presentation
+        .screen()
+        .map_err(|error| error.to_string())?;
     Ok(json!({
         "schema": "sim-state/v1",
         "runId": log.run_id,
@@ -835,6 +1196,7 @@ fn state_json<P: Platform>(
         "readinessGeneration": state.readiness_generation,
         "hardware": hardware_json(&platform.hardware_state().map_err(|error| error.to_string())?),
         "faults": state.faults,
+        "presentation": presentation,
     }))
 }
 
@@ -943,16 +1305,50 @@ fn launch_request(entry: &sim_domain::CatalogEntry) -> LaunchRequest {
     }
 }
 
-fn make_screen(route: &Route, catalog: &UiCatalog, selected_index: usize) -> Screen {
-    Screen {
-        route: route.clone(),
-        selection: catalog.entries[selected_index].clone(),
-        selected_index,
-        entry_count: catalog.entries.len(),
+fn handle_presentation_button(state: &mut PresentationState, button: Button) -> Result<()> {
+    if matches!(state.ui.route, ui_model::Route::Settings) {
+        state
+            .settings
+            .press(to_keyboard_button(button))
+            .map_err(|error| anyhow!(error.to_string()))?;
+        return Ok(());
+    }
+    if matches!(state.ui.route, ui_model::Route::Wifi(_)) {
+        state
+            .wifi
+            .press(to_keyboard_button(button))
+            .map_err(|error| anyhow!(error.to_string()))?;
+        return Ok(());
+    }
+    let action = match button {
+        Button::Up => UiAction::MoveSelection(ui_model::Direction::Up),
+        Button::Down => UiAction::MoveSelection(ui_model::Direction::Down),
+        Button::Left => UiAction::MoveSelection(ui_model::Direction::Left),
+        Button::Right => UiAction::MoveSelection(ui_model::Direction::Right),
+        Button::Primary => UiAction::ActivateSelected,
+        Button::Secondary => UiAction::Back,
+        Button::Start => UiAction::Navigate(ui_model::Route::Home),
+        Button::Select | Button::Menu => UiAction::SetFocus(ui_model::FocusTarget::Menu),
+    };
+    state.ui = ui_model::reduce(&state.ui, action);
+    Ok(())
+}
+
+fn to_keyboard_button(button: Button) -> virtual_keyboard::Button {
+    match button {
+        Button::Up => virtual_keyboard::Button::Up,
+        Button::Down => virtual_keyboard::Button::Down,
+        Button::Left => virtual_keyboard::Button::Left,
+        Button::Right => virtual_keyboard::Button::Right,
+        Button::Primary => virtual_keyboard::Button::Primary,
+        Button::Secondary => virtual_keyboard::Button::Secondary,
+        Button::Start => virtual_keyboard::Button::Start,
+        Button::Select => virtual_keyboard::Button::Select,
+        Button::Menu => virtual_keyboard::Button::Menu,
     }
 }
 
-fn present<P: Platform>(platform: &mut P, screen: &Screen) -> Result<()> {
+fn present<P: Platform>(platform: &mut P, screen: &PresentationScreen) -> Result<()> {
     platform.present(screen).map_err(|error| anyhow!("{error}"))
 }
 

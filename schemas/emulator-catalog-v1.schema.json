@@ -40,6 +40,30 @@
       "type": "object", "additionalProperties": false, "required": ["id", "sha256"],
       "properties": {"id": {"$ref": "#/$defs/id"}, "sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}}
     },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "sourceUrl", "sourceRef", "licenseUrl", "status", "availability"],
+      "properties": {"name": {"type": "string", "minLength": 1}, "sourceUrl": {"$ref": "#/$defs/url"}, "sourceRef": {"type": "string", "minLength": 40, "maxLength": 40, "pattern": "^[a-f0-9]{40}$"}, "licenseUrl": {"$ref": "#/$defs/url"}, "status": {"const": "unverified"}, "availability": {"const": "metadata-only"}}
+    },
+    "experimental": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate", "evidenceLane", "baseline"],
+      "properties": {
+        "candidate": {"$ref": "#/$defs/candidate"},
+        "evidenceLane": {"const": "public-metadata-only"},
+        "baseline": {"type": "object", "additionalProperties": false, "required": ["internalScale", "postProcessing", "speedhack"], "properties": {"internalScale": {"const": "native-1x"}, "postProcessing": {"const": false}, "speedhack": {"const": false}}}
+      }
+    },
+    "settingsDelta": {
+      "type": "object", "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {"displayWidth": {"type": "integer", "minimum": 1}, "displayHeight": {"type": "integer", "minimum": 1}, "displayMode": {"enum": ["integer", "fit"]}, "frameSkip": {"type": "integer", "minimum": 0, "maximum": 10}, "rumble": {"type": "boolean"}, "audioLatencyMs": {"type": "integer", "minimum": 0}}
+    },
+    "gameDelta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contentId", "systemId", "runner", "core", "settings", "reversible", "status"],
+      "properties": {"contentId": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"}, "systemId": {"$ref": "#/$defs/id"}, "runner": {"$ref": "#/$defs/ref"}, "core": {"$ref": "#/$defs/ref"}, "settings": {"$ref": "#/$defs/settingsDelta"}, "reversible": {"const": true}, "status": {"const": "unverified"}}
+    },
     "limits": {
       "type": "object", "additionalProperties": false,
       "required": ["maxWidth", "maxHeight", "maxControllers", "maxAudioChannels"],
@@ -52,7 +76,13 @@
     },
     "bios": {
       "type": "object", "additionalProperties": false, "required": ["id", "expectedSha256", "locations"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "expectedSha256": {"$ref": "#/$defs/hash"}, "locations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/path"}}}
+      "properties": {"id": {"$ref": "#/$defs/id"}, "expectedSha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "locations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/path"}}, "status": {"const": "required-unverified"}}
+    },
+    "stableBios": {
+      "allOf": [{"$ref": "#/$defs/bios"}, {"type": "object", "required": ["expectedSha256"], "properties": {"expectedSha256": {"$ref": "#/$defs/hash"}}, "not": {"required": ["status"]}}]
+    },
+    "experimentalBios": {
+      "allOf": [{"$ref": "#/$defs/bios"}, {"type": "object", "required": ["expectedSha256", "status"], "properties": {"expectedSha256": {"type": "null"}, "status": {"const": "required-unverified"}}}]
     },
     "system": {
       "allOf": [
@@ -60,8 +90,12 @@
         {"type": "object", "required": ["$schema", "format", "schemaVersion", "kind", "id", "displayName", "targetSku", "channel", "extensions", "biosRequirements", "runtimeRequirements", "defaultRunner", "defaultCore", "savePath", "statePath", "capabilities", "deviceLimits", "settingsDefaults", "licenseProvenanceUrl"], "properties": {
           "kind": {"const": "system"}, "id": {"$ref": "#/$defs/id"}, "displayName": {"type": "string", "minLength": 1}, "targetSku": {"const": "TG4040"}, "channel": {"$ref": "#/$defs/channelName"},
           "extensions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9+_-]{0,15}$"}},
-          "biosRequirements": {"type": "array", "items": {"$ref": "#/$defs/bios"}}, "runtimeRequirements": {"type": "array", "items": {"type": "string"}}, "defaultRunner": {"$ref": "#/$defs/ref"}, "defaultCore": {"anyOf": [{"$ref": "#/$defs/ref"}, {"type": "null"}]}, "savePath": {"$ref": "#/$defs/path"}, "statePath": {"$ref": "#/$defs/path"}, "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}, "deviceLimits": {"$ref": "#/$defs/limits"}, "settingsDefaults": {"$ref": "#/$defs/defaults"}, "licenseProvenanceUrl": {"$ref": "#/$defs/url"}
-        }}
+          "biosRequirements": {"type": "array", "items": {"$ref": "#/$defs/bios"}}, "runtimeRequirements": {"type": "array", "items": {"type": "string"}}, "defaultRunner": {"$ref": "#/$defs/ref"}, "defaultCore": {"anyOf": [{"$ref": "#/$defs/ref"}, {"type": "null"}]}, "savePath": {"$ref": "#/$defs/path"}, "statePath": {"$ref": "#/$defs/path"}, "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}, "deviceLimits": {"$ref": "#/$defs/limits"}, "settingsDefaults": {"$ref": "#/$defs/defaults"}, "licenseProvenanceUrl": {"$ref": "#/$defs/url"}, "experimental": {"anyOf": [{"$ref": "#/$defs/experimental"}, {"type": "null"}]}
+        },
+        "allOf": [
+          {"if": {"required": ["channel"], "properties": {"channel": {"const": "stable"}}}, "then": {"not": {"required": ["experimental"]}, "properties": {"biosRequirements": {"items": {"$ref": "#/$defs/stableBios"}}}}},
+          {"if": {"required": ["channel", "id"], "properties": {"channel": {"const": "experimental"}, "id": {"not": {"const": "tg4040-lab"}}}}, "then": {"required": ["experimental"], "properties": {"experimental": {"$ref": "#/$defs/experimental"}, "biosRequirements": {"items": {"$ref": "#/$defs/experimentalBios"}}}}}
+        ]}
       ],
       "unevaluatedProperties": false
     },
@@ -87,8 +121,9 @@
       "allOf": [
         {"$ref": "#/$defs/header"},
         {"type": "object", "required": ["$schema", "format", "schemaVersion", "kind", "id", "systemId", "capabilities", "channel"], "properties": {
-          "kind": {"const": "profile"}, "id": {"$ref": "#/$defs/id"}, "systemId": {"$ref": "#/$defs/id"}, "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}, "channel": {"$ref": "#/$defs/channelName"}
-        }}
+          "kind": {"const": "profile"}, "id": {"$ref": "#/$defs/id"}, "systemId": {"$ref": "#/$defs/id"}, "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}, "channel": {"$ref": "#/$defs/channelName"}, "gameDeltas": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/gameDelta"}}
+        }},
+        {"if": {"required": ["channel"], "properties": {"channel": {"const": "stable"}}}, "then": {"not": {"required": ["gameDeltas"]}}}
       ],
       "unevaluatedProperties": false
     },

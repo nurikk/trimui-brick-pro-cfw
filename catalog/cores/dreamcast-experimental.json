@@ -1,0 +1,24 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "core",
+  "id": "dreamcast-flycast-core",
+  "version": "0.1.0",
+  "runnerId": "dreamcast-flycast-runner",
+  "runnerVersion": "0.1.0",
+  "supportedSystems": [
+    "dreamcast"
+  ],
+  "supportedContent": [
+    "cdi"
+  ],
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "licenseProvenanceUrl": "https://github.com/flyinghead/flycast",
+  "channel": "experimental"
+}

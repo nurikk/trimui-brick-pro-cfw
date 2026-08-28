@@ -107,7 +107,7 @@ impl LogicalPath {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct VersionedId {
     pub id: String,
@@ -119,6 +119,64 @@ pub struct VersionedId {
 pub struct Artifact {
     pub id: String,
     pub sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CandidateStatus {
+    Unverified,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CandidateAvailability {
+    MetadataOnly,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamCandidate {
+    pub name: String,
+    #[serde(rename = "sourceUrl")]
+    pub source_url: String,
+    #[serde(rename = "sourceRef")]
+    pub source_ref: String,
+    #[serde(rename = "licenseUrl")]
+    pub license_url: String,
+    pub status: CandidateStatus,
+    pub availability: CandidateAvailability,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceLane {
+    PublicMetadataOnly,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum InternalScale {
+    #[serde(rename = "native-1x")]
+    Native1x,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalBaseline {
+    #[serde(rename = "internalScale")]
+    pub internal_scale: InternalScale,
+    #[serde(rename = "postProcessing")]
+    pub post_processing: bool,
+    pub speedhack: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalMetadata {
+    pub candidate: UpstreamCandidate,
+    #[serde(rename = "evidenceLane")]
+    pub evidence_lane: EvidenceLane,
+    pub baseline: ExperimentalBaseline,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
@@ -149,9 +207,17 @@ pub struct DeviceLimits {
 #[serde(deny_unknown_fields)]
 pub struct BiosRequirement {
     pub id: String,
-    #[serde(rename = "expectedSha256")]
-    pub expected_sha256: String,
+    #[serde(default, rename = "expectedSha256")]
+    pub expected_sha256: Option<String>,
     pub locations: Vec<LogicalPath>,
+    #[serde(default)]
+    pub status: Option<BiosStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum BiosStatus {
+    RequiredUnverified,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -185,6 +251,37 @@ pub struct SettingsDelta {
     pub rumble: Option<bool>,
     #[serde(rename = "audioLatencyMs", default)]
     pub audio_latency_ms: Option<u16>,
+}
+
+impl SettingsDelta {
+    fn is_empty(&self) -> bool {
+        self.display_width.is_none()
+            && self.display_height.is_none()
+            && self.display_mode.is_none()
+            && self.frame_skip.is_none()
+            && self.rumble.is_none()
+            && self.audio_latency_ms.is_none()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeltaStatus {
+    Unverified,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameDelta {
+    #[serde(rename = "contentId")]
+    pub content_id: String,
+    #[serde(rename = "systemId")]
+    pub system_id: String,
+    pub runner: VersionedId,
+    pub core: VersionedId,
+    pub settings: SettingsDelta,
+    pub reversible: bool,
+    pub status: DeltaStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -229,6 +326,8 @@ pub struct System {
     pub settings_defaults: SettingsDefaults,
     #[serde(rename = "licenseProvenanceUrl")]
     pub license_provenance_url: String,
+    #[serde(default)]
+    pub experimental: Option<ExperimentalMetadata>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -294,6 +393,8 @@ pub struct Profile {
     pub system_id: String,
     pub capabilities: Vec<Capability>,
     pub channel: ChannelName,
+    #[serde(rename = "gameDeltas", default)]
+    pub game_deltas: Vec<GameDelta>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -398,6 +499,7 @@ impl Catalog {
                 "stable and experimental channels are required",
             ));
         }
+        validate_channel_identities(self)?;
         for system in &self.systems {
             validate_common(
                 &system.schema,
@@ -438,10 +540,41 @@ impl Catalog {
             validate_limits(&system.device_limits)?;
             validate_defaults(&system.settings_defaults)?;
             validate_url(&system.license_provenance_url)?;
+            if system.channel == ChannelName::Experimental && system.id != "tg4040-lab" {
+                validate_experimental(system.experimental.as_ref())?;
+                let runner = self.runner(&system.default_runner)?;
+                if runner.channel != ChannelName::Experimental || runner.artifact.sha256.is_some() {
+                    return Err(CatalogError::new(
+                        "artifact_unpinned",
+                        "experimental candidate runner must be metadata-only and hash-free",
+                    ));
+                }
+            } else if system.experimental.is_some() {
+                return Err(CatalogError::new(
+                    "channel_leak",
+                    "stable system contains experimental metadata",
+                ));
+            }
             let mut ids = BTreeSet::new();
             for requirement in &system.bios_requirements {
                 validate_id(&requirement.id, "BIOS requirement")?;
-                validate_hash(&requirement.expected_sha256)?;
+                if let Some(hash) = requirement.expected_sha256.as_deref() {
+                    validate_hash(hash)?;
+                } else if system.channel == ChannelName::Stable {
+                    return Err(CatalogError::new(
+                        "bios_unresolved",
+                        "stable BIOS requirement has no SHA-256 pin",
+                    ));
+                }
+                if system.channel == ChannelName::Experimental
+                    && (requirement.expected_sha256.is_some()
+                        || requirement.status != Some(BiosStatus::RequiredUnverified))
+                {
+                    return Err(CatalogError::new(
+                        "bios_unresolved",
+                        "experimental BIOS requirement must be explicitly unverified and hash-free",
+                    ));
+                }
                 if requirement.locations.is_empty() {
                     return Err(CatalogError::new(
                         "bios_unresolved",
@@ -491,10 +624,14 @@ impl Catalog {
                 ));
             }
             validate_id(&runner.artifact.id, "artifact")?;
-            let hash = runner.artifact.sha256.as_deref().ok_or_else(|| {
-                CatalogError::new("artifact_unpinned", "runner artifact has no SHA-256 pin")
-            })?;
-            validate_hash(hash)?;
+            if let Some(hash) = runner.artifact.sha256.as_deref() {
+                validate_hash(hash)?;
+            } else if runner.channel == ChannelName::Stable {
+                return Err(CatalogError::new(
+                    "artifact_unpinned",
+                    "stable runner artifact has no SHA-256 pin",
+                ));
+            }
             if runner.supported_systems.is_empty() || runner.supported_content.is_empty() {
                 return Err(CatalogError::new(
                     "unsupported_scope",
@@ -578,6 +715,7 @@ impl Catalog {
             validate_id(&profile.id, "profile")?;
             validate_id(&profile.system_id, "profile system")?;
             validate_capabilities(&profile.capabilities)?;
+            validate_game_deltas(self, profile)?;
         }
         unique_ids(self.profiles.iter().map(|e| &e.id), "profile")?;
         for channel in &self.channels {
@@ -587,7 +725,15 @@ impl Catalog {
         let experimental = self.channel(ChannelName::Experimental)?;
         let stable_keys = channel_keys(stable);
         let experimental_keys = channel_keys(experimental);
-        if !stable_keys.is_disjoint(&experimental_keys) {
+        let stable_paths = channel_paths(self, stable)?;
+        let experimental_paths = channel_paths(self, experimental)?;
+        if !stable_keys.is_disjoint(&experimental_keys)
+            || stable_paths.iter().any(|stable| {
+                experimental_paths
+                    .iter()
+                    .any(|experimental| paths_overlap(stable, experimental))
+            })
+        {
             return Err(CatalogError::new(
                 "channel_leak",
                 "stable and experimental selections overlap",
@@ -721,7 +867,31 @@ impl Catalog {
             ));
         }
         let channel = self.channel(fixture.channel.clone())?;
+        if channel.id == ChannelName::Experimental && !fixture.experimental_opt_in {
+            return Err(CatalogError::new(
+                "experimental_opt_in",
+                "experimental selection requires explicit opt-in",
+            ));
+        }
         let system = self.system(&fixture.system_id)?;
+        if channel.id == ChannelName::Experimental
+            && !system.bios_requirements.is_empty()
+            && !fixture.bios_ready
+        {
+            return Err(CatalogError::new(
+                "bios_missing",
+                "required BIOS is missing or mismatched",
+            ));
+        }
+        if fixture.renderer.is_some() {
+            return Err(CatalogError::new(
+                "unsupported_renderer",
+                "requested renderer is unsupported or unverified",
+            ));
+        }
+        if let Some(content_id) = &fixture.content_id {
+            validate_content_id(content_id)?;
+        }
         if !channel.systems.contains(&system.id) {
             return Err(CatalogError::new(
                 "unavailable_system",
@@ -839,6 +1009,16 @@ impl Catalog {
             validate_folder(folder, &content, &mut previous)?;
             settings.apply(&folder.settings, SettingLayer::Folder);
         }
+        if let Some(content_id) = &fixture.content_id {
+            if let Some(delta) = profile.game_deltas.iter().find(|delta| {
+                &delta.content_id == content_id
+                    && delta.runner == runner_ref
+                    && core_ref.as_ref() == Some(&delta.core)
+            }) {
+                settings.apply(&delta.settings, SettingLayer::Game);
+            }
+        }
+
         settings.apply(&fixture.overrides.game, SettingLayer::Game);
         settings.apply(&fixture.overrides.session, SettingLayer::Session);
         if settings.display_width.value > system.device_limits.max_width
@@ -867,24 +1047,31 @@ impl Catalog {
                 let mut present = 0;
                 let mut missing = 0;
                 let mut mismatch = 0;
+                let mut unverified = 0;
                 for location in &requirement.locations {
                     let path = logical_host_path(root.as_ref(), location)?;
-                    match hash_file(&path) {
-                        Ok(hash) if hash == requirement.expected_sha256 => present += 1,
-                        Ok(_) => mismatch += 1,
-                        Err(error) if error.kind() == io::ErrorKind::NotFound => missing += 1,
-                        Err(error) => {
-                            return Err(CatalogError::new(
-                                "bios_io",
-                                format!("BIOS audit read failed: {error}"),
-                            ))
-                        }
+                    match requirement.expected_sha256.as_deref() {
+                        Some(expected) => match hash_file(&path) {
+                            Ok(hash) if hash == expected => present += 1,
+                            Ok(_) => mismatch += 1,
+                            Err(error) if error.kind() == io::ErrorKind::NotFound => missing += 1,
+                            Err(error) => {
+                                return Err(CatalogError::new(
+                                    "bios_io",
+                                    format!("BIOS audit read failed: {error}"),
+                                ))
+                            }
+                        },
+                        None if path.exists() => unverified += 1,
+                        None => missing += 1,
                     }
                 }
                 let status = if present > 0 {
                     "present"
                 } else if mismatch > 0 {
                     "mismatch"
+                } else if unverified > 0 {
+                    "unverified"
                 } else {
                     "missing"
                 };
@@ -893,6 +1080,7 @@ impl Catalog {
                     present,
                     missing,
                     mismatch,
+                    unverified,
                     status: status.to_string(),
                 });
             }
@@ -1042,6 +1230,100 @@ fn validate_defaults(defaults: &SettingsDefaults) -> Result<()> {
     }
     Ok(())
 }
+
+fn validate_experimental(metadata: Option<&ExperimentalMetadata>) -> Result<()> {
+    let metadata = metadata.ok_or_else(|| {
+        CatalogError::new(
+            "experimental_metadata",
+            "experimental system is missing candidate metadata",
+        )
+    })?;
+    if metadata.candidate.name.is_empty()
+        || metadata.candidate.source_ref.len() != 40
+        || !metadata
+            .candidate
+            .source_ref
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(CatalogError::new(
+            "experimental_metadata",
+            "candidate name or source pin is invalid",
+        ));
+    }
+    validate_url(&metadata.candidate.source_url)?;
+    validate_url(&metadata.candidate.license_url)?;
+    if metadata.candidate.status != CandidateStatus::Unverified
+        || metadata.evidence_lane != EvidenceLane::PublicMetadataOnly
+        || metadata.candidate.availability != CandidateAvailability::MetadataOnly
+        || metadata.baseline.internal_scale != InternalScale::Native1x
+        || metadata.baseline.post_processing
+        || metadata.baseline.speedhack
+    {
+        return Err(CatalogError::new(
+            "experimental_metadata",
+            "experimental metadata is not explicitly conservative and unverified",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_content_id(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b':' | b'_' | b'-'))
+    {
+        return Err(CatalogError::new(
+            "invalid_content_id",
+            "content ID must be an opaque portable token",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_game_deltas(catalog: &Catalog, profile: &Profile) -> Result<()> {
+    if profile.channel == ChannelName::Stable && !profile.game_deltas.is_empty() {
+        return Err(CatalogError::new(
+            "channel_leak",
+            "stable profile contains experimental game deltas",
+        ));
+    }
+    let mut content_ids = BTreeSet::new();
+    for delta in &profile.game_deltas {
+        validate_content_id(&delta.content_id)?;
+        if !content_ids.insert(&delta.content_id)
+            || !delta.reversible
+            || delta.status != DeltaStatus::Unverified
+            || delta.settings.is_empty()
+        {
+            return Err(CatalogError::new(
+                "invalid_game_delta",
+                "game delta must be unique, non-empty, reversible, and unverified",
+            ));
+        }
+        if delta.system_id != profile.system_id
+            || delta.runner != catalog.system(&profile.system_id)?.default_runner
+        {
+            return Err(CatalogError::new(
+                "invalid_game_delta",
+                "game delta does not match the system runner pin",
+            ));
+        }
+        let system = catalog.system(&delta.system_id)?;
+        if system.default_core.as_ref() != Some(&delta.core)
+            || catalog.runner(&delta.runner)?.channel != ChannelName::Experimental
+            || catalog.core(&delta.core)?.channel != ChannelName::Experimental
+        {
+            return Err(CatalogError::new(
+                "invalid_game_delta",
+                "game delta does not match the experimental core pin",
+            ));
+        }
+    }
+    Ok(())
+}
 fn validate_ref(reference: &VersionedId, label: &str) -> Result<()> {
     validate_id(&reference.id, label)?;
     validate_version(&reference.version, label)
@@ -1084,20 +1366,43 @@ fn channel_keys(channel: &Channel) -> BTreeSet<String> {
         .systems
         .iter()
         .map(|x| format!("system:{x}"))
-        .chain(
-            channel
-                .runners
-                .iter()
-                .map(|x| format!("runner:{}@{}", x.id, x.version)),
-        )
-        .chain(
-            channel
-                .cores
-                .iter()
-                .map(|x| format!("core:{}@{}", x.id, x.version)),
-        )
+        .chain(channel.runners.iter().map(|x| format!("runner:{}", x.id)))
+        .chain(channel.cores.iter().map(|x| format!("core:{}", x.id)))
         .chain(channel.profiles.iter().map(|x| format!("profile:{x}")))
         .collect()
+}
+
+fn validate_channel_identities(catalog: &Catalog) -> Result<()> {
+    let stable = catalog.channel(ChannelName::Stable)?;
+    let experimental = catalog.channel(ChannelName::Experimental)?;
+    if !channel_keys(stable).is_disjoint(&channel_keys(experimental)) {
+        return Err(CatalogError::new(
+            "channel_leak",
+            "stable and experimental identities overlap",
+        ));
+    }
+    Ok(())
+}
+
+fn channel_paths(catalog: &Catalog, channel: &Channel) -> Result<Vec<LogicalPath>> {
+    channel
+        .systems
+        .iter()
+        .map(|id| {
+            let system = catalog.system(id)?;
+            Ok(vec![system.save_path.clone(), system.state_path.clone()])
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(|paths| paths.into_iter().flatten().collect())
+}
+
+fn paths_overlap(left: &LogicalPath, right: &LogicalPath) -> bool {
+    if left.root != right.root {
+        return false;
+    }
+    let left = left.components();
+    let right = right.components();
+    left.starts_with(&right) || right.starts_with(&left)
 }
 
 fn validate_folder(
@@ -1195,6 +1500,14 @@ pub struct ResolutionFixture {
     pub schema_version: u8,
     pub kind: String,
     pub channel: ChannelName,
+    #[serde(rename = "experimentalOptIn", default)]
+    pub experimental_opt_in: bool,
+    #[serde(rename = "contentId", default)]
+    pub content_id: Option<String>,
+    #[serde(rename = "biosReady", default)]
+    pub bios_ready: bool,
+    #[serde(default)]
+    pub renderer: Option<String>,
     #[serde(rename = "systemId")]
     pub system_id: String,
     pub extension: String,
@@ -1266,12 +1579,21 @@ pub struct AuditItem {
     pub present: u32,
     pub missing: u32,
     pub mismatch: u32,
+    pub unverified: u32,
     pub status: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AuditReport {
     pub requirements: Vec<AuditItem>,
+}
+
+impl AuditReport {
+    pub fn is_launchable(&self) -> bool {
+        self.requirements
+            .iter()
+            .all(|item| item.status == "present")
+    }
 }
 
 struct EffectiveSettings {
@@ -1403,7 +1725,7 @@ pub fn schema_validation_journey() -> Result<String> {
         ));
     }
     Ok(
-        "schema validation journey: 10 positive documents accepted; unknown field rejected"
+        "schema validation journey: 26 positive documents accepted, including four experimental candidates; unknown field rejected"
             .to_string(),
     )
 }
@@ -2039,4 +2361,229 @@ pub fn core_pack_journey() -> Result<String> {
         }
     }
     Ok("core-pack fixture journey: synthetic metadata accepted; BIOS and blocked activation rejected".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn catalog() -> Catalog {
+        Catalog::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../catalog")).unwrap()
+    }
+
+    #[test]
+    fn schema_negative_fixture_covers_stable_game_deltas_guard() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../schemas/emulator-catalog-v1.schema.json"
+        ))
+        .unwrap();
+        let negative: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../fixtures/emulator-catalog/schema-negative/stable-profile-game-deltas.json"
+        ))
+        .unwrap();
+        let guard = schema["$defs"]["profile"]["allOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|branch| branch["if"]["properties"]["channel"]["const"] == "stable")
+            .unwrap();
+        assert_eq!(guard["then"]["not"]["required"][0], "gameDeltas");
+        assert_eq!(negative["channel"], "stable");
+        assert!(negative.get("gameDeltas").is_some());
+    }
+
+    #[test]
+    fn experimental_candidates_are_metadata_only_and_conservative() {
+        let catalog = catalog();
+        let expected = [
+            ("n64", "Mupen64Plus-Next"),
+            ("dreamcast", "Flycast"),
+            ("psp", "PPSSPP"),
+            ("nintendo-ds", "melonDS DS"),
+        ];
+        for (system_id, candidate_name) in expected {
+            let system = catalog.system(system_id).unwrap();
+            let metadata = system.experimental.as_ref().unwrap();
+            assert_eq!(metadata.candidate.name, candidate_name);
+            assert_eq!(
+                metadata.candidate.availability,
+                CandidateAvailability::MetadataOnly
+            );
+            assert_eq!(metadata.candidate.status, CandidateStatus::Unverified);
+            assert_eq!(metadata.baseline.internal_scale, InternalScale::Native1x);
+            assert!(!metadata.baseline.post_processing);
+            assert!(!metadata.baseline.speedhack);
+            let runner = catalog.runner(&system.default_runner).unwrap();
+            assert!(runner.artifact.sha256.is_none());
+        }
+    }
+
+    #[test]
+    fn unverified_bios_file_is_not_a_launchable_audit() {
+        let catalog = catalog();
+        let root = env::temp_dir().join(format!(
+            "emulator-catalog-unverified-bios-{}",
+            std::process::id()
+        ));
+        fs::remove_dir_all(&root).ok();
+        fs::create_dir_all(root.join("bios/dreamcast")).unwrap();
+        fs::File::create(root.join("bios/dreamcast/firmware.bin")).unwrap();
+        let report = catalog.audit(&root, ChannelName::Experimental).unwrap();
+        assert_eq!(report.requirements[0].status, "unverified");
+        assert!(!report.is_launchable());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn experimental_source_ref_must_be_an_immutable_commit() {
+        let mut catalog = catalog();
+        catalog
+            .systems
+            .iter_mut()
+            .find(|system| system.id == "n64")
+            .unwrap()
+            .experimental
+            .as_mut()
+            .unwrap()
+            .candidate
+            .source_ref = "mupen_next_old_gliden".to_string();
+        assert_eq!(
+            catalog.validate().unwrap_err().code(),
+            "experimental_metadata"
+        );
+        catalog
+            .systems
+            .iter_mut()
+            .find(|system| system.id == "n64")
+            .unwrap()
+            .experimental
+            .as_mut()
+            .unwrap()
+            .candidate
+            .source_ref = format!("A{}", "0".repeat(39));
+        assert_eq!(
+            catalog.validate().unwrap_err().code(),
+            "experimental_metadata"
+        );
+    }
+
+    #[test]
+    fn metadata_only_candidate_rejects_runner_artifact_hash() {
+        let mut catalog = catalog();
+        let runner_id = catalog.system("n64").unwrap().default_runner.clone();
+        catalog
+            .runners
+            .iter_mut()
+            .find(|runner| runner.id == runner_id.id && runner.version == runner_id.version)
+            .unwrap()
+            .artifact
+            .sha256 = Some("a".repeat(64));
+        assert_eq!(catalog.validate().unwrap_err().code(), "artifact_unpinned");
+    }
+
+    #[test]
+    fn experimental_resolution_requires_opt_in() {
+        let mut fixture = load_fixture(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/emulator-catalog/cases/dreamcast-selection.json"),
+        )
+        .unwrap();
+        let catalog = catalog();
+        fixture.experimental_opt_in = false;
+        assert_eq!(
+            catalog.resolve(&fixture).unwrap_err().code(),
+            "experimental_opt_in"
+        );
+        fixture.experimental_opt_in = true;
+        let resolved = catalog.resolve(&fixture).unwrap();
+        assert_eq!(resolved.settings["displayMode"]["source"], "game");
+        assert_eq!(resolved.settings["displayMode"]["value"], "fit");
+    }
+
+    #[test]
+    fn experimental_resolution_rejects_missing_bios_and_renderer() {
+        let catalog = catalog();
+        let mut bios = load_fixture(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/emulator-catalog/cases/dreamcast-selection.json"),
+        )
+        .unwrap();
+        bios.experimental_opt_in = true;
+        bios.bios_ready = false;
+        assert_eq!(catalog.resolve(&bios).unwrap_err().code(), "bios_missing");
+        bios.bios_ready = true;
+        bios.renderer = Some("powervr".to_string());
+        assert_eq!(
+            catalog.resolve(&bios).unwrap_err().code(),
+            "unsupported_renderer"
+        );
+    }
+
+    #[test]
+    fn experimental_delta_must_be_reversible_and_match_selection() {
+        let mut catalog = catalog();
+        let profile_index = catalog
+            .profiles
+            .iter()
+            .position(|profile| profile.id == "n64-experimental")
+            .unwrap();
+        catalog.profiles[profile_index].game_deltas[0].reversible = false;
+        assert_eq!(catalog.validate().unwrap_err().code(), "invalid_game_delta");
+
+        catalog.profiles[profile_index].game_deltas[0].reversible = true;
+        catalog.profiles[profile_index].game_deltas[0].core.version = "9.9.9".to_string();
+        assert_eq!(catalog.validate().unwrap_err().code(), "invalid_game_delta");
+    }
+
+    #[test]
+    fn experimental_path_nested_under_stable_path_is_rejected() {
+        let mut catalog = catalog();
+        let stable_path = catalog.system("tg4040").unwrap().save_path.clone();
+        let experimental = catalog
+            .systems
+            .iter_mut()
+            .find(|system| system.id == "n64")
+            .unwrap();
+        experimental.save_path.relative = format!("{}/nested", stable_path.relative);
+        assert_eq!(catalog.validate().unwrap_err().code(), "channel_leak");
+    }
+
+    #[test]
+    fn experimental_stable_identity_and_path_collisions_are_rejected() {
+        let mut collision_catalog = catalog();
+        let stable_core = collision_catalog
+            .cores
+            .iter()
+            .find(|core| core.channel == ChannelName::Stable)
+            .unwrap()
+            .clone();
+        collision_catalog.cores.push(Core {
+            channel: ChannelName::Experimental,
+            ..stable_core.clone()
+        });
+        collision_catalog
+            .channels
+            .iter_mut()
+            .find(|channel| channel.id == ChannelName::Experimental)
+            .unwrap()
+            .cores
+            .push(VersionedId {
+                id: stable_core.id,
+                version: stable_core.version,
+            });
+        assert_eq!(
+            collision_catalog.validate().unwrap_err().code(),
+            "channel_leak"
+        );
+
+        let mut path_catalog = catalog();
+        let stable_path = path_catalog.system("tg4040").unwrap().save_path.clone();
+        path_catalog
+            .systems
+            .iter_mut()
+            .find(|system| system.id == "n64")
+            .unwrap()
+            .save_path = stable_path;
+        assert_eq!(path_catalog.validate().unwrap_err().code(), "channel_leak");
+    }
 }

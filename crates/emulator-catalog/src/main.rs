@@ -20,7 +20,8 @@ fn main() {
             println!("{output}");
             if matches!(command.as_deref(), Some("audit" | "bios-audit"))
                 && (output.contains("\"status\": \"missing\"")
-                    || output.contains("\"status\": \"mismatch\""))
+                    || output.contains("\"status\": \"mismatch\"")
+                    || output.contains("\"status\": \"unverified\""))
             {
                 process::exit(1);
             }
@@ -84,5 +85,13 @@ fn audit() -> emulator_catalog::Result<String> {
     };
     let bios_root = value("--bios-root")?;
     let report = Catalog::load(catalog_root)?.audit(bios_root, channel()?)?;
-    json(&report)
+    let output = json(&report)?;
+    if !report.is_launchable() {
+        println!("{output}");
+        return Err(emulator_catalog::CatalogError::new(
+            "bios_unavailable",
+            "BIOS audit is not launchable",
+        ));
+    }
+    Ok(output)
 }

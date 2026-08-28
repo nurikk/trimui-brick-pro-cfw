@@ -1,0 +1,80 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "dreamcast",
+  "displayName": "TrimUI Brick Pro TG4040 \u2014 Sega Dreamcast (Experimental)",
+  "targetSku": "TG4040",
+  "channel": "experimental",
+  "extensions": [
+    "cdi"
+  ],
+  "biosRequirements": [
+    {
+      "id": "dreamcast-firmware",
+      "expectedSha256": null,
+      "locations": [
+        {
+          "root": "bios",
+          "relative": "dreamcast/firmware.bin"
+        }
+      ],
+      "status": "required-unverified"
+    }
+  ],
+  "runtimeRequirements": [],
+  "defaultRunner": {
+    "id": "dreamcast-flycast-runner",
+    "version": "0.1.0"
+  },
+  "defaultCore": {
+    "id": "dreamcast-flycast-core",
+    "version": "0.1.0"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "experimental/dreamcast"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "experimental/dreamcast"
+  },
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "deviceLimits": {
+    "maxWidth": 1024,
+    "maxHeight": 768,
+    "maxControllers": 1,
+    "maxAudioChannels": 2
+  },
+  "settingsDefaults": {
+    "displayWidth": 1024,
+    "displayHeight": 768,
+    "displayMode": "integer",
+    "frameSkip": 0,
+    "rumble": false,
+    "audioLatencyMs": 64
+  },
+  "licenseProvenanceUrl": "https://github.com/flyinghead/flycast",
+  "experimental": {
+    "candidate": {
+      "name": "Flycast",
+      "sourceUrl": "https://github.com/flyinghead/flycast",
+      "sourceRef": "392a429e8b040b3e5bf6696cb4f984274fc44123",
+      "licenseUrl": "https://github.com/flyinghead/flycast/blob/master/LICENSE",
+      "availability": "metadata-only",
+      "status": "unverified"
+    },
+    "evidenceLane": "public-metadata-only",
+    "baseline": {
+      "internalScale": "native-1x",
+      "postProcessing": false,
+      "speedhack": false
+    }
+  }
+}

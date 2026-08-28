@@ -1,0 +1,24 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "core",
+  "id": "nintendo-ds-melonds-ds-core",
+  "version": "0.1.0",
+  "runnerId": "nintendo-ds-melonds-ds-runner",
+  "runnerVersion": "0.1.0",
+  "supportedSystems": [
+    "nintendo-ds"
+  ],
+  "supportedContent": [
+    "nds"
+  ],
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "licenseProvenanceUrl": "https://github.com/melonDS-emu/melonDS",
+  "channel": "experimental"
+}

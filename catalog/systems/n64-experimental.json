@@ -1,0 +1,68 @@
+{
+  "$schema": "https://example.invalid/trimui-emulator-catalog-v1.schema.json",
+  "format": "trimui-emulator-catalog",
+  "schemaVersion": 1,
+  "kind": "system",
+  "id": "n64",
+  "displayName": "TrimUI Brick Pro TG4040 \u2014 Nintendo 64 (Experimental)",
+  "targetSku": "TG4040",
+  "channel": "experimental",
+  "extensions": [
+    "n64"
+  ],
+  "biosRequirements": [],
+  "runtimeRequirements": [],
+  "defaultRunner": {
+    "id": "n64-mupen64plus-next-runner",
+    "version": "0.1.0"
+  },
+  "defaultCore": {
+    "id": "n64-mupen64plus-next-core",
+    "version": "0.1.0"
+  },
+  "savePath": {
+    "root": "data/saves",
+    "relative": "experimental/n64"
+  },
+  "statePath": {
+    "root": "data/states",
+    "relative": "experimental/n64"
+  },
+  "capabilities": [
+    "display",
+    "audio",
+    "input",
+    "save-state"
+  ],
+  "deviceLimits": {
+    "maxWidth": 1024,
+    "maxHeight": 768,
+    "maxControllers": 1,
+    "maxAudioChannels": 2
+  },
+  "settingsDefaults": {
+    "displayWidth": 1024,
+    "displayHeight": 768,
+    "displayMode": "integer",
+    "frameSkip": 0,
+    "rumble": false,
+    "audioLatencyMs": 64
+  },
+  "licenseProvenanceUrl": "https://github.com/libretro/mupen64plus-libretro-nx",
+  "experimental": {
+    "candidate": {
+      "name": "Mupen64Plus-Next",
+      "sourceUrl": "https://github.com/libretro/mupen64plus-libretro-nx",
+      "sourceRef": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
+      "licenseUrl": "https://github.com/libretro/mupen64plus-libretro-nx/blob/master/LICENSE",
+      "availability": "metadata-only",
+      "status": "unverified"
+    },
+    "evidenceLane": "public-metadata-only",
+    "baseline": {
+      "internalScale": "native-1x",
+      "postProcessing": false,
+      "speedhack": false
+    }
+  }
+}

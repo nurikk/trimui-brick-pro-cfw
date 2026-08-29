@@ -34,6 +34,7 @@ save-vault = { path = "../save-vault" }
 save-sync = { path = "../save-sync" }
 sha2.workspace = true
 input-profile = { path = "../input-profile" }
+package-manager = { path = "../package-manager" }
 unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 

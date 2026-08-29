@@ -1349,6 +1349,16 @@ fn is_auxiliary_route(route: &str) -> bool {
         "save-vault",
         "save-sync",
         "portmaster",
+        "platform",
+        "game-switcher",
+        "settings",
+        "wifi",
+        "scraper",
+        "diagnostics",
+        "updater",
+        "shutdown",
+        "games-",
+        "home-",
         "update",
         "modal",
         "modals",
@@ -1356,7 +1366,7 @@ fn is_auxiliary_route(route: &str) -> bool {
         "settings-form",
     ]
     .iter()
-    .any(|prefix| route == *prefix || route.starts_with(&format!("{prefix}-")))
+    .any(|prefix| route == *prefix || route.starts_with(prefix))
 }
 
 fn draw_theme_garden(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
@@ -1447,7 +1457,25 @@ fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
         2,
     );
     draw_text(canvas, 64, 208, &screen.focus, screen.palette.muted, 1);
-    draw_text(canvas, 64, 250, &screen.route, screen.palette.text, 1);
+    for (index, item) in screen.menu.iter().take(10).enumerate() {
+        let y = 260 + index as i32 * 38;
+        if item.selected {
+            canvas.set_draw_color(rgb(screen.palette.surface));
+            let _ = canvas.fill_rect(Rect::new(48, y - 7, 928, 32));
+        }
+        draw_text(
+            canvas,
+            72,
+            y,
+            &item.label,
+            if item.selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            },
+            2,
+        );
+    }
 }
 
 fn draw_splash(canvas: &mut Canvas<Window>, screen: &Screen) {

@@ -121,7 +121,6 @@ pub struct Metadata {
     pub name: String,
     pub author: String,
     pub license: String,
-    pub provenance: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -722,10 +721,10 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     }
     safe_text(&theme.metadata.name, "metadata.name", 32)?;
     safe_text(&theme.metadata.author, "metadata.author", 64)?;
-    if theme.metadata.license != "MIT" || theme.metadata.provenance != "project-authored" {
+    if theme.metadata.license != "MIT" {
         return Err(ThemeError::new(
             Reason::InvalidSchema,
-            "theme must carry project-authored MIT metadata",
+            "theme license must be MIT",
         ));
     }
     if theme.canvas.width as u32 != CANVAS_WIDTH

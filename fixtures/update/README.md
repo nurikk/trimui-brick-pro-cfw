@@ -1,3 +1,3 @@
-# Generated update fixtures
+# Update fixtures
 
-These generated fixtures are synthetic and contain no device image, ROM, BIOS, private signing key, or block-device data. `positive/manifest.json`, `payload.squashfs`, and `signature.minisig` are a valid constrained TG4040 userspace package; its public verification key is the checked-in keyring entry. Rejection manifests and detached signatures exercise closed-schema, key, comment, target, hash, sequence, and compatibility gates. The private fixture key is generated outside the repository during validation and is never retained here.
+These generated fixtures are synthetic and contain no device image, ROM, BIOS, or block-device data. `positive/manifest.json` and `payload.squashfs` form a valid TG4040 userspace update; its ordinary HTTPS artifact URL names that payload. The rejection manifests exercise closed-schema, device, payload name/type, hash, and compatibility gates.

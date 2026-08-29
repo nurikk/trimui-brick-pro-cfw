@@ -1,24 +1,49 @@
 {
   "$schema": "https://example.invalid/trimui-brick-package-v1.schema.json",
-  "format": "brickpro-package",
-  "schemaVersion": 1,
-  "id": "tg4040-stable-core-pack",
-  "version": "1.0.0",
-  "targetSku": "TG4040",
-  "tier": "verified",
-  "type": "core",
-  "corePack": {
-    "status": "blocked",
-    "blockedReason": "Synthetic blocked contract fixture; no installable core-pack payload exists."
+  "capabilities": {
+    "audio": [],
+    "display": [],
+    "input": [],
+    "network": [],
+    "save": []
   },
-  "files": [
-    {"path": "immutable/placeholder.json", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "length": 0, "class": "immutable"}
-  ],
+  "corePack": {
+    "blockedReason": "Synthetic blocked contract fixture; no installable core-pack payload exists.",
+    "status": "blocked"
+  },
   "entrypoints": [],
-  "runtime": {"path": "runtime", "dependencies": []},
-  "capabilities": {"network": [], "input": [], "audio": [], "display": [], "save": []},
-  "uninstall": {"preserve": ["/roms", "/data/saves", "/data/states", "/data/resume", "/data/settings", "/.brickpro/save-vault"], "remove": ["immutable", "runtime", "cache", "staging"]},
-  "license": {"spdx": "MIT", "source": "https://example.invalid/synthetic-blocked-core-pack"},
-  "provenance": {"sbom": "provenance/brickpro-cfw.spdx.json", "source": "synthetic blocked fixture"},
-  "developer": {"enabled": false, "localKeyTrusted": false, "nonRoot": true}
+  "files": [
+    {
+      "class": "immutable",
+      "length": 0,
+      "path": "immutable/placeholder.json",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "format": "brickpro-package",
+  "id": "tg4040-stable-core-pack",
+  "runtime": {
+    "dependencies": [],
+    "path": "runtime"
+  },
+  "schemaVersion": 1,
+  "targetSku": "TG4040",
+  "type": "core",
+  "uninstall": {
+    "preserve": [
+      "/roms",
+      "/data/saves",
+      "/data/states",
+      "/data/resume",
+      "/data/settings",
+      "/.brickpro/save-vault"
+    ],
+    "remove": [
+      "immutable",
+      "runtime",
+      "cache",
+      "staging"
+    ]
+  },
+  "version": "1.0.0"
 }

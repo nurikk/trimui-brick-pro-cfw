@@ -1,9 +1,7 @@
 FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
 
-ARG QEMU_LOCK_SHA256
 ARG DOCKER_CACHE_SCOPE
 LABEL org.trimui.brick-pro.qemu.base-image="debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867" \
-      org.trimui.brick-pro.qemu.lock-sha256="$QEMU_LOCK_SHA256" \
       org.trimui-brick-pro-cfw.cache-scope="$DOCKER_CACHE_SCOPE"
 
 RUN dpkg --add-architecture arm64 \

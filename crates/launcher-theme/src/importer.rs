@@ -141,7 +141,6 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
                 .to_string(),
             author: "Project Authors".into(),
             license: "MIT".into(),
-            provenance: "project-authored".into(),
         },
         canvas: Canvas {
             width: 1024,

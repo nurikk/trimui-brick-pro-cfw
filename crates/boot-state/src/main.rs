@@ -52,7 +52,7 @@ fn run() -> Result<()> {
         Some("journey") => {
             let root = root(&mut args)?;
             reject_extra(&mut args)?;
-            prepare_pending(&root, Slot::B, "release-b", 2)?;
+            prepare_pending(&root, Slot::B, "release-b")?;
             let _ = select(&root)?;
             let _ = select(&root)?;
             let _ = select(&root)?;
@@ -66,7 +66,7 @@ fn run() -> Result<()> {
         Some("healthy-journey") => {
             let root = root(&mut args)?;
             reject_extra(&mut args)?;
-            prepare_pending(&root, Slot::B, "release-b", 2)?;
+            prepare_pending(&root, Slot::B, "release-b")?;
             let state = mark_healthy(&root, [true; 5])?;
             println!(
                 "current={} previous={} attempts={} last-known-good={}",

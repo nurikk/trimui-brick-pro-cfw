@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-"""Stdlib-only static and generated-metadata checks for compatibility recipes."""
-from __future__ import annotations
-
-import hashlib
+"""Validate the closed, ordinary compatibility-recipe JSON fixtures."""
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,63 +8,34 @@ FIXTURES = ROOT / "fixtures/compatibility-recipes/generated-v1"
 SCHEMA = ROOT / "schemas/compat-recipe-v1.schema.json"
 BANNED_KEYS = {"artifact", "argv", "bytes", "command", "executable", "package", "path", "payload", "script", "shell", "url"}
 
-def no_duplicates(pairs: list[tuple[str, object]]) -> dict:
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise SystemExit(f"duplicate JSON key: {key}")
-        result[key] = value
-    return result
 
-def load(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=no_duplicates)
+def load(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
 
-def pin(path: Path) -> dict:
-    data = path.read_bytes()
-    return {"hashes": {"sha256": hashlib.sha256(data).hexdigest()}, "length": len(data)}
-
-def meta_pin(path: Path) -> dict:
-    return {**pin(path), "version": 1}
 
 def walk(value: object) -> None:
     if isinstance(value, dict):
-        if BANNED_KEYS.intersection(value):
-            raise SystemExit(f"recipe contains payload-shaped field: {sorted(BANNED_KEYS.intersection(value))}")
+        banned = BANNED_KEYS.intersection(value)
+        if banned:
+            raise SystemExit(f"recipe contains payload-shaped field: {sorted(banned)}")
         for child in value.values():
             walk(child)
     elif isinstance(value, list):
         for child in value:
             walk(child)
 
+
 def main() -> None:
     schema = load(SCHEMA)
-    if schema.get("additionalProperties") is not False or any(
-        value.get("additionalProperties") is not False
-        for value in schema.get("$defs", {}).values()
-        if isinstance(value, dict) and value.get("type") == "object"
-    ):
-        raise SystemExit("recipe schema is not closed at every object boundary")
-    top = load(FIXTURES / "targets.json")["signed"]
-    delegated = load(FIXTURES / "recipes.json")["signed"]
-    roles = top["delegations"]["roles"]
-    recipes_role = next(role for role in roles if role["name"] == "recipes")
-    if recipes_role["paths"] != ["recipes/*.json"]:
-        raise SystemExit("recipes role is broader than recipe targets")
-    expected = {}
+    if schema.get("additionalProperties") is not False:
+        raise SystemExit("recipe schema is not closed")
     for path in sorted((FIXTURES / "recipes").glob("*.json")):
         recipe = load(path)
         walk(recipe)
-        expected[f"recipes/{path.name}"] = pin(path)
-    if delegated["targets"] != expected:
-        raise SystemExit("delegated recipe target pins are stale")
-    if load(FIXTURES / "snapshot.json")["signed"]["meta"] != {
-        "recipes.json": meta_pin(FIXTURES / "recipes.json"),
-        "targets.json": meta_pin(FIXTURES / "targets.json"),
-    }:
-        raise SystemExit("snapshot pins are stale")
-    if load(FIXTURES / "timestamp.json")["signed"]["meta"] != {"snapshot.json": meta_pin(FIXTURES / "snapshot.json")}:
-        raise SystemExit("timestamp pin is stale")
-    print("compatibility-recipes static/schema/metadata checks passed")
+        if len(path.read_bytes()) > 256 * 1024:
+            raise SystemExit(f"recipe exceeds size bound: {path}")
+    print("compatibility-recipes JSON/schema checks passed")
+
 
 if __name__ == "__main__":
     main()

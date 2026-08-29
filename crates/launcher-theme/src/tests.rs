@@ -7,17 +7,17 @@ struct MemoryTransport;
 impl CatalogTransport for MemoryTransport {
     fn fetch(&self, locator: &str, _: usize) -> Result<Vec<u8>, ThemeError> {
         if locator == "https://raw.githubusercontent.com/project/pocket/main/theme.json" {
-            return Ok(fs::read(
+            return fs::read(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../themes/default/theme.json"),
             )
-            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?);
+            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()));
         }
         if locator.starts_with("https://raw.githubusercontent.com/project/pocket/main/assets/") {
-            return Ok(fs::read(
+            return fs::read(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("../../themes/default/assets/art.png"),
             )
-            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?);
+            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()));
         }
         Err(ThemeError::new(
             Reason::Io,

@@ -27,14 +27,6 @@
     "targetSku": {
       "const": "TG4040"
     },
-    "tier": {
-      "enum": [
-        "builtin",
-        "verified",
-        "community",
-        "developer"
-      ]
-    },
     "type": {
       "enum": [
         "package",
@@ -78,7 +70,6 @@
         },
         "required": [
           "path",
-          "sha256",
           "length",
           "class"
         ]
@@ -98,7 +89,10 @@
             "type": "string"
           },
           "mode": {
-            "enum": ["data-only", "0755"]
+            "enum": [
+              "data-only",
+              "0755"
+            ]
           }
         },
         "required": [
@@ -139,9 +133,31 @@
       "properties": {
         "preserve": {
           "oneOf": [
-            {"const": ["/roms", "/data/saves", "/data/states"]},
-            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume"]},
-            {"const": ["/roms", "/data/saves", "/data/states", "/data/resume", "/data/settings", "/.brickpro/save-vault"]}
+            {
+              "const": [
+                "/roms",
+                "/data/saves",
+                "/data/states"
+              ]
+            },
+            {
+              "const": [
+                "/roms",
+                "/data/saves",
+                "/data/states",
+                "/data/resume"
+              ]
+            },
+            {
+              "const": [
+                "/roms",
+                "/data/saves",
+                "/data/states",
+                "/data/resume",
+                "/data/settings",
+                "/.brickpro/save-vault"
+              ]
+            }
           ]
         },
         "remove": {
@@ -158,73 +174,22 @@
         "remove"
       ]
     },
-    "license": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "spdx": {
-          "type": "string",
-          "enum": [
-            "MIT",
-            "Apache-2.0",
-            "GPL-3.0-only",
-            "CC0-1.0"
-          ]
-        },
-        "source": {
-          "type": "string",
-          "format": "uri"
-        }
-      },
-      "required": [
-        "spdx",
-        "source"
-      ]
-    },
-    "provenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "sbom": {
-          "const": "provenance/brickpro-cfw.spdx.json"
-        },
-        "source": {
-          "type": "string",
-          "maxLength": 240
-        }
-      },
-      "required": [
-        "sbom",
-        "source"
-      ]
-    },
     "corePack": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "status": {"const": "blocked"},
-        "blockedReason": {"type": "string", "minLength": 1, "maxLength": 512}
-      },
-      "required": ["status", "blockedReason"]
-    },
-    "developer": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
+        "status": {
+          "const": "blocked"
         },
-        "localKeyTrusted": {
-          "type": "boolean"
-        },
-        "nonRoot": {
-          "const": true
+        "blockedReason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
         }
       },
       "required": [
-        "enabled",
-        "localKeyTrusted",
-        "nonRoot"
+        "status",
+        "blockedReason"
       ]
     }
   },
@@ -235,16 +200,12 @@
     "id",
     "version",
     "targetSku",
-    "tier",
     "type",
     "files",
     "entrypoints",
     "runtime",
     "capabilities",
-    "uninstall",
-    "license",
-    "provenance",
-    "developer"
+    "uninstall"
   ],
   "$defs": {
     "capabilities": {

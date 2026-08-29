@@ -9,37 +9,23 @@
     "network": [],
     "save": []
   },
-  "developer": {
-    "enabled": false,
-    "localKeyTrusted": false,
-    "nonRoot": true
-  },
   "entrypoints": [],
   "files": [
     {
       "class": "immutable",
-      "length": 2142,
+      "length": 2774,
       "path": "immutable/theme.json",
-      "sha256": "97b668e7f47f95317655db04598e182b8d2718cf0972f0a170e817939c03f4a1"
+      "sha256": "8ac85242cb839036c224b9001135a0fbb22a6f42d42e46d547211514430fe39e"
     }
   ],
   "format": "brickpro-package",
   "id": "high-contrast",
-  "license": {
-    "source": "https://example.invalid/brickpro-theme-garden",
-    "spdx": "MIT"
-  },
-  "provenance": {
-    "sbom": "provenance/brickpro-cfw.spdx.json",
-    "source": "project-authored synthetic Theme v1 fixture"
-  },
   "runtime": {
     "dependencies": [],
     "path": "runtime"
   },
   "schemaVersion": 1,
   "targetSku": "TG4040",
-  "tier": "community",
   "type": "theme",
   "uninstall": {
     "preserve": [

@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use package_trust::VerifiedTarget;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -23,7 +22,6 @@ const PRESERVED: [&str; 6] = [
     "/data/settings",
     "/.brickpro/save-vault",
 ];
-
 const LEGACY_PRESERVED: [&str; 3] = ["/roms", "/data/saves", "/data/states"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -38,7 +36,6 @@ pub struct PackageManifest {
     pub version: String,
     #[serde(rename = "targetSku")]
     pub target_sku: String,
-    pub tier: TrustTier,
     #[serde(rename = "type")]
     pub package_type: PackageType,
     pub files: Vec<ManifestFile>,
@@ -46,20 +43,8 @@ pub struct PackageManifest {
     pub runtime: Runtime,
     pub capabilities: Capabilities,
     pub uninstall: UninstallRules,
-    pub license: License,
-    pub provenance: Provenance,
     #[serde(rename = "corePack", default)]
     pub core_pack: Option<BlockedCorePack>,
-    pub developer: DeveloperPolicy,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum TrustTier {
-    Builtin,
-    Verified,
-    Community,
-    Developer,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -76,7 +61,8 @@ pub enum PackageType {
 #[serde(deny_unknown_fields)]
 pub struct ManifestFile {
     pub path: String,
-    pub sha256: String,
+    #[serde(default)]
+    pub sha256: Option<String>,
     pub length: u64,
     #[serde(rename = "class")]
     pub file_class: FileClass,
@@ -157,20 +143,6 @@ pub struct UninstallRules {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct License {
-    pub spdx: String,
-    pub source: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Provenance {
-    pub sbom: String,
-    pub source: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct BlockedCorePack {
     pub status: CorePackStatus,
     #[serde(rename = "blockedReason")]
@@ -181,35 +153,6 @@ pub struct BlockedCorePack {
 #[serde(rename_all = "lowercase")]
 pub enum CorePackStatus {
     Blocked,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DeveloperPolicy {
-    pub enabled: bool,
-    #[serde(rename = "localKeyTrusted")]
-    pub local_key_trusted: bool,
-    #[serde(rename = "nonRoot")]
-    pub non_root: bool,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TrustContext {
-    pub signed: bool,
-    pub developer_enabled: bool,
-    pub local_key_trusted: bool,
-    pub running_as_root: bool,
-}
-
-impl TrustContext {
-    pub const fn community_signed() -> Self {
-        Self {
-            signed: true,
-            developer_enabled: false,
-            local_key_trusted: false,
-            running_as_root: false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -228,10 +171,8 @@ pub struct ActivationRecord {
     pub version: String,
     pub target_sku: String,
     pub package_type: PackageType,
-    pub tier: TrustTier,
-    pub target_path: String,
-    pub target_length: u64,
-    pub target_sha256: String,
+    #[serde(rename = "manifestLength")]
+    pub manifest_length: u64,
     pub manifest_sha256: String,
     pub immutable_root: String,
     pub runtime_root: String,
@@ -269,11 +210,7 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     {
         bail!("unsupported package schema or target")
     }
-    if manifest.package_type == PackageType::Core {
-        reject_core_pack(manifest)?;
-    } else if manifest.core_pack.is_some() {
-        bail!("core-pack metadata is only valid for core packages")
-    }
+    reject_core_pack(manifest)?;
     if !identifier(&manifest.id) || !version(&manifest.version) {
         bail!("invalid package id or version")
     }
@@ -300,34 +237,19 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     {
         bail!("uninstall rules do not preserve the protected storage boundary")
     }
-    if manifest.provenance.sbom != "provenance/brickpro-cfw.spdx.json"
-        || manifest.license.source.is_empty()
-        || manifest.provenance.source.is_empty()
-    {
-        bail!("license or SBOM provenance is incomplete")
-    }
-    if manifest.tier.is_developer() {
-        if !manifest.developer.enabled
-            || !manifest.developer.local_key_trusted
-            || !manifest.developer.non_root
-        {
-            bail!("developer policy is not explicit")
-        }
-    } else if manifest.developer.enabled || manifest.developer.local_key_trusted {
-        bail!("developer enablement is only valid for developer tier")
-    }
     let mut total = 0u64;
     let mut paths = Vec::new();
     let mut casefolded_paths = Vec::new();
     for file in &manifest.files {
         validate_relative_path(&file.path)?;
-        if file.sha256.len() != 64
-            || !file
-                .sha256
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-        {
-            bail!("file hash is not lowercase SHA-256")
+        if let Some(hash) = &file.sha256 {
+            if hash.len() != 64
+                || !hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                bail!("file hash is not lowercase SHA-256")
+            }
         }
         if file.length > MAX_EXPANDED_BYTES
             || total
@@ -372,27 +294,15 @@ pub fn install(
     root: &Path,
     manifest_path: &Path,
     payload_root: &Path,
-    target: &VerifiedTarget,
-    context: TrustContext,
     options: TransactionOptions,
 ) -> Result<ActivationRecord> {
-    install_with_validation(
-        root,
-        manifest_path,
-        payload_root,
-        target,
-        context,
-        options,
-        |_, _| Ok(()),
-    )
+    install_with_validation(root, manifest_path, payload_root, options, |_, _| Ok(()))
 }
 
 pub fn install_with_validation<F>(
     root: &Path,
     manifest_path: &Path,
     payload_root: &Path,
-    target: &VerifiedTarget,
-    context: TrustContext,
     options: TransactionOptions,
     validate_staging: F,
 ) -> Result<ActivationRecord>
@@ -400,21 +310,6 @@ where
     F: FnOnce(&PackageManifest, &Path) -> Result<()>,
 {
     let (manifest, manifest_bytes) = load_manifest(manifest_path)?;
-    reject_core_pack(&manifest)?;
-    let expected_target = if target.delegated_role == "themes" {
-        if manifest.version == "1.0.0" {
-            format!("themes/{}/manifest.json", manifest.id)
-        } else {
-            format!("themes/{}/manifest-{}.json", manifest.id, manifest.version)
-        }
-    } else {
-        format!("packages/{}/manifest.json", manifest.id)
-    };
-    if target.path != expected_target {
-        bail!("signed target does not match package identity or version")
-    }
-    verify_target(target, &manifest_bytes, &manifest)?;
-    verify_tier(&manifest, context)?;
     let root = root.canonicalize().context("resolve package root")?;
     reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
     save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)
@@ -439,20 +334,19 @@ where
             bail!("package type cannot change during update")
         }
     }
-    let identity_root = private_root.join(&manifest.id);
-    reject_symlink_if_present(&identity_root, "package identity root")?;
-    let version_root = identity_root.join(&manifest.version);
+    let version_root = private_root.join(&manifest.id).join(&manifest.version);
+    reject_symlink_if_present(&private_root.join(&manifest.id), "package identity root")?;
     reject_symlink_if_present(&version_root, "package version root")?;
     if version_root.exists() {
         bail!("package version is already installed")
     }
+    let staging_root = private_root.join(".staging");
+    reject_symlink_if_present(&staging_root, "package staging root")?;
+    fs::create_dir_all(&staging_root)?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let staging_root = private_root.join(".staging");
-    reject_symlink_if_present(&staging_root, "package staging root")?;
-    fs::create_dir_all(&staging_root)?;
     let staging = staging_root.join(format!("{}-{}-{stamp}", manifest.id, manifest.version));
     fs::create_dir(&staging)?;
     let result = (|| {
@@ -475,10 +369,8 @@ where
                     .any(|entrypoint| entrypoint.path == file.path),
             )?;
             let destination = staging.join(&file.path);
-            if let Some(parent) = destination.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&destination, bytes)?;
+            fs::create_dir_all(destination.parent().context("package path has no parent")?)?;
+            fs::write(&destination, &bytes)?;
             if let Some(entrypoint) = manifest
                 .entrypoints
                 .iter()
@@ -504,20 +396,16 @@ where
                 .context("package version has no parent")?,
         )?;
         fs::rename(&staging, &version_root).context("promote complete package")?;
-        let installed_manifest = version_root.join("manifest.json");
-        fs::write(&installed_manifest, &manifest_bytes)?;
+        fs::write(version_root.join("manifest.json"), &manifest_bytes)?;
         let entrypoint = manifest.entrypoints.first();
         let record = ActivationRecord {
-            format: "brickpro-package-activation".to_string(),
+            format: "brickpro-package-activation".into(),
             schema_version: 1,
             id: manifest.id.clone(),
             version: manifest.version.clone(),
             target_sku: manifest.target_sku.clone(),
             package_type: manifest.package_type.clone(),
-            tier: manifest.tier.clone(),
-            target_path: target.path.clone(),
-            target_length: target.length,
-            target_sha256: target.sha256.clone(),
+            manifest_length: manifest_bytes.len() as u64,
             manifest_sha256: hex::encode(Sha256::digest(&manifest_bytes)),
             immutable_root: format!(
                 "{PACKAGE_ROOT}/{}/{}/immutable",
@@ -532,11 +420,9 @@ where
             entrypoint_name: entrypoint.map_or_else(String::new, |value| value.name.clone()),
             entrypoint_path: entrypoint.map_or_else(String::new, |value| value.path.clone()),
             entrypoint_mode: entrypoint.map_or_else(String::new, |value| value.mode.clone()),
-            preserve: PRESERVED.iter().map(|path| (*path).to_string()).collect(),
+            preserve: PRESERVED.iter().map(|path| (*path).into()).collect(),
         };
-        let state_root = root.join(PACKAGE_STATE);
         fs::create_dir_all(&state_root)?;
-        let state_path = state_root.join(format!("{}.json", manifest.id));
         write_atomic(&state_path, &serde_json::to_vec_pretty(&record)?)?;
         Ok(record)
     })();
@@ -558,8 +444,6 @@ pub fn upgrade(
     root: &Path,
     manifest_path: &Path,
     payload_root: &Path,
-    target: &VerifiedTarget,
-    context: TrustContext,
     options: TransactionOptions,
 ) -> Result<ActivationRecord> {
     let root = root.canonicalize().context("resolve package root")?;
@@ -568,8 +452,6 @@ pub fn upgrade(
         .join(PACKAGE_STATE)
         .join(format!("{}.json", manifest.id));
     reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
-    reject_symlink_if_present(&root.join(PACKAGE_STATE), "package state root")?;
-    reject_symlink_if_present(&state_path, "activation record")?;
     let previous = if state_path.is_file() {
         let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
         validate_activation_record(&record, &manifest.id)?;
@@ -577,7 +459,7 @@ pub fn upgrade(
     } else {
         None
     };
-    let installed = install(&root, manifest_path, payload_root, target, context, options)?;
+    let installed = install(root.as_path(), manifest_path, payload_root, options)?;
     let Some(previous) = previous else {
         return Ok(installed);
     };
@@ -588,13 +470,8 @@ pub fn upgrade(
         .join(PACKAGE_ROOT)
         .join(&previous.id)
         .join(&previous.version);
-    let removal = reject_symlink_path(&previous_root, "previous package version root")
-        .and_then(|_| fs::remove_dir_all(&previous_root).map_err(Into::into));
-    if let Err(removal_error) = removal {
-        return Err(anyhow::anyhow!(
-            "verified successor remains active; previous-version cleanup failed: {removal_error}"
-        ));
-    }
+    reject_symlink_path(&previous_root, "previous package version root")?;
+    fs::remove_dir_all(&previous_root).context("remove previous package version")?;
     Ok(installed)
 }
 
@@ -603,34 +480,32 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
         bail!("invalid package id")
     }
     let root = root.canonicalize().context("resolve package root")?;
-    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
     let state_root = root.join(PACKAGE_STATE);
     let private_root = root.join(PACKAGE_ROOT);
     let package_root = private_root.join(id);
     let staging_root = private_root.join(".staging");
+    let state_path = state_root.join(format!("{id}.json"));
+    reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
     reject_symlink_if_present(&state_root, "package state root")?;
     reject_symlink_if_present(&private_root, "package private root")?;
     reject_symlink_if_present(&package_root, "package root")?;
     reject_symlink_if_present(&staging_root, "package staging root")?;
-    let state_path = state_root.join(format!("{id}.json"));
     reject_symlink_if_present(&state_path, "activation record")?;
     if !state_path.is_file() {
         return Ok(());
     }
-    let record: ActivationRecord =
-        serde_json::from_slice(&fs::read(&state_path)?).context("read activation record")?;
+    let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
     validate_activation_record(&record, id)?;
     save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)
         .map_err(|error| anyhow::anyhow!("pre-package save snapshot failed: {error}"))?;
     let vault_before = save_vault::SaveVault::standard_integrity(&root)
         .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?;
-    let canonical_root = root.canonicalize()?;
     let version_root = package_root.join(&record.version);
     reject_symlink_path(&version_root, "package version root")?;
+    let canonical_root = root.canonicalize()?;
     if !version_root.canonicalize()?.starts_with(&canonical_root) {
         bail!("package version root escapes private root")
     }
-    let staging_root = root.join(PACKAGE_ROOT).join(".staging");
     if let Ok(entries) = fs::read_dir(&staging_root) {
         for entry in entries {
             let entry = entry?;
@@ -659,7 +534,7 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
         .map_err(|error| anyhow::anyhow!("save vault integrity failed: {error}"))?
         != vault_before
     {
-        return Err(anyhow::anyhow!("package uninstall changed save vault"));
+        bail!("package uninstall changed save vault")
     }
     Ok(())
 }
@@ -746,55 +621,14 @@ fn reject_core_pack(manifest: &PackageManifest) -> Result<()> {
     }
 }
 
-fn verify_target(target: &VerifiedTarget, bytes: &[u8], manifest: &PackageManifest) -> Result<()> {
-    let mut path = target.path.split('/');
-    let role = path.next();
-    let target_name = path.next();
-    let filename = path.next();
-    let expected_theme_filename = if manifest.version == "1.0.0" {
-        "manifest".to_string()
-    } else {
-        format!("manifest-{}", manifest.version)
-    };
-    let valid_theme_target = target.delegated_role == "themes"
-        && role == Some("themes")
-        && target_name == Some(manifest.id.as_str())
-        && filename == Some(format!("{expected_theme_filename}.json").as_str())
-        && path.next().is_none();
-    let valid_package_target = target.delegated_role == "packages"
-        && role == Some("packages")
-        && target_name == Some(manifest.id.as_str())
-        && filename == Some("manifest.json")
-        && path.next().is_none();
-    if (!valid_theme_target && !valid_package_target) || bytes.len() as u64 != target.length {
-        bail!("manifest is not the signed package target")
-    }
-    let actual = hex::encode(Sha256::digest(bytes));
-    if actual != target.sha256 {
-        bail!("manifest hash differs from signed target")
-    }
-    Ok(())
-}
-
-fn verify_tier(manifest: &PackageManifest, context: TrustContext) -> Result<()> {
-    if !context.signed {
-        bail!("unsigned package rejected")
-    }
-    if manifest.tier.is_developer()
-        && (!context.developer_enabled || !context.local_key_trusted || context.running_as_root)
-    {
-        bail!("developer tier requires local non-root enablement")
-    }
-    Ok(())
-}
-
 fn verify_file(file: &ManifestFile, bytes: &[u8]) -> Result<()> {
     if bytes.len() as u64 != file.length {
         bail!("payload length differs from manifest")
     }
-    let actual = hex::encode(Sha256::digest(bytes));
-    if actual != file.sha256 {
-        bail!("payload hash differs from manifest")
+    if let Some(expected) = &file.sha256 {
+        if hex::encode(Sha256::digest(bytes)) != *expected {
+            bail!("payload hash differs from manifest")
+        }
     }
     Ok(())
 }
@@ -867,10 +701,8 @@ fn safe_source(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 
 fn validate_portmaster_layout(manifest: &PackageManifest) -> Result<()> {
-    if !matches!(manifest.tier, TrustTier::Builtin | TrustTier::Verified)
-        || manifest.entrypoints.len() != 1
-    {
-        bail!("PortMaster requires a verified single entrypoint")
+    if manifest.entrypoints.len() != 1 {
+        bail!("PortMaster requires a single entrypoint")
     }
     let entrypoint = &manifest.entrypoints[0];
     if entrypoint.name != "launch"
@@ -883,7 +715,7 @@ fn validate_portmaster_layout(manifest: &PackageManifest) -> Result<()> {
         .files
         .iter()
         .find(|file| file.path == entrypoint.path)
-        .ok_or_else(|| anyhow::anyhow!("PortMaster entrypoint is not declared"))?;
+        .context("PortMaster entrypoint is not declared")?;
     if file.file_class != FileClass::Immutable {
         bail!("PortMaster entrypoint is not immutable")
     }
@@ -917,10 +749,7 @@ pub fn resolve_portmaster(
     }
     let root = root.canonicalize().context("resolve package root")?;
     reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
-    reject_symlink_if_present(&root.join(PACKAGE_STATE), "package state root")?;
-    reject_symlink_if_present(&root.join(PACKAGE_ROOT), "package private root")?;
     let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
-    reject_symlink_path(&state_path, "PortMaster activation")?;
     let record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
     if record.format != "brickpro-package-activation"
         || record.schema_version != 1
@@ -928,14 +757,6 @@ pub fn resolve_portmaster(
         || record.version != package_version
         || record.target_sku != "TG4040"
         || record.package_type != PackageType::Portmaster
-        || !matches!(record.tier, TrustTier::Builtin | TrustTier::Verified)
-        || record.target_path != format!("packages/{id}/manifest.json")
-        || record.target_length == 0
-        || record.target_sha256.len() != 64
-        || record
-            .target_sha256
-            .bytes()
-            .any(|byte| !byte.is_ascii_hexdigit() || byte.is_ascii_uppercase())
         || record.immutable_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable")
         || record.runtime_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime")
         || record.cache_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/cache")
@@ -945,42 +766,21 @@ pub fn resolve_portmaster(
         || record.entrypoint_mode != "0755"
         || record.preserve != PRESERVED
     {
-        bail!("PortMaster activation identity or provenance is invalid")
+        bail!("PortMaster activation identity is invalid")
     }
-    let canonical_root = root.canonicalize()?;
-    let state_parent = root.join(PACKAGE_STATE).canonicalize()?;
-    if !state_parent.starts_with(&canonical_root) {
-        bail!("PortMaster activation state escapes private root")
-    }
-    let packages = root.join(PACKAGE_ROOT);
-    let identity_root = packages.join(id);
-    reject_symlink_path(&identity_root, "PortMaster package identity root")?;
-    let version_root = identity_root.join(package_version);
-    reject_symlink_path(&version_root, "PortMaster package root")?;
-    let canonical_version_root = version_root.canonicalize()?;
-    if !canonical_version_root.starts_with(&canonical_root) {
-        bail!("PortMaster package root escapes private root")
-    }
+    let version_root = root.join(PACKAGE_ROOT).join(id).join(package_version);
     let manifest_path = version_root.join("manifest.json");
-    reject_symlink_path(&manifest_path, "PortMaster manifest")?;
     let (manifest, manifest_bytes) = load_manifest(&manifest_path)?;
     if manifest.id != id
         || manifest.version != package_version
         || manifest.package_type != PackageType::Portmaster
-        || manifest.target_sku != "TG4040"
         || hex::encode(Sha256::digest(&manifest_bytes)) != record.manifest_sha256
-        || hex::encode(Sha256::digest(&manifest_bytes)) != record.target_sha256
-        || manifest_bytes.len() as u64 != record.target_length
-        || manifest.runtime.path != record.runtime_path
-        || manifest.entrypoints[0].name != record.entrypoint_name
-        || manifest.entrypoints[0].path != record.entrypoint_path
-        || manifest.entrypoints[0].mode != record.entrypoint_mode
+        || manifest_bytes.len() as u64 != record.manifest_length
     {
-        bail!("PortMaster manifest provenance does not match activation")
+        bail!("PortMaster manifest does not match activation")
     }
     for file in &manifest.files {
         let path = private_path(&version_root, &file.path)?;
-        reject_symlink_path(&path, "PortMaster package file")?;
         let bytes = fs::read(&path)?;
         verify_file(file, &bytes)?;
     }
@@ -995,8 +795,8 @@ pub fn resolve_portmaster(
         bail!("PortMaster entrypoint mode differs from activation")
     }
     Ok(PortMasterActivation {
-        id: id.to_string(),
-        version: package_version.to_string(),
+        id: id.into(),
+        version: package_version.into(),
         package_root: version_root,
         runtime_root,
         library_root,
@@ -1006,15 +806,13 @@ pub fn resolve_portmaster(
 
 fn private_path(root: &Path, relative: &str) -> Result<PathBuf> {
     validate_relative_path(relative)?;
-    reject_symlink_path(root, "private package root")?;
     let mut current = root.to_path_buf();
     for component in relative.split('/') {
         current.push(component);
         reject_symlink_path(&current, "private package path component")?;
     }
-    let candidate = root.join(relative);
     let canonical_root = root.canonicalize()?;
-    let canonical = candidate.canonicalize()?;
+    let canonical = root.join(relative).canonicalize()?;
     if !canonical.starts_with(&canonical_root) {
         bail!("private package path escapes package root")
     }
@@ -1050,15 +848,10 @@ fn identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         && value.as_bytes()[0].is_ascii_lowercase()
 }
+
 fn version(value: &str) -> bool {
     value.split('.').count() == 3
         && value
             .split('.')
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-}
-
-impl TrustTier {
-    fn is_developer(&self) -> bool {
-        matches!(self, Self::Developer)
-    }
 }

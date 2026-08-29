@@ -1,7 +1,6 @@
 {
   "$schema": "urn:project:theme-catalog-v1",
   "catalogVersion": "1.0.0",
-  "expires": "2031-01-01T00:00:00Z",
   "format": "theme-catalog-v1",
   "schemaVersion": 1,
   "targetSku": "TG4040",
@@ -10,14 +9,13 @@
       "author": "Project Authors",
       "id": "artbook",
       "license": "MIT",
-      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
       "versions": [
         {
           "package": {
-            "compressedBytes": 1178,
-            "expandedBytes": 2128,
-            "length": 1178,
-            "sha256": "7a451490a0ef0d580f084a054d843658b666625230556c0388f08dd2a805ecc1"
+            "compressedBytes": 829,
+            "expandedBytes": 2760,
+            "length": 829,
+            "sha256": "5a873a4fba9eb8ea572cf062cbcdbd4bdc389ef6bc7539560d6e644c78cf6c4c"
           },
           "screenshots": {
             "available": true,
@@ -37,14 +35,13 @@
       "author": "Project Authors",
       "id": "high-contrast",
       "license": "MIT",
-      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
       "versions": [
         {
           "package": {
-            "compressedBytes": 1185,
-            "expandedBytes": 2142,
-            "length": 1185,
-            "sha256": "2e3e81ec2b0f2d42776d2345ed85a7cd1d3f0485fcb61642ddef62f738f8e0bf"
+            "compressedBytes": 835,
+            "expandedBytes": 2774,
+            "length": 835,
+            "sha256": "258dbebf66c358279164e66bf8bdcbb4d70736c632ced1d3e5fd3c21c5e55bfd"
           },
           "screenshots": {
             "available": true,
@@ -60,10 +57,10 @@
         },
         {
           "package": {
-            "compressedBytes": 1185,
-            "expandedBytes": 2142,
-            "length": 1185,
-            "sha256": "3d1e8b2be5b45a2502c5ad9a9aa9af88420c7feffe787d248e81f4cdfe5efbfd"
+            "compressedBytes": 835,
+            "expandedBytes": 2774,
+            "length": 835,
+            "sha256": "1001ffabfee280d7b14c592f315111f3b1db73e293bb15ef88e3b5972af8aec4"
           },
           "screenshots": {
             "available": true,
@@ -83,14 +80,13 @@
       "author": "Project Authors",
       "id": "minimal",
       "license": "MIT",
-      "provenanceUrl": "https://example.invalid/brickpro-theme-garden",
       "versions": [
         {
           "package": {
-            "compressedBytes": 1179,
-            "expandedBytes": 2134,
-            "length": 1179,
-            "sha256": "bf7e0e1c0468201feb130cc7f5a6d9447cd3855b2700763c7e5b918333057441"
+            "compressedBytes": 829,
+            "expandedBytes": 2766,
+            "length": 829,
+            "sha256": "d2ec46c5d29c69a7f0d63299e4ec371fffa837e7e6c19551e1591cd52b294e83"
           },
           "screenshots": {
             "available": true,

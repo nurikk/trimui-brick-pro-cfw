@@ -4,25 +4,99 @@
   "title": "TG4040 userspace update manifest v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "manifestVersion", "deviceId", "releaseId", "releaseSequence", "stockFirmware", "userspaceAbi", "dataSchema", "payloadType", "payloadSize", "payloadSha256", "trustedComment"],
+  "required": [
+    "$schema",
+    "manifestVersion",
+    "artifactUrl",
+    "artifactName",
+    "deviceId",
+    "releaseId",
+    "stockFirmware",
+    "userspaceAbi",
+    "dataSchema",
+    "payloadType",
+    "payloadSize",
+    "payloadSha256"
+  ],
   "properties": {
-    "$schema": {"const": "https://trimui.invalid/schemas/update-manifest-v1.schema.json"},
-    "manifestVersion": {"const": 1},
-    "deviceId": {"const": "TG4040"},
-    "releaseId": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,46}[a-z0-9])?$", "maxLength": 48},
-    "releaseSequence": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615},
+    "$schema": {
+      "const": "https://trimui.invalid/schemas/update-manifest-v1.schema.json"
+    },
+    "manifestVersion": {
+      "const": 1
+    },
+    "deviceId": {
+      "const": "TG4040"
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,46}[a-z0-9])?$",
+      "maxLength": 48
+    },
+    "artifactUrl": {
+      "type": "string",
+      "pattern": "^https://[^@\\s/?#\\\\]+/[^\\s?#\\\\]+$",
+      "maxLength": 2048
+    },
+    "artifactName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "maxLength": 128
+    },
     "stockFirmware": {
-      "type": "object", "additionalProperties": false, "required": ["min", "max"],
-      "properties": {"min": {"type": "string", "minLength": 1, "maxLength": 32}, "max": {"type": "string", "minLength": 1, "maxLength": 32}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "max": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
     },
-    "userspaceAbi": {"const": "tg4040-userspace-v1"},
+    "userspaceAbi": {
+      "const": "tg4040-userspace-v1"
+    },
     "dataSchema": {
-      "type": "object", "additionalProperties": false, "required": ["min", "max"],
-      "properties": {"min": {"type": "integer", "minimum": 1, "maximum": 1000}, "max": {"type": "integer", "minimum": 1, "maximum": 1000}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
     },
-    "payloadType": {"const": "squashfs-userspace"},
-    "payloadSize": {"type": "integer", "minimum": 1, "maximum": 536870912},
-    "payloadSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "trustedComment": {"type": "string", "pattern": "^project=trimui-brick-pro-cfw; target=tg4040; release=[a-z0-9](?:[a-z0-9.-]{0,46}[a-z0-9])?; sequence=[1-9][0-9]*; payload-sha256=[0-9a-f]{64}; manifest-sha256=[0-9a-f]{64}$"}
+    "payloadType": {
+      "const": "squashfs-userspace"
+    },
+    "payloadSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 536870912
+    },
+    "payloadSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
   }
 }

@@ -1,5 +1,7 @@
 {
   "$schema": "https://trimui.invalid/schemas/update-manifest-v1.schema.json",
+  "artifactName": "payload.squashfs",
+  "artifactUrl": "https://updates.trimui.invalid/releases/release-20260827/payload.squashfs",
   "dataSchema": {
     "max": 1,
     "min": 1
@@ -10,11 +12,9 @@
   "payloadSize": 4096,
   "payloadType": "squashfs-userspace",
   "releaseId": "release-20260827",
-  "releaseSequence": 2,
   "stockFirmware": {
     "max": "9.9.9",
     "min": "1.0.0"
   },
-  "trustedComment": "project=trimui-brick-pro-cfw; target=tg4040; release=release-20260827; sequence=2; payload-sha256=62852ae4f589b1dde793637a22dcb3ea61b25f57dfb286197f90d7c03bfeeb6c; manifest-sha256=705459f5769d07f80e8ab062fd9369073a1427970d6d1330ec3d38b7d049bc2b",
   "userspaceAbi": "tg4040-userspace-v1"
 }

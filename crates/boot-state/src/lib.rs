@@ -45,11 +45,8 @@ pub struct State {
     pub last_known_good: Slot,
     pub rollback_reason: Option<String>,
     pub current_release: String,
-    pub current_release_sequence: u64,
     pub previous_release: String,
-    pub previous_release_sequence: u64,
     pub pending_release: Option<String>,
-    pub pending_release_sequence: Option<u64>,
 }
 
 impl Default for State {
@@ -62,11 +59,8 @@ impl Default for State {
             last_known_good: Slot::A,
             rollback_reason: None,
             current_release: "base".into(),
-            current_release_sequence: 0,
             previous_release: "empty".into(),
-            previous_release_sequence: 0,
             pending_release: None,
-            pending_release_sequence: None,
         }
     }
 }
@@ -196,7 +190,6 @@ pub fn select(root: &Path) -> Result<(Slot, &'static str, u8)> {
         Some(_) => {
             state.pending = None;
             state.pending_release = None;
-            state.pending_release_sequence = None;
             state.rollback_reason = Some("automatic-rollback".into());
             store(root, generation, &state)?;
             (state.previous, "automatic-rollback")
@@ -215,16 +208,11 @@ pub fn mark_healthy(root: &Path, evidence: [bool; 5]) -> Result<State> {
     let former_current = state.current;
     state.previous = former_current;
     state.previous_release = state.current_release.clone();
-    state.previous_release_sequence = state.current_release_sequence;
     state.current = pending;
     state.current_release = state
         .pending_release
         .take()
         .ok_or_else(|| anyhow!("pending release id missing"))?;
-    state.current_release_sequence = state
-        .pending_release_sequence
-        .take()
-        .ok_or_else(|| anyhow!("pending release sequence missing"))?;
     state.pending = None;
     state.attempts = 0;
     state.last_known_good = pending;
@@ -233,14 +221,13 @@ pub fn mark_healthy(root: &Path, evidence: [bool; 5]) -> Result<State> {
     Ok(state)
 }
 
-pub fn prepare_pending(root: &Path, slot: Slot, release: &str, sequence: u64) -> Result<()> {
+pub fn prepare_pending(root: &Path, slot: Slot, release: &str) -> Result<()> {
     let (generation, mut state) = load_or_initialize(root)?;
     if slot == state.current {
         bail!("pending slot must be inactive")
     }
     state.pending = Some(slot);
     state.pending_release = Some(release.to_owned());
-    state.pending_release_sequence = Some(sequence);
     state.attempts = 0;
     state.rollback_reason = None;
     store(root, generation, &state)

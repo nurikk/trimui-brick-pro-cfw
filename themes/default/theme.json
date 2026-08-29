@@ -5,8 +5,7 @@
   "metadata": {
     "name": "Artbook",
     "author": "Project Authors",
-    "license": "MIT",
-    "provenance": "project-authored"
+    "license": "MIT"
   },
   "canvas": {
     "width": 1024,

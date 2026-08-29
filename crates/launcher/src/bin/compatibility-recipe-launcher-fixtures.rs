@@ -1,6 +1,5 @@
 use anyhow::{bail, Result};
 use compatibility_recipes::{LocalOverrides, ValidationContext};
-use package_trust::VerificationTime;
 use sim_launcher::{
     CompatibilityRecipeAction, CompatibilityRecipeController, CompatibilityRecipeResult,
 };
@@ -42,14 +41,9 @@ fn run() -> Result<()> {
     let controller = CompatibilityRecipeController::new(
         &root,
         &fixtures,
-        &root.join("trust-state.json"),
         "recipe-synthetic-valid",
         &"a".repeat(64),
         ValidationContext::new(catalog),
-        VerificationTime {
-            now_rfc3339: "2030-01-01T00:00:00Z",
-            uncertainty_seconds: 0,
-        },
     )?;
     if !matches!(
         controller.dispatch(CompatibilityRecipeAction::Preview {

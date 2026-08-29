@@ -13,5 +13,4 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
-package-trust = { path = "../package-trust" }
 save-vault = { path = "../save-vault" }

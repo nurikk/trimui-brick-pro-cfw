@@ -12,11 +12,6 @@
       "write"
     ]
   },
-  "developer": {
-    "enabled": false,
-    "localKeyTrusted": false,
-    "nonRoot": true
-  },
   "entrypoints": [],
   "files": [
     {
@@ -34,21 +29,12 @@
   ],
   "format": "brickpro-package",
   "id": "demo-theme",
-  "license": {
-    "source": "https://example.invalid/brickpro-synthetic-package",
-    "spdx": "MIT"
-  },
-  "provenance": {
-    "sbom": "provenance/brickpro-cfw.spdx.json",
-    "source": "synthetic inert fixture"
-  },
   "runtime": {
     "dependencies": [],
     "path": "runtime"
   },
   "schemaVersion": 1,
   "targetSku": "TG4040",
-  "tier": "community",
   "type": "theme",
   "uninstall": {
     "preserve": [

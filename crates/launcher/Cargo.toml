@@ -12,7 +12,6 @@ simulator = []
 anyhow.workspace = true
 launch-contract = { path = "../launch-contract" }
 compatibility-recipes = { path = "../compatibility-recipes" }
-package-trust = { path = "../package-trust" }
 session-broker = { path = "../session-broker" }
 signal-hook = { workspace = true, optional = true }
 serde.workspace = true

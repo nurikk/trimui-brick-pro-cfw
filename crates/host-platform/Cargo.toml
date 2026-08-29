@@ -11,5 +11,8 @@ serde.workspace = true
 serde_json.workspace = true
 sim-domain = { path = "../domain" }
 launcher-presentation = { path = "../launcher-presentation" }
+settings-ui = { path = "../settings-ui" }
 sim-platform-contract = { path = "../platform-contract" }
+wifi-manager = { path = "../wifi-manager" }
+wifi-settings-controller = { path = "../wifi-settings-controller" }
 ui-model = { path = "../ui-model" }

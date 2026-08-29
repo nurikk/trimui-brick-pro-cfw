@@ -379,7 +379,8 @@ impl Platform for HostPlatform {
         draw_backdrop(&mut self.canvas, screen);
         if art_book {
             match screen.route.as_str() {
-                "home" | "systems" | "games" | "games-no-metadata" => {
+                "theme-garden" => draw_theme_garden(&mut self.canvas, screen)?,
+                "home" | "systems" | "games" | "games-no-metadata" | "session" => {
                     draw_art_book_next(&mut self.canvas, screen)?;
                 }
                 "settings" => draw_settings(&mut self.canvas, screen),
@@ -1464,51 +1465,293 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
     let Some(settings) = &screen.settings else {
         return;
     };
-    let mut y = 96;
+    let panel = Rect::new(40, 48, 944, 632);
+    canvas.set_draw_color(rgb(screen.palette.surface));
+    let _ = canvas.fill_rect(panel);
+    canvas.set_draw_color(rgb(screen.palette.accent));
+    let _ = canvas.draw_rect(panel);
+    draw_text(canvas, 72, 76, &screen.title, screen.palette.highlight, 4);
+    let surface = match settings.surface {
+        settings_ui::Surface::SectionList => "SETTINGS CATEGORIES",
+        settings_ui::Surface::Form => "EDIT SETTINGS",
+    };
+    draw_text(canvas, 72, 126, surface, screen.palette.muted, 1);
+    let mut y = 164;
     for section in &settings.sections {
-        draw_text(
-            canvas,
-            64,
-            y,
-            &section.label_key,
-            screen.palette.highlight,
-            2,
-        );
-        y += 24;
+        let selected = settings
+            .selected_section_id
+            .as_deref()
+            .is_some_and(|id| id == section.id);
+        if selected {
+            canvas.set_draw_color(rgb(screen.palette.accent));
+            let _ = canvas.fill_rect(Rect::new(64, y - 5, 896, 30));
+        }
+        let color = if selected {
+            screen.palette.highlight
+        } else {
+            screen.palette.accent
+        };
+        draw_text(canvas, 72, y, &user_label(&section.label_key), color, 2);
+        y += 30;
         for control in &section.controls {
-            let value = format!("{} = {:?}", control.label_key, control.value);
-            draw_text(canvas, 96, y, &value, screen.palette.text, 1);
-            y += 18;
-            if y > 650 {
+            if y + 28 > 648 {
                 return;
             }
+            let selected = settings
+                .selected_setting_id
+                .as_deref()
+                .is_some_and(|id| id == control.setting_id);
+            if selected {
+                canvas.set_draw_color(rgb(screen.palette.accent));
+                let _ = canvas.fill_rect(Rect::new(64, y - 5, 896, 30));
+            }
+            let color = if selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            };
+            draw_text(canvas, 88, y, &user_label(&control.label_key), color, 1);
+            draw_text(canvas, 560, y, &setting_value(&control.value), color, 1);
+            y += 34;
         }
-        y += 10;
+        y += 12;
+    }
+}
+
+fn user_label(value: &str) -> String {
+    let value = value
+        .strip_prefix("settings.")
+        .unwrap_or(value)
+        .strip_suffix(".label")
+        .unwrap_or(value);
+    let value = value.rsplit('.').next().unwrap_or(value);
+    let mut label = String::new();
+    for character in value.chars() {
+        if character == '-' || character == '_' {
+            label.push(' ');
+        } else if character.is_uppercase()
+            && label
+                .chars()
+                .last()
+                .is_some_and(|last| last.is_ascii_lowercase())
+        {
+            label.push(' ');
+            label.push(character);
+        } else {
+            label.push(character);
+        }
+    }
+    label
+        .split_whitespace()
+        .map(|word| match word.to_ascii_lowercase().as_str() {
+            "api" => "API".into(),
+            "psk" => "PSK".into(),
+            "ssid" => "SSID".into(),
+            "ui" => "UI".into(),
+            "wifi" => "Wi-Fi".into(),
+            _ => {
+                let mut chars = word.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(chars).collect()
+                })
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn setting_value(value: &settings_ui::SemanticValue) -> String {
+    match value {
+        settings_ui::SemanticValue::Boolean(value) => {
+            if *value {
+                "On".into()
+            } else {
+                "Off".into()
+            }
+        }
+        settings_ui::SemanticValue::Integer(value) => value.to_string(),
+        settings_ui::SemanticValue::Decimal(value) => value.to_string(),
+        settings_ui::SemanticValue::Text(value) | settings_ui::SemanticValue::EnumSingle(value) => {
+            value.clone()
+        }
+        settings_ui::SemanticValue::EnumMulti(values) => {
+            if values.is_empty() {
+                "—".into()
+            } else {
+                values.join(", ")
+            }
+        }
+        settings_ui::SemanticValue::Masked { .. } => "•••".into(),
+        settings_ui::SemanticValue::Empty => "—".into(),
     }
 }
 
 fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
-    if let Some(wifi) = &screen.wifi {
-        let mut y = 108;
-        for network in wifi.networks.iter().take(8) {
-            let marker = if network.selected { ">" } else { " " };
-            let row = format!(
-                "{} {} {}%",
-                marker, network.display_ssid, network.signal_quality
+    let Some(wifi) = &screen.wifi else {
+        return;
+    };
+    let panel = Rect::new(40, 48, 944, 632);
+    canvas.set_draw_color(rgb(screen.palette.surface));
+    let _ = canvas.fill_rect(panel);
+    canvas.set_draw_color(rgb(screen.palette.accent));
+    let _ = canvas.draw_rect(panel);
+    draw_text(canvas, 72, 76, &screen.title, screen.palette.highlight, 4);
+    draw_text(
+        canvas,
+        72,
+        126,
+        wifi_surface_label(&screen.route),
+        screen.palette.muted,
+        1,
+    );
+    match screen.route.as_str() {
+        "wifi-scan" | "wifi-access-point-selection" => draw_wifi_networks(canvas, screen, wifi),
+        "wifi-hidden-network" | "wifi-manual-ssid" | "wifi-password-entry" => {
+            draw_wifi_keyboard(canvas, screen, wifi)
+        }
+        "wifi-progress" => {
+            draw_text(canvas, 88, 220, "STATUS CONNECTING", screen.palette.text, 2);
+            if let Some(network) = &wifi.selected_network {
+                draw_text(
+                    canvas,
+                    88,
+                    274,
+                    &network.display_ssid,
+                    screen.palette.highlight,
+                    3,
+                );
+            }
+            draw_text(
+                canvas,
+                88,
+                340,
+                &format!("PHASE {}", format_debug(&wifi.phase)),
+                screen.palette.muted,
+                1,
             );
-            draw_text(canvas, 64, y, &row, screen.palette.text, 2);
-            y += 30;
         }
-        if let Some(keyboard) = &wifi.keyboard {
-            let value = if keyboard.masked {
-                "•••"
+        "wifi-error" => {
+            draw_text(
+                canvas,
+                88,
+                220,
+                "CONNECTION ERROR",
+                screen.palette.highlight,
+                2,
+            );
+            draw_text(
+                canvas,
+                88,
+                274,
+                &format!(
+                    "REASON {}",
+                    wifi.reason
+                        .map(|reason| format_debug(&reason))
+                        .unwrap_or_else(|| "unknown".into())
+                ),
+                screen.palette.text,
+                1,
+            );
+        }
+        _ => draw_wifi_networks(canvas, screen, wifi),
+    }
+}
+
+fn draw_wifi_networks(
+    canvas: &mut Canvas<Window>,
+    screen: &Screen,
+    wifi: &wifi_settings_controller::Snapshot,
+) {
+    if wifi.networks.is_empty() {
+        draw_text(canvas, 88, 188, "No networks found", screen.palette.text, 2);
+    } else {
+        for (index, network) in wifi.networks.iter().take(8).enumerate() {
+            let y = 170 + index as i32 * 48;
+            if network.selected {
+                canvas.set_draw_color(rgb(screen.palette.accent));
+                let _ = canvas.fill_rect(Rect::new(64, y - 6, 896, 40));
+            }
+            let color = if network.selected {
+                screen.palette.highlight
             } else {
-                screen.selected_label.as_str()
+                screen.palette.text
             };
-            draw_text(canvas, 64, 560, value, screen.palette.highlight, 3);
+            draw_text(canvas, 88, y, &network.display_ssid, color, 2);
+            draw_text(canvas, 640, y, security_label(network.security), color, 1);
+            draw_text(
+                canvas,
+                850,
+                y,
+                &format!("{}%", network.signal_quality),
+                color,
+                1,
+            );
         }
-        if wifi.open_confirmation {
-            draw_text(canvas, 64, 610, &screen.focus, screen.palette.highlight, 2);
+    }
+}
+
+fn draw_wifi_keyboard(
+    canvas: &mut Canvas<Window>,
+    screen: &Screen,
+    wifi: &wifi_settings_controller::Snapshot,
+) {
+    let (label, value) = match screen.route.as_str() {
+        "wifi-password-entry" => ("NETWORK KEY", "•••"),
+        "wifi-hidden-network" | "wifi-manual-ssid" => ("NETWORK NAME", "TYPE NETWORK NAME"),
+        _ => ("NETWORK INPUT", "WAITING FOR INPUT"),
+    };
+    draw_text(canvas, 88, 220, label, screen.palette.accent, 2);
+    draw_text(canvas, 88, 276, value, screen.palette.highlight, 2);
+    if let Some(keyboard) = &wifi.keyboard {
+        draw_text(
+            canvas,
+            88,
+            332,
+            &format!("{} CHARACTERS", keyboard.length_scalars),
+            screen.palette.muted,
+            1,
+        );
+    }
+}
+
+fn wifi_surface_label(route: &str) -> &'static str {
+    match route {
+        "wifi-scan" => "AVAILABLE NETWORKS",
+        "wifi-access-point-selection" => "SELECT NETWORK",
+        "wifi-hidden-network" => "HIDDEN NETWORK",
+        "wifi-manual-ssid" => "ENTER NETWORK NAME",
+        "wifi-password-entry" => "ENTER NETWORK KEY",
+        "wifi-progress" => "CONNECTING",
+        "wifi-error" => "CONNECTION ERROR",
+        _ => "NETWORK SETTINGS",
+    }
+}
+
+fn security_label(security: wifi_manager::Security) -> &'static str {
+    match security {
+        wifi_manager::Security::Open => "Open",
+        wifi_manager::Security::Wpa2Psk => "WPA2",
+        wifi_manager::Security::Wpa3Sae => "WPA3",
+        wifi_manager::Security::Unsupported => "Unsupported",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wifi_surface_label;
+
+    #[test]
+    fn wifi_surface_labels_follow_the_route() {
+        for (route, label) in [
+            ("wifi-scan", "AVAILABLE NETWORKS"),
+            ("wifi-access-point-selection", "SELECT NETWORK"),
+            ("wifi-hidden-network", "HIDDEN NETWORK"),
+            ("wifi-manual-ssid", "ENTER NETWORK NAME"),
+            ("wifi-password-entry", "ENTER NETWORK KEY"),
+            ("wifi-progress", "CONNECTING"),
+            ("wifi-error", "CONNECTION ERROR"),
+        ] {
+            assert_eq!(wifi_surface_label(route), label);
         }
     }
 }

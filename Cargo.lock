@@ -533,9 +533,12 @@ dependencies = [
  "sdl2",
  "serde",
  "serde_json",
+ "settings-ui",
  "sim-domain",
  "sim-platform-contract",
  "ui-model",
+ "wifi-manager",
+ "wifi-settings-controller",
 ]
 
 [[package]]

@@ -33,6 +33,42 @@ fn v1_fallback_is_available() -> Result<(), ThemeError> {
 }
 
 #[test]
+fn selected_device_aspect_selects_its_layout_file() -> Result<(), ThemeError> {
+    let brick = device_profile::DeviceProfile::from_json(include_bytes!(
+        "../../../config/platform/tg4040/compatibility.json"
+    ))
+    .map_err(|error| ThemeError::new(Reason::InvalidLayout, error.to_string()))?;
+    let wide = device_profile::DeviceProfile::from_json(include_bytes!(
+        "../../../fixtures/platform/synthetic-wide/compatibility.json"
+    ))
+    .map_err(|error| ThemeError::new(Reason::InvalidLayout, error.to_string()))?;
+    let layouts = ["aspect-ratio-4-3.xml", "aspect-ratio-16-9.xml"];
+
+    assert_eq!(
+        select_theme_layout(&brick, &layouts)?,
+        "aspect-ratio-4-3.xml"
+    );
+    assert_eq!(
+        select_theme_layout(&wide, &layouts)?,
+        "aspect-ratio-16-9.xml"
+    );
+    Ok(())
+}
+
+#[test]
+fn selected_device_rejects_a_theme_with_a_different_viewport() -> Result<(), ThemeError> {
+    let wide = device_profile::DeviceProfile::from_json(include_bytes!(
+        "../../../fixtures/platform/synthetic-wide/compatibility.json"
+    ))
+    .map_err(|error| ThemeError::new(Reason::InvalidLayout, error.to_string()))?;
+
+    let error = validate_for_device(safe_artbook()?, &wide)
+        .expect_err("4:3 theme must not validate for 16:9 device");
+    assert_eq!(error.reason, Reason::InvalidLayout);
+    Ok(())
+}
+
+#[test]
 fn native_v2_assets_are_validated_before_publish() -> Result<(), ThemeError> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../themes/samples/project-v2");
     let theme = load_theme_dir(&path)?;

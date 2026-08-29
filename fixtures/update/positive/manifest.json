@@ -6,7 +6,7 @@
     "max": 1,
     "min": 1
   },
-  "deviceId": "TG4040",
+  "deviceId": "tg4040",
   "manifestVersion": 1,
   "payloadSha256": "62852ae4f589b1dde793637a22dcb3ea61b25f57dfb286197f90d7c03bfeeb6c",
   "payloadSize": 4096,

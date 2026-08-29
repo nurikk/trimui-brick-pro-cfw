@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+device-profile = { path = "../device-profile" }
 hex.workspace = true
 launcher-theme = { path = "../launcher-theme" }
 package-manager = { path = "../package-manager" }

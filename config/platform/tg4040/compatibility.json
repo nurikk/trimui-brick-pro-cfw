@@ -1,5 +1,6 @@
 {
   "candidateStatus": "no-device-bootstrap-candidate",
+  "deviceId": "tg4040",
   "display": {
     "expected": {
       "format": "rgba8888",
@@ -7,7 +8,9 @@
       "strideBytes": 4096,
       "width": 1024
     },
-    "status": "synthetic-contract-value-not-physically-verified"
+    "orientation": "landscape",
+    "status": "synthetic-contract-value-not-physically-verified",
+    "themeAspect": "4:3"
   },
   "firmware": {
     "approvalState": "real-device-empty-pending",

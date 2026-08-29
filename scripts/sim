@@ -83,7 +83,7 @@ verify_running_container() {
 }
 
 json_readiness_valid() {
-    python3 - "$RUN_REAL/readiness.json" <<'PY'
+    python3 - "$RUN_REAL/readiness.json" "$DEVICE_TARGET" <<'PY'
 import json
 import sys
 
@@ -98,7 +98,7 @@ try:
         raise ValueError
     if type(record["runId"]) is not str or not record["runId"].startswith("run-"):
         raise ValueError
-    if record["targetSku"] != "TG4040" or record["ready"] is not True:
+    if record["targetSku"] != sys.argv[2] or record["ready"] is not True:
         raise ValueError
     if type(record["elapsedMs"]) is not int or record["elapsedMs"] < 0:
         raise ValueError
@@ -155,6 +155,7 @@ parse_run_options() {
     DETACH=0
     CATALOG=sim/fixtures/catalog.json
     PROFILE=sim/device/tg4040-host.json
+    DEVICE_PROFILE=config/platform/tg4040/compatibility.json
     RUN_DIR=
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -179,6 +180,12 @@ parse_run_options() {
                 PROFILE=$1
                 ;;
             --profile=*) PROFILE=${1#--profile=} ;;
+            --device-profile)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --device-profile value"
+                DEVICE_PROFILE=$1
+                ;;
+            --device-profile=*) DEVICE_PROFILE=${1#--device-profile=} ;;
             --wait-ready)
                 shift
                 [ "$#" -gt 0 ] || fail "missing --wait-ready value"
@@ -235,7 +242,27 @@ run_sim() {
         *) fail "--profile must be a repository sim JSON fixture" ;;
     esac
     [ -f "$ROOT/$PROFILE" ] || fail "profile fixture does not exist"
-    set -- "$@" --catalog "/src/$CATALOG" --profile "/src/$PROFILE"
+    case "$DEVICE_PROFILE" in
+        *..*) fail "--device-profile may not contain .." ;;
+        config/platform/*/compatibility.json) ;;
+        *) fail "--device-profile must be a platform compatibility definition" ;;
+    esac
+    [ -f "$ROOT/$DEVICE_PROFILE" ] || fail "device profile does not exist"
+    DEVICE_TARGET=$(python3 - "$ROOT/$DEVICE_PROFILE" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        target = json.load(stream)["targetSku"]
+    if not isinstance(target, str) or not target:
+        raise ValueError
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+print(target)
+PY
+    ) || fail "device profile target SKU is invalid"
+    set -- "$@" --catalog "/src/$CATALOG" --profile "/src/$PROFILE" --device-profile "/src/$DEVICE_PROFILE"
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
     docker run -d \
         --name "$NAME" \

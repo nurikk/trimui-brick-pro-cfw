@@ -13,6 +13,7 @@ use std::{
 pub const SCHEMA: &str = "https://example.invalid/trimui-compat-recipe-v1.schema.json";
 pub const FORMAT: &str = "trimui-compatibility-recipe";
 pub const TARGET_SKU: &str = "TG4040";
+const DEVICE_PROFILE: &[u8] = include_bytes!("../../../config/platform/tg4040/compatibility.json");
 pub const API_VERSION: u8 = 1;
 pub const MAX_RECIPE_BYTES: usize = 256 * 1024;
 pub const MAX_DELTA: usize = 16;
@@ -353,11 +354,13 @@ pub fn validate_recipe(recipe: &Recipe, context: &ValidationContext) -> Result<(
     }
     let display: DisplayCatalog = serde_json::from_slice(&context.display_catalog)
         .map_err(|_| RecipeError::new("profile-invalid", "display catalog is invalid"))?;
+    let device = device_profile::DeviceProfile::from_json(DEVICE_PROFILE)
+        .map_err(|_| RecipeError::new("profile-invalid", "device profile is invalid"))?;
     display
-        .validate()
+        .validate(&device)
         .map_err(|_| RecipeError::new("profile-invalid", "display catalog validation failed"))?;
     display
-        .resolve(&ResolutionRequest {
+        .resolve(&device, &ResolutionRequest {
             schema: display_profile::SCHEMA.into(),
             format: display_profile::FORMAT.into(),
             schema_version: 1,

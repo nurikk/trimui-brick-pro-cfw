@@ -1,11 +1,10 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use device_profile::DeviceProfile;
 use std::{collections::BTreeSet, fmt};
 
 pub const SCHEMA: &str = "https://example.invalid/trimui-display-profile-v1.schema.json";
 pub const FORMAT: &str = "trimui-display-profile";
-pub const TARGET_SKU: &str = "TG4040";
-pub const LOGICAL_WIDTH: u16 = 1024;
-pub const LOGICAL_HEIGHT: u16 = 768;
+
 const MAX_ID: usize = 64;
 const MAX_CATALOG_BYTES: usize = 512 * 1024;
 
@@ -254,13 +253,13 @@ pub fn canonical_json<T: Serialize>(value: &T) -> Result<String> {
 }
 
 impl Catalog {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self, device: &DeviceProfile) -> Result<()> {
         if self.schema != SCHEMA
             || self.format != FORMAT
             || self.schema_version != 1
             || self.kind != CatalogKind::Catalog
-            || self.target_sku != TARGET_SKU
-            || self.logical_output != logical_output()
+            || self.target_sku != device.target_sku()
+            || self.logical_output != logical_output(device)
         {
             return Err(ContractError::new(
                 "catalog identity or logical output is invalid",
@@ -275,7 +274,7 @@ impl Catalog {
         unique_ids(self.profiles.iter().map(|profile| &profile.id), "profile")?;
         for system in &self.systems {
             validate_id(&system.id, "system")?;
-            validate_target(&system.target_sku, &system.logical_output)?;
+            validate_target(device, &system.target_sku, &system.logical_output)?;
             validate_selection(&system.default_selection, &system.default_selection.scaling)?;
             if system.default_selection.overlay_selection.is_some()
                 || system.default_selection.shader_selection.is_some()
@@ -287,7 +286,7 @@ impl Catalog {
         }
         for profile in &self.profiles {
             validate_id(&profile.id, "profile")?;
-            validate_target(&profile.target_sku, &self.logical_output)?;
+            validate_target(device, &profile.target_sku, &self.logical_output)?;
             if profile.system_ids.is_empty() {
                 return Err(ContractError::new("profile system selection is empty"));
             }
@@ -300,7 +299,9 @@ impl Catalog {
                         "profile crosses stable and experimental channels",
                     ));
                 }
-                if system.target_sku != TARGET_SKU || system.logical_output != logical_output() {
+                if system.target_sku != device.target_sku()
+                    || system.logical_output != logical_output(device)
+                {
                     return Err(ContractError::new("profile system target is invalid"));
                 }
             }
@@ -326,8 +327,12 @@ impl Catalog {
         Ok(())
     }
 
-    pub fn resolve(&self, request: &ResolutionRequest) -> Result<ResolvedProfile> {
-        self.validate()?;
+    pub fn resolve(
+        &self,
+        device: &DeviceProfile,
+        request: &ResolutionRequest,
+    ) -> Result<ResolvedProfile> {
+        self.validate(device)?;
         if request.schema != SCHEMA
             || request.format != FORMAT
             || request.schema_version != 1
@@ -369,7 +374,7 @@ impl Catalog {
             channel: request.channel.clone(),
             system_id: system.id.clone(),
             profile_id: profile.id.clone(),
-            logical_output: logical_output(),
+            logical_output: logical_output(device),
             selection,
         })
     }
@@ -382,17 +387,22 @@ impl Catalog {
     }
 }
 
-fn logical_output() -> LogicalOutput {
+fn logical_output(device: &DeviceProfile) -> LogicalOutput {
+    let (width, height) = device.logical_size();
     LogicalOutput {
-        width: LOGICAL_WIDTH,
-        height: LOGICAL_HEIGHT,
+        width,
+        height,
     }
 }
 
-fn validate_target(target_sku: &str, output: &LogicalOutput) -> Result<()> {
-    if target_sku != TARGET_SKU || output != &logical_output() {
+fn validate_target(
+    device: &DeviceProfile,
+    target_sku: &str,
+    output: &LogicalOutput,
+) -> Result<()> {
+    if target_sku != device.target_sku() || output != &logical_output(device) {
         return Err(ContractError::new(
-            "only TG4040 at logical 1024x768 is permitted",
+            "catalog target does not match the selected device profile",
         ));
     }
     Ok(())

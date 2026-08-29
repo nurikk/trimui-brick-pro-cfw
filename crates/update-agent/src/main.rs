@@ -97,6 +97,9 @@ fn run() -> Result<()> {
             let root = option(&mut args, "--root")?;
             let manifest = option(&mut args, "--manifest")?;
             let payload = option(&mut args, "--payload")?;
+            let device_profile = option(&mut args, "--device-profile")?;
+            let device = device_profile::DeviceProfile::from_path(Path::new(&device_profile))
+                .context("device profile")?;
             let firmware = option(&mut args, "--stock-firmware")?;
             let abi = option(&mut args, "--userspace-abi")?;
             let data_schema = option(&mut args, "--data-schema")?
@@ -115,6 +118,7 @@ fn run() -> Result<()> {
                 &StageInput {
                     manifest: PathBuf::from(manifest),
                     payload: PathBuf::from(payload),
+                    device,
                     firmware: &firmware,
                     abi: &abi,
                     data_schema,
@@ -132,11 +136,14 @@ fn run() -> Result<()> {
         }
         Some("verify-manifest") => {
             let manifest = option(&mut args, "--manifest")?;
+            let device_profile = option(&mut args, "--device-profile")?;
             if args.next().is_some() {
                 bail!("unexpected argument")
             }
             let document = read_manifest(&PathBuf::from(manifest))?;
-            validate_manifest(&document.manifest)?;
+            let device = device_profile::DeviceProfile::from_path(Path::new(&device_profile))
+                .context("device profile")?;
+            validate_manifest(&document.manifest, &device)?;
             println!("manifest valid");
         }
         _ => bail!("usage: update-agent stage|verify-manifest|journey ..."),
@@ -255,14 +262,14 @@ fn valid_artifact_name(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
-fn validate_manifest(manifest: &Manifest) -> Result<()> {
+fn validate_manifest(manifest: &Manifest, device: &device_profile::DeviceProfile) -> Result<()> {
     if manifest.schema != "https://trimui.invalid/schemas/update-manifest-v1.schema.json"
         || manifest.manifest_version != 1
     {
         bail!("unsupported manifest schema")
     }
-    if manifest.device_id != "TG4040" {
-        bail!("manifest target must be exact TG4040")
+    if manifest.device_id != device.device_id() {
+        bail!("manifest target does not match selected device")
     }
     if !valid_artifact_url(&manifest.artifact_url) {
         bail!("artifact URL must be an ordinary HTTPS URL")
@@ -363,6 +370,7 @@ fn durable_replace_copy(
 struct StageInput<'a> {
     manifest: PathBuf,
     payload: PathBuf,
+    device: device_profile::DeviceProfile,
     firmware: &'a str,
     abi: &'a str,
     data_schema: u32,
@@ -370,7 +378,7 @@ struct StageInput<'a> {
 }
 fn stage(root: &Path, input: &StageInput<'_>) -> Result<()> {
     let document = read_manifest(&input.manifest)?;
-    validate_manifest(&document.manifest)?;
+    validate_manifest(&document.manifest, &input.device)?;
     let firmware = parse_firmware_version(input.firmware)?;
     if firmware < parse_firmware_version(&document.manifest.stock_firmware.min)?
         || firmware > parse_firmware_version(&document.manifest.stock_firmware.max)?
@@ -480,7 +488,7 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf)> {
     let payload = root.join("payload.squashfs");
     fs::write(&payload, b"hsqs")?;
     let manifest = root.join("manifest.json");
-    let value = serde_json::json!({"$schema":"https://trimui.invalid/schemas/update-manifest-v1.schema.json","manifestVersion":1,"deviceId":"TG4040","releaseId":"release-simulation","artifactUrl":"https://updates.trimui.invalid/releases/release-simulation/payload.squashfs","artifactName":"payload.squashfs","stockFirmware":{"min":"1.0.0","max":"9.9.9"},"userspaceAbi":ABI,"dataSchema":{"min":1,"max":1},"payloadType":"squashfs-userspace","payloadSize":4,"payloadSha256":digest_hex(b"hsqs")});
+    let value = serde_json::json!({"$schema":"https://trimui.invalid/schemas/update-manifest-v1.schema.json","manifestVersion":1,"deviceId":"tg4040","releaseId":"release-simulation","artifactUrl":"https://updates.trimui.invalid/releases/release-simulation/payload.squashfs","artifactName":"payload.squashfs","stockFirmware":{"min":"1.0.0","max":"9.9.9"},"userspaceAbi":ABI,"dataSchema":{"min":1,"max":1},"payloadType":"squashfs-userspace","payloadSize":4,"payloadSha256":digest_hex(b"hsqs")});
     let mut bytes = serde_json::to_vec_pretty(&value)?;
     bytes.push(b'\n');
     fs::write(&manifest, bytes)?;
@@ -548,14 +556,18 @@ fn journey(root: &Path) -> Result<()> {
     let validation_root = root.join("manifest-validation");
     let (manifest, payload) = journey_fixture(&validation_root)?;
     let document = read_manifest(&manifest)?;
+    let device = device_profile::DeviceProfile::from_json(include_bytes!(
+        "../../../config/platform/tg4040/compatibility.json"
+    ))
+    .context("Brick Pro device profile")?;
     let mut invalid_url = document.manifest.clone();
     invalid_url.artifact_url = "http://updates.trimui.invalid/payload.squashfs".into();
-    if validate_manifest(&invalid_url).is_ok() {
+    if validate_manifest(&invalid_url, &device).is_ok() {
         bail!("non-HTTPS artifact URL was accepted")
     }
     let mut invalid_name = document.manifest.clone();
     invalid_name.artifact_name = "../payload.squashfs".into();
-    if validate_manifest(&invalid_name).is_ok() {
+    if validate_manifest(&invalid_name, &device).is_ok() {
         bail!("unsafe artifact name was accepted")
     }
     let mut mismatched_name = document.manifest;
@@ -567,6 +579,7 @@ fn journey(root: &Path) -> Result<()> {
     let input = StageInput {
         manifest,
         payload,
+        device,
         firmware: "1.0.0",
         abi: ABI,
         data_schema: DATA_SCHEMA,

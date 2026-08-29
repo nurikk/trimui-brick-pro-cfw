@@ -22,9 +22,6 @@ pub enum Backend {
 struct Profile {
     #[serde(rename = "contractVersion")]
     contract_version: String,
-    #[serde(rename = "targetSku")]
-    target_sku: String,
-    display: Display,
     controls: Controls,
     battery: Battery,
     led: Led,
@@ -35,15 +32,6 @@ struct Profile {
     virtual_storage: VirtualStorage,
     clock: Clock,
     faults: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Display {
-    #[serde(rename = "logicalWidth")]
-    logical_width: u32,
-    #[serde(rename = "logicalHeight")]
-    logical_height: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,23 +164,26 @@ pub struct HostPlatform {
     wake_deadline: Option<sim_platform_contract::lifecycle::WakeDeadline>,
     orderly_shutdown: Option<sim_platform_contract::lifecycle::ShutdownReason>,
     target_sku: String,
+    logical_width: u32,
+    logical_height: u32,
     initial_splash_pending: bool,
 }
 
 impl HostPlatform {
-    pub fn new(profile_path: &Path, backend: Backend) -> PlatformResult<Self> {
+    pub fn new(
+        profile_path: &Path,
+        device_profile_path: &Path,
+        backend: Backend,
+    ) -> PlatformResult<Self> {
         let bytes = fs::read(profile_path).map_err(backend_error)?;
         let profile: Profile = serde_json::from_slice(&bytes).map_err(backend_error)?;
-        if profile.contract_version != "1.0.0" || profile.target_sku != "TG4040" {
+        let device =
+            device_profile::DeviceProfile::from_path(device_profile_path).map_err(backend_error)?;
+        let viewport = device.virtual_viewport();
+        if profile.contract_version != "1.0.0" {
             return Err(PlatformError::Invalid {
                 domain: HardwareDomain::Display,
                 reason: "unsupported synthetic profile".to_string(),
-            });
-        }
-        if profile.display.logical_width != 1024 || profile.display.logical_height != 768 {
-            return Err(PlatformError::Invalid {
-                domain: HardwareDomain::Display,
-                reason: "unsupported logical display".to_string(),
             });
         }
         if !profile.virtual_storage.read_only {
@@ -245,7 +236,11 @@ impl HostPlatform {
         let sdl = sdl2::init().map_err(backend_error)?;
         let video = sdl.video().map_err(backend_error)?;
         let window = video
-            .window("host-native userspace simulator", 1024, 768)
+            .window(
+                "host-native userspace simulator",
+                u32::from(viewport.width),
+                u32::from(viewport.height),
+            )
             .position_centered()
             .build()
             .map_err(backend_error)?;
@@ -264,8 +259,8 @@ impl HostPlatform {
         };
         let state = PlatformState {
             display: DisplayState {
-                logical_width: profile.display.logical_width,
-                logical_height: profile.display.logical_height,
+                logical_width: u32::from(viewport.width),
+                logical_height: u32::from(viewport.height),
             },
             input: InputState {
                 pressed: initial_pressed,
@@ -315,7 +310,9 @@ impl HostPlatform {
             wall_clock_ms: profile.clock.start_ms,
             wake_deadline: None,
             orderly_shutdown: None,
-            target_sku: profile.target_sku,
+            target_sku: viewport.target_sku,
+            logical_width: u32::from(viewport.width),
+            logical_height: u32::from(viewport.height),
             initial_splash_pending: true,
         })
     }
@@ -377,9 +374,10 @@ impl Platform for HostPlatform {
             screen.palette.text,
             3,
         );
+        let (viewport_width, _) = self.canvas.output_size().map_err(backend_error)?;
         draw_text(
             &mut self.canvas,
-            768,
+            viewport_width.saturating_sub(256) as i32,
             26,
             &screen.affordances.clock,
             screen.palette.background,
@@ -392,7 +390,7 @@ impl Platform for HostPlatform {
         );
         draw_text(
             &mut self.canvas,
-            888,
+            viewport_width.saturating_sub(136) as i32,
             26,
             &battery,
             screen.palette.background,
@@ -463,7 +461,7 @@ impl Platform for HostPlatform {
             .read_pixels(None, PixelFormatEnum::ABGR8888)
             .map_err(backend_error)?;
         let file = fs::File::create(path).map_err(backend_error)?;
-        let mut encoder = Encoder::new(file, 1024, 768);
+        let mut encoder = Encoder::new(file, self.logical_width, self.logical_height);
         encoder.set_color(ColorType::Rgba);
         encoder.set_depth(BitDepth::Eight);
         let mut writer = encoder.write_header().map_err(backend_error)?;
@@ -1163,9 +1161,15 @@ fn ttf_context() -> Option<&'static sdl2::ttf::Sdl2TtfContext> {
 }
 
 fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
+    let (width, height) = canvas.output_size().unwrap_or((1, 1));
     draw_text_in_bounds(
         canvas,
-        Rect::new(x, y, (1024 - x).max(1) as u32, (768 - y).max(1) as u32),
+        Rect::new(
+            x,
+            y,
+            (width as i32 - x).max(1) as u32,
+            (height as i32 - y).max(1) as u32,
+        ),
         text,
         color,
         (scale.max(1) * 8) as u16,

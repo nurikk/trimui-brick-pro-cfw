@@ -9,6 +9,10 @@ const CATALOG: &[u8] =
 const JOURNEY: &[u8] =
     include_bytes!("../../../../fixtures/display-profile/generated-v1/journey.json");
 const SCHEMA_JSON: &[u8] = include_bytes!("../../../../schemas/display-profile-v1.schema.json");
+const BRICK_PRO_DEVICE: &[u8] =
+    include_bytes!("../../../../config/platform/tg4040/compatibility.json");
+const SYNTHETIC_WIDE_DEVICE: &[u8] =
+    include_bytes!("../../../../fixtures/platform/synthetic-wide/compatibility.json");
 const MAX_DOCUMENT_BYTES: usize = 512 * 1024;
 
 const NEGATIVES: &[(&str, &[u8])] = &[
@@ -28,14 +32,16 @@ fn main() {
         eprintln!("display-profile-fixtures: {error}");
         process::exit(1);
     }
-    println!("display-profile-fixtures: 7 resolutions, 9 negatives (7 schema-invalid, 2 typed-semantic), and deterministic schema validation passed");
+    println!("display-profile-fixtures: 8 resolutions, 9 negatives (5 schema-invalid, 4 typed-semantic), and profile-driven schema validation passed");
 }
 
 fn run() -> Result<(), String> {
     schema_check()?;
+    let device = device_profile::DeviceProfile::from_json(BRICK_PRO_DEVICE)
+        .map_err(|error| format!("Brick Pro device profile: {error}"))?;
     let catalog: Catalog = parse(CATALOG).map_err(|error| format!("catalog parse: {error}"))?;
     catalog
-        .validate()
+        .validate(&device)
         .map_err(|error| format!("catalog validation: {error}"))?;
     let manifest: FixtureManifest =
         parse(JOURNEY).map_err(|error| format!("journey parse: {error}"))?;
@@ -56,7 +62,7 @@ fn run() -> Result<(), String> {
             game_id: case.game_id.clone(),
         };
         let resolved = catalog
-            .resolve(&request)
+            .resolve(&device, &request)
             .map_err(|error| format!("{} resolution: {error}", case.id))?;
         if resolved.selection.scaling != case.expected_scaling
             || resolved
@@ -83,13 +89,47 @@ fn run() -> Result<(), String> {
         let first = canonical_json(&resolved).map_err(|error| error.to_string())?;
         let second = canonical_json(
             &catalog
-                .resolve(&request)
+                .resolve(&device, &request)
                 .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
         if first != second {
             return Err(format!("{} serialization is not deterministic", case.id));
         }
+    }
+
+    let synthetic_device = device_profile::DeviceProfile::from_json(SYNTHETIC_WIDE_DEVICE)
+        .map_err(|error| format!("synthetic device profile: {error}"))?;
+    let synthetic_catalog_bytes = String::from_utf8(CATALOG.to_vec())
+        .map_err(|error| format!("synthetic catalog UTF-8: {error}"))?
+        .replace("TG4040", "SYNTHETIC-WIDE")
+        .replace("1024", "1280")
+        .replace("768", "720");
+    let synthetic_catalog: Catalog = parse(synthetic_catalog_bytes.as_bytes())
+        .map_err(|error| format!("synthetic catalog parse: {error}"))?;
+    synthetic_catalog
+        .validate(&synthetic_device)
+        .map_err(|error| format!("synthetic catalog validation: {error}"))?;
+    let synthetic_request = ResolutionRequest {
+        schema: SCHEMA.into(),
+        format: "trimui-display-profile".into(),
+        schema_version: 1,
+        kind: display_profile::RequestKind::ResolutionRequest,
+        channel: display_profile::Channel::Stable,
+        system_id: "tg4040".into(),
+        profile_id: "tg4040-default".into(),
+        game_id: None,
+    };
+    if synthetic_catalog
+        .resolve(&synthetic_device, &synthetic_request)
+        .map_err(|error| format!("synthetic resolution: {error}"))?
+        .logical_output
+        != (display_profile::LogicalOutput {
+            width: 1280,
+            height: 720,
+        })
+    {
+        return Err("synthetic device did not select its logical viewport".into());
     }
 
     Ok(())
@@ -108,7 +148,12 @@ fn schema_check() -> Result<(), String> {
 
     validate_document(CATALOG, &schema).map_err(|error| format!("catalog schema: {error}"))?;
     validate_document(JOURNEY, &schema).map_err(|error| format!("journey schema: {error}"))?;
-    let semantic_only = ["shader-missing-warning", "channel-leakage"];
+    let semantic_only = [
+        "non-tg4040-sku",
+        "wrong-dimensions",
+        "shader-missing-warning",
+        "channel-leakage",
+    ];
     let mut schema_invalid = 0;
     let mut typed_semantic = 0;
     for (name, bytes) in NEGATIVES {
@@ -117,7 +162,9 @@ fn schema_check() -> Result<(), String> {
             if let Err(error) = schema_result {
                 return Err(format!("{name} should be schema-valid: {error}"));
             }
-            let typed_result = parse::<Catalog>(bytes).and_then(|catalog| catalog.validate());
+            let device = device_profile::DeviceProfile::from_json(BRICK_PRO_DEVICE)
+                .map_err(|error| format!("Brick Pro device profile: {error}"))?;
+            let typed_result = parse::<Catalog>(bytes).and_then(|catalog| catalog.validate(&device));
             if typed_result.is_ok() {
                 return Err(format!("typed semantic negative accepted: {name}"));
             }
@@ -128,7 +175,7 @@ fn schema_check() -> Result<(), String> {
             schema_invalid += 1;
         }
     }
-    if schema_invalid != 7 || typed_semantic != 2 {
+    if schema_invalid != 5 || typed_semantic != 4 {
         return Err(format!(
             "negative classification was {schema_invalid} schema-invalid and {typed_semantic} typed-semantic"
         ));

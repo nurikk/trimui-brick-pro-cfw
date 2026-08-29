@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/domain",
+    "crates/device-profile",
     "crates/platform-contract",
     "crates/host-platform",
     "crates/launcher",

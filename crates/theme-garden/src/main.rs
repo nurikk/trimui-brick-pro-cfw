@@ -21,20 +21,34 @@ fn run() -> Result<()> {
         Some("journey") => {
             let fixtures = required_path(&mut args, "--fixtures")?;
             let root = required_path(&mut args, "--root")?;
-            if args.next().is_some() { bail!("unexpected argument") }
-            journey(&fixtures, &root)
+            let device_profile = required_path(&mut args, "--device-profile")?;
+            if args.next().is_some() {
+                bail!("unexpected argument")
+            }
+            journey(
+                &fixtures,
+                &root,
+                device_profile::DeviceProfile::from_path(&device_profile)?,
+            )
         }
         Some("parse") => {
             let path = required_path(&mut args, "--catalog")?;
-            if args.next().is_some() { bail!("unexpected argument") }
-            println!("PASS parsed {} catalog entries", Catalog::parse(&fs::read(path)?)?.themes.len());
+            let device_profile = required_path(&mut args, "--device-profile")?;
+            if args.next().is_some() {
+                bail!("unexpected argument")
+            }
+            let device = device_profile::DeviceProfile::from_path(&device_profile)?;
+            println!(
+                "PASS parsed {} catalog entries",
+                Catalog::parse(&fs::read(path)?, &device)?.themes.len()
+            );
             Ok(())
         }
-        _ => bail!("usage: theme-garden journey --fixtures PATH --root SYNTHETIC_ROOT | parse --catalog PATH"),
+        _ => bail!("usage: theme-garden journey --fixtures PATH --root SYNTHETIC_ROOT --device-profile PATH | parse --catalog PATH --device-profile PATH"),
     }
 }
 
-fn journey(fixtures: &Path, root: &Path) -> Result<()> {
+fn journey(fixtures: &Path, root: &Path, device: device_profile::DeviceProfile) -> Result<()> {
     if root.as_os_str().is_empty() || root == Path::new("/") {
         bail!("journey requires a caller-provided synthetic root")
     }
@@ -63,11 +77,16 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
         fs::write(path, bytes)?;
     }
     let before = protected_bytes(root)?;
-    let garden = ThemeGarden::load(root, fixtures)?;
+    let garden = ThemeGarden::load(root, fixtures, device.clone())?;
     let catalog_bytes = fs::read(fixtures.join("themes.json"))?;
     let selected =
         garden.select_themes_json(&catalog_bytes, "minimal", "1.0.0", &fixtures.join("themes"))?;
-    if selected.name().is_empty() || ThemeGarden::from_cache(root, fixtures)?.browse().len() != 3 {
+    if selected.name().is_empty()
+        || ThemeGarden::from_cache(root, fixtures, device.clone())?
+            .browse()
+            .len()
+            != 3
+    {
         bail!("offline cache could not be browsed")
     }
     let cache = root.join(CACHE_PATH.trim_start_matches('/'));
@@ -76,7 +95,7 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     let mut changed: serde_json::Value = serde_json::from_slice(&metadata)?;
     changed["catalogVersion"] = serde_json::Value::String("9.9.9".into());
     fs::write(cache.join("metadata.json"), serde_json::to_vec(&changed)?)?;
-    if ThemeGarden::from_cache(root, fixtures).is_ok() {
+    if ThemeGarden::from_cache(root, fixtures, device.clone()).is_ok() {
         bail!("tampered cache was accepted")
     }
     fs::write(cache.join("catalog.json"), catalog)?;
@@ -89,7 +108,10 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     println!("PASS Browse exposes 3 project-authored entries");
     for entry in garden.browse() {
         let detail = garden.details(&entry.id)?;
-        if detail.source != "local" || detail.target_sku != "TG4040" || detail.sha256.len() != 64 {
+        if detail.target_sku != device.target_sku() || detail.sha256.len() != 64 {
+            bail!("incomplete detail record")
+        }
+        if !detail.screenshots_available {
             bail!("incomplete detail record")
         }
     }
@@ -137,7 +159,7 @@ fn journey(fixtures: &Path, root: &Path) -> Result<()> {
     let mut unknown: serde_json::Value =
         serde_json::from_slice(&fs::read(fixtures.join("repository/catalog.json"))?)?;
     unknown["unknown"] = serde_json::Value::Bool(true);
-    if Catalog::parse(&serde_json::to_vec(&unknown)?).is_ok() {
+    if Catalog::parse(&serde_json::to_vec(&unknown)?, &device).is_ok() {
         bail!("catalog unknown field was accepted")
     }
     println!("PASS bad archive path, invalid theme data, and unknown fields reject");

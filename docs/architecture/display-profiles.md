@@ -1,6 +1,6 @@
-# TG4040 display-profile contract
+# Device-profile-driven display-profile contract
 
-`schemas/display-profile-v1.schema.json`, `crates/display-profile`, and the generated fixture catalog define a closed, versioned consumer contract for the TG4040 display at logical `1024x768`. It is project-authored metadata only.
+`config/platform/<device>/compatibility.json` is parsed once into `device_profile::DeviceProfile`. `schemas/display-profile-v1.schema.json`, `crates/display-profile`, and the generated fixture catalog use that selected profile's target SKU and logical output rather than a model-specific constant. Brick Pro currently resolves `TG4040` at `1024x768`; the synthetic `1280x720` fixture proves a second profile can resolve without a source branch. It is project-authored metadata only.
 
 ## Consumer boundary
 
@@ -10,7 +10,7 @@ Selections are declarative metadata: `scaling` is one of `integer`, `original-as
 
 ## Resolution and precedence
 
-The consumer supplies a channel, system ID, profile ID, and optional opaque game ID. Resolution is fail-closed unless the system and profile are in the requested channel, the target is exactly `TG4040`, and the logical output is exactly `1024x768`.
+The consumer supplies a parsed device profile, channel, system ID, profile ID, and optional opaque game ID. Resolution is fail-closed unless the system and profile are in the requested channel and their target and logical output exactly match the selected device profile.
 
 The effective selection is resolved in this order:
 

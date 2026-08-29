@@ -48,6 +48,7 @@ done
 
 $ROOT/scripts/sim stop --run-dir "$RUN"
 python3 - "$RUN" "$ROOT/sim/contracts/control.schema.json" "$ROOT/schemas/launcher-presentation-v1.schema.json" <<'PY'
+import copy
 import glob
 import json
 import os
@@ -90,6 +91,7 @@ if len(semantic_paths) != 12 or len(png_paths) != len(semantic_paths):
         f"expected 12 paired semantic/PNG screenshots, got {len(semantic_paths)}/{len(png_paths)}"
     )
 by_name = {os.path.splitext(os.path.basename(path))[0]: path for path in semantic_paths}
+save_sync_sample = None
 for path in semantic_paths:
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
@@ -101,8 +103,37 @@ for path in semantic_paths:
     assert len(screen["regions"]) == 9
     assert screen["affordances"]["clock"]
     assert 0 <= screen["affordances"]["batteryPercent"] <= 100
+    if screen["saveSync"] is not None:
+        save_sync = screen["saveSync"]
+        assert set(save_sync) == {"local", "remote", "state", "transportOutcome", "actions"}
+        assert save_sync["actions"] == ["keep-local", "keep-remote", "keep-both"]
+        assert set(save_sync["local"]) == set(save_sync["remote"]) == {
+            "logicalId", "contentId", "deviceId", "deviceName", "generation",
+            "hashPrefix", "parentHashPrefix", "ancestry", "saveKind", "timestampMs",
+            "size", "status", "deleted",
+        }
+        save_sync_sample = data
     raw = json.dumps(data, sort_keys=True)
     assert "/srv/" not in raw and "secret-value" not in raw and "credential-value" not in raw
+
+assert save_sync_sample is not None
+invalid_state = copy.deepcopy(save_sync_sample)
+invalid_state["presentation"]["saveSync"]["unexpected"] = True
+validation_error = jsonschema.ValidationError if jsonschema is not None else subprocess.CalledProcessError
+try:
+    validate(invalid_state, control_schema_path)
+except validation_error:
+    pass
+else:
+    raise AssertionError("control schema accepted an unexpected Save Sync field")
+
+invalid_presentation = invalid_state["presentation"]
+try:
+    validate(invalid_presentation, presentation_schema_path)
+except validation_error:
+    pass
+else:
+    raise AssertionError("presentation schema accepted an unexpected Save Sync field")
 
 assert json.load(open(by_name["controller-systems"]))["presentation"]["route"] == "systems"
 assert json.load(open(by_name["controller-games"]))["presentation"]["route"] == "games"
@@ -118,7 +149,7 @@ if len(splash_paths) != 1:
     raise SystemExit(f"expected one startup splash artifact, got {len(splash_paths)}")
 with open(splash_paths[0], encoding="utf-8") as stream:
     splash = json.load(stream)["presentation"]
-assert splash["splash"] == "artbook-generated-splash"
+assert splash["splash"] == "nova8-splash"
 assert splash["route"] == "home"
 def first_pixel(path):
     data = open(path, "rb").read()
@@ -142,11 +173,11 @@ with open(splash_png_path, "rb") as stream:
     splash_png = stream.read()
 with open(by_name["controller-systems"].replace(".json", ".png"), "rb") as stream:
     systems_png = stream.read()
-assert first_pixel(splash_png_path) == (16, 19, 28, 255)
-assert splash["palette"]["background"] == [16, 19, 28, 255]
+assert first_pixel(splash_png_path) == (0, 0, 0, 255)
+assert splash["palette"]["background"] == [0, 0, 0, 255]
 assert splash_png != systems_png
 fallback_json = json.load(open(by_name["fallback"]))["presentation"]
-assert fallback_json["splash"] == "artbook-generated-fallback"
+assert fallback_json["splash"] == "nova8-fallback"
 assert fallback_json["themeFallback"] is not None
 assert fallback_json["modal"] is None
 with open(by_name["fallback"].replace(".json", ".png"), "rb") as stream:

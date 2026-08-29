@@ -111,27 +111,71 @@ start_run() {
     ctl_save "$run" "$run/commands/initial-session-completed-state.response.json" state
 }
 
+catalog_entry_count() {
+    run=$1
+    id=$2
+    python3 - "$run/data/rom-index.json" "$id" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+identity = sys.argv[2]
+try:
+    index = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"cannot read simulator ROM index {path}: {error}")
+entries = index.get("entries")
+if index.get("schema") != "launcher-rom-index/v1" or not isinstance(entries, list) or not entries:
+    raise SystemExit(f"invalid simulator ROM index: {path}")
+if sum(entry.get("contentId") == str(identity) for entry in entries if isinstance(entry, dict)) != 1:
+    raise SystemExit(f"requested identity is absent or duplicated in simulator ROM index: {identity}")
+print(len(entries))
+PY
+}
+
+selected_content_id() {
+    path=$1
+    python3 - "$path" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+try:
+    response = json.loads(path.read_text(encoding="utf-8"))
+    state = response["result"]
+except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+    raise SystemExit(f"cannot read semantic simulator state {path}: {error}")
+if response.get("ok") is not True or state.get("schema") != "sim-state/v1" or state.get("route") != "games":
+    raise SystemExit(f"unexpected semantic simulator state while selecting content: {path}")
+identity = state.get("selectedContentId")
+if not isinstance(identity, str):
+    raise SystemExit(f"missing selected content identity in semantic simulator state: {path}")
+print(identity)
+PY
+}
+
 launch_active() {
     run=$1
     case_root=$2
     id=$3
-    moves=$4
     mkdir -p "$case_root"
+    max_moves=$(catalog_entry_count "$run" "$id") || fail "cannot resolve requested content identity: $id"
     ctl_save "$run" "$case_root/button-start.response.json" button --button start --action press
     ctl_save "$run" "$case_root/button-systems-to-games.response.json" button --button down --action press
-    direction=down
-    count=$moves
-    case "$moves" in
-    -*)
-        direction=up
-        count=${moves#-}
-        ;;
-    esac
+    ctl_save "$run" "$case_root/selection-initial-state.response.json" state
+    selected=$(selected_content_id "$case_root/selection-initial-state.response.json") ||
+        fail "cannot inspect initial content selection for $id"
     i=0
-    while [ "$i" -lt "$count" ]; do
-        ctl_save "$run" "$case_root/button-select-$i.response.json" button --button "$direction" --action press
+    while [ "$selected" != "$id" ] && [ "$i" -lt "$max_moves" ]; do
+        ctl_save "$run" "$case_root/button-select-$i.response.json" button --button down --action press
+        selected=$(selected_content_id "$case_root/button-select-$i.response.json") ||
+            fail "cannot inspect content selection after move $i for $id"
         i=$((i + 1))
     done
+    [ "$selected" = "$id" ] ||
+        fail "requested identity cannot be reached in $max_moves moves: $id (last selected: $selected)"
     ctl_save "$run" "$case_root/launch.response.json" button --button primary --action press
     cp "$run/launch-request.json" "$case_root/launch-request.json"
     cp "$run/launch.json" "$case_root/launch.json"
@@ -151,9 +195,8 @@ complete_active() {
 launch_complete() {
     run=$1
     id=$2
-    moves=$3
     case_root=$run/cases/$id
-    launch_active "$run" "$case_root" "$id" "$moves"
+    launch_active "$run" "$case_root" "$id"
     complete_active "$run" "$case_root"
 }
 
@@ -184,12 +227,12 @@ run_smoke() {
     start_run "$run"
     package_fixture "$run"
 
-    launch_active "$run" "$run/cases/nebula-nes" nebula-nes -2
+    launch_active "$run" "$run/cases/nebula-nes" nebula-nes
     lifecycle_success "$run"
     complete_active "$run" "$run/cases/nebula-nes"
-    launch_complete "$run" mirror-ps1 1
-    launch_complete "$run" orbit-garden 1
-    launch_complete "$run" signal-workshop 1
+    launch_complete "$run" mirror-ps1
+    launch_complete "$run" orbit-garden
+    launch_complete "$run" signal-workshop
 
     resume_root=$run/cases/resume
     mkdir -p "$resume_root/accepted" "$resume_root/rejected"
@@ -207,7 +250,7 @@ run_smoke() {
     ctl_save "$run" "$resume_root/rejected/state.response.json" state
 
     negative=$run/cases/lifecycle-negative
-    launch_active "$run" "$negative" signal-workshop 0
+    launch_active "$run" "$negative" signal-workshop
     ctl_save "$run" "$negative/fault-set.response.json" fault set checkpoint-fail
     ctl_expect_failure "$run" "$negative/suspend.response.json" lifecycle suspend --timeout 5
     ctl_save "$run" "$negative/recovery-state.response.json" state
@@ -363,7 +406,11 @@ def validate_run(run_name):
 
     cases = run / "cases"
     for identity in IDENTITIES:
-        assert_session(cases / identity, identity)
+        case = cases / identity
+        assert_session(case, identity)
+        check_state(case / "selection-initial-state.response.json", "games")
+        for path in sorted(case.glob("button-select-*.response.json")):
+            check_state(path, "games")
     lifecycle = cases / "nebula-nes/lifecycle"
     response(lifecycle / "suspend.response.json", True)
     suspended = check_state(lifecycle / "suspended-state.response.json", "session", "suspended", False)
@@ -401,14 +448,21 @@ def validate_run(run_name):
     failed_suspend = response(negative / "suspend.response.json", False)
     if failed_suspend["error"]["code"] != "protocol_rejected":
         raise SystemExit("negative lifecycle case was not rejected")
-    recovery = check_state(negative / "recovery-state.response.json", "session", "recovery", False)
-    if recovery["lifecycle"]["marker"] is None:
-        raise SystemExit("recovery marker missing")
+    shutdown = check_state(negative / "recovery-state.response.json", "library", "orderly-shutdown", False)
+    if shutdown.get("activeSession") is not None or shutdown.get("lastSessionResult") is not None:
+        raise SystemExit("checkpoint failure completed the active session")
+    lifecycle = shutdown["lifecycle"]
+    marker = lifecycle.get("marker")
+    if not isinstance(marker, dict) or marker.get("phase") != "orderly-shutdown" or marker.get("reason") != "checkpoint-failed":
+        raise SystemExit("checkpoint failure shutdown marker missing")
+    shutdown_request = lifecycle.get("shutdownRequest")
+    if not isinstance(shutdown_request, dict) or shutdown_request.get("status") != "terminal" or shutdown_request.get("reason") != "checkpoint-failure":
+        raise SystemExit("terminal checkpoint failure shutdown request missing")
     response(negative / "recovery-checkpoint.response.json", True)
     response(negative / "recovery-screenshot.response.json", True)
     gated = response(negative / "adapter-gated.response.json", False)
     if gated["error"]["code"] != "protocol_rejected":
-        raise SystemExit("recovery did not gate session completion")
+        raise SystemExit("checkpoint failure shutdown did not gate session completion")
     response(negative / "fault-clear.response.json", True)
 
     exit_status = load(run / "exit-status.json")
@@ -430,7 +484,7 @@ def validate_run(run_name):
         "launcherIdentities": list(IDENTITIES),
         "sessionCompletions": 4,
         "packageBoundaries": ["safe-install", "interrupted-install"],
-        "lifecycle": ["suspend-success", "resume-success", "checkpoint-failure-recovery"],
+        "lifecycle": ["suspend-success", "resume-success", "checkpoint-failure-shutdown"],
         "resume": ["accepted", "runner-mismatch-rejected"],
         "eventLog": normalized_log,
     }
@@ -443,7 +497,7 @@ def validate_run(run_name):
             "packageInstall": {"count": 1, "facility": "package-manager demo", "outcome": "pass"},
             "packageRejectionRecovery": {"count": 1, "case": "corrupt-target-retry", "outcome": "pass"},
             "lifecycleSuspendResume": {"count": 1, "outcome": "pass"},
-            "lifecycleNegativeRecovery": {"count": 1, "case": "checkpoint-failure-gated", "outcome": "pass"},
+            "lifecycleCheckpointFailureShutdown": {"count": 1, "case": "checkpoint-failure-gated", "outcome": "pass"},
             "resumeAccepted": {"count": 1, "decision": "resume", "outcome": "pass"},
             "resumeRejected": {"count": 1, "case": "runner-version-mismatch", "outcome": "pass"},
         },

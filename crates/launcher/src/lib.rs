@@ -354,8 +354,11 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
     }
     if matches!(state.route, Route::Session)
         && matches!(state.presentation.ui.route, ui_model::Route::Games)
+        && state.active_session.is_some()
+        && !state.presentation.theme_garden
     {
         let entry = &catalog.entries[selected_catalog_index(state, catalog)];
+        screen.route = "session".into();
         screen.title = entry.title.clone();
         screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
     }
@@ -1907,7 +1910,436 @@ fn sync_scraper_persistence(state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
-    use super::next_theme_garden_name;
+    use super::*;
+
+    struct TestPlatform;
+
+    impl Platform for TestPlatform {
+        fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>> {
+            Ok(None)
+        }
+
+        fn present(&mut self, _screen: &PresentationScreen) -> PlatformResult<()> {
+            Ok(())
+        }
+
+        fn capture_png(&mut self, _path: &Path) -> PlatformResult<()> {
+            Ok(())
+        }
+
+        fn logical_time_ms(&self) -> u64 {
+            0
+        }
+
+        fn snapshot(&self) -> PlatformResult<sim_platform_contract::PlatformSnapshot> {
+            Ok(sim_platform_contract::PlatformSnapshot {
+                battery_level_percent: 100,
+                charging: false,
+                led_on: false,
+                audio_enabled: false,
+                radio_enabled: false,
+                suspended: false,
+            })
+        }
+
+        fn platform_state(&self) -> PlatformResult<sim_platform_contract::PlatformState> {
+            Err(sim_platform_contract::PlatformError::unsupported(
+                sim_platform_contract::HardwareDomain::Display,
+                "test platform state",
+            ))
+        }
+
+        fn hardware_state(&self) -> PlatformResult<sim_platform_contract::HardwareState> {
+            Err(sim_platform_contract::PlatformError::unsupported(
+                sim_platform_contract::HardwareDomain::Display,
+                "test hardware state",
+            ))
+        }
+
+        fn mutate_hardware(
+            &mut self,
+            _changes: sim_platform_contract::HardwareChanges,
+        ) -> PlatformResult<()> {
+            Ok(())
+        }
+    }
+
+    fn test_state(
+        route: Route,
+        presentation_route: ui_model::Route,
+    ) -> (AppState, UiCatalog, std::path::PathBuf) {
+        let catalog: UiCatalog =
+            serde_json::from_slice(include_bytes!("../../../sim/fixtures/catalog.json"))
+                .expect("generated catalog");
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation.ui =
+            ui_model::reduce(&presentation.ui, UiAction::Navigate(presentation_route));
+        let broker_root = std::env::temp_dir().join(format!(
+            "trimui-route-surface-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("test clock")
+                .as_nanos()
+        ));
+        let state = AppState {
+            route,
+            selected_content_id: catalog.entries[0].id.clone(),
+            groups: rom_index::GroupIndex::from_catalog(&catalog),
+            input_profile: input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
+                .expect("input profile"),
+            broker: Box::new(simulator_session::SimulatorSessionAdapter::with_root(
+                broker_root.clone(),
+            )),
+            save_vault: SaveVaultUi::default(),
+            save_sync: None,
+            active_session: None,
+            last_session: None,
+            modal: None,
+            faults: Vec::new(),
+            readiness_generation: 1,
+            persisted: launcher_state::State::default(),
+            presentation,
+            session_step: 0,
+            lifecycle: LifecycleController::new(),
+        };
+        (state, catalog, broker_root)
+    }
+
+    #[test]
+    fn direct_games_actions_leave_session_surface() {
+        for action in ["games", "media-details"] {
+            let (mut state, catalog, broker_root) =
+                test_state(Route::Session, ui_model::Route::Games);
+            presentation_action(
+                &mut state,
+                PresentationArgs {
+                    action: action.into(),
+                },
+            )
+            .expect("presentation action");
+
+            assert_eq!(state.route, Route::Games);
+            let screen = screen_for_state(&state, &catalog).expect("screen");
+            assert_eq!(screen.route, "games");
+            assert_eq!(screen.modal, None);
+            drop(state);
+            fs::remove_dir_all(broker_root).expect("test broker cleanup");
+        }
+    }
+
+    #[test]
+    fn stale_session_routes_do_not_render_session_frames() {
+        let cases = [
+            (Route::Games, ui_model::Route::Games, "games", None),
+            (Route::Session, ui_model::Route::Games, "games", None),
+            (Route::Session, ui_model::Route::Settings, "settings", None),
+            (
+                Route::Session,
+                ui_model::Route::Wifi(ui_model::WifiRoute::Scan),
+                "wifi-scan",
+                None,
+            ),
+            (Route::Session, ui_model::Route::Systems, "systems", None),
+        ];
+
+        for (route, presentation_route, expected_route, expected_modal) in cases {
+            let (state, catalog, broker_root) = test_state(route, presentation_route);
+            let screen = screen_for_state(&state, &catalog).expect("screen");
+            assert_eq!(screen.route, expected_route);
+            assert_eq!(screen.modal.as_deref(), expected_modal);
+            drop(state);
+            fs::remove_dir_all(broker_root).expect("test broker cleanup");
+        }
+    }
+
+    #[test]
+    fn active_session_preserves_route_and_frame_on_games_action() {
+        let (mut state, catalog, broker_root) = test_state(Route::Session, ui_model::Route::Games);
+        state.active_session = Some(SessionHandle {
+            schema: session_broker::HANDLE_SCHEMA.into(),
+            session_id: "test-session".into(),
+            content_id: catalog.entries[0].id.clone(),
+            phase: "active",
+        });
+
+        presentation_action(
+            &mut state,
+            PresentationArgs {
+                action: "games".into(),
+            },
+        )
+        .expect("presentation action");
+
+        assert_eq!(state.route, Route::Session);
+        let screen = screen_for_state(&state, &catalog).expect("screen");
+        assert_eq!(screen.route, "session");
+        assert_eq!(screen.modal.as_deref(), Some("Nebula Notes FRAME 0"));
+        drop(state);
+        fs::remove_dir_all(broker_root).expect("test broker cleanup");
+    }
+
+    #[test]
+    fn theme_garden_surface_takes_precedence_over_session_frame() {
+        let (mut state, catalog, broker_root) = test_state(Route::Session, ui_model::Route::Games);
+        state.presentation.theme_garden = true;
+        let screen = screen_for_state(&state, &catalog).expect("screen");
+        assert_eq!(screen.route, "theme-garden");
+        assert_eq!(screen.modal, None);
+        drop(state);
+        fs::remove_dir_all(broker_root).expect("test broker cleanup");
+    }
+
+    #[test]
+    fn controller_secondary_exits_settings_only_after_internal_form_back() {
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Navigate(ui_model::Route::Settings),
+        );
+        presentation
+            .settings
+            .press(virtual_keyboard::Button::Down)
+            .expect("select section");
+        presentation
+            .settings
+            .press(virtual_keyboard::Button::Primary)
+            .expect("open form");
+        assert_eq!(
+            presentation
+                .settings
+                .scene()
+                .expect("settings scene")
+                .surface,
+            settings_ui::Surface::Form
+        );
+
+        handle_presentation_action(&mut presentation, input_profile::Action::Secondary)
+            .expect("leave form");
+        assert_eq!(presentation.ui.route, ui_model::Route::Settings);
+        handle_presentation_action(&mut presentation, input_profile::Action::Secondary)
+            .expect("leave settings");
+        assert_eq!(presentation.ui.route, ui_model::Route::Home);
+    }
+
+    #[test]
+    fn controller_secondary_exits_wifi_menu_after_internal_view_back() {
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Navigate(ui_model::Route::Wifi(ui_model::WifiRoute::Scan)),
+        );
+        presentation.wifi.scan().expect("scan");
+        assert_eq!(
+            presentation.wifi.snapshot().view,
+            wifi_settings_controller::View::Networks
+        );
+
+        handle_presentation_action(&mut presentation, input_profile::Action::Secondary)
+            .expect("leave scan");
+        assert_eq!(
+            presentation.ui.route,
+            ui_model::Route::Wifi(ui_model::WifiRoute::Scan)
+        );
+        handle_presentation_action(&mut presentation, input_profile::Action::Secondary)
+            .expect("leave Wi-Fi");
+        assert_eq!(presentation.ui.route, ui_model::Route::Home);
+    }
+
+    #[test]
+    fn wifi_controller_states_reconcile_routes() {
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Navigate(ui_model::Route::Wifi(ui_model::WifiRoute::Scan)),
+        );
+        presentation.wifi.scan().expect("scan");
+        presentation
+            .wifi
+            .select_network(wifi_manager::NetworkId::new("net-home-strong").expect("network id"))
+            .expect("select network");
+        let mut snapshot = presentation.wifi.snapshot();
+        assert_eq!(
+            wifi_route_for_snapshot(&ui_model::WifiRoute::Scan, &snapshot),
+            ui_model::WifiRoute::PasswordEntry
+        );
+        assert_eq!(snapshot.view, wifi_settings_controller::View::Keyboard);
+        assert_eq!(snapshot.phase, wifi_manager::WifiPhase::AwaitingCredentials);
+
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Navigate(ui_model::Route::Wifi(ui_model::WifiRoute::PasswordEntry)),
+        );
+        handle_presentation_action(&mut presentation, input_profile::Action::Secondary)
+            .expect("cancel password entry");
+        let cancelled_snapshot = presentation.wifi.snapshot();
+        assert_eq!(
+            cancelled_snapshot.view,
+            wifi_settings_controller::View::Menu
+        );
+        assert_eq!(
+            cancelled_snapshot.phase,
+            wifi_manager::WifiPhase::AwaitingCredentials
+        );
+        assert_eq!(cancelled_snapshot.keyboard, None);
+        assert_eq!(
+            presentation.ui.route,
+            ui_model::Route::Wifi(ui_model::WifiRoute::Scan)
+        );
+
+        let mut settled = PresentationState::new("tg4040").expect("presentation state");
+        settled.wifi.scan().expect("scan");
+        settled
+            .wifi
+            .select_network(wifi_manager::NetworkId::new("net-guest").expect("network id"))
+            .expect("select open network");
+        settled.ui = ui_model::reduce(
+            &settled.ui,
+            UiAction::Navigate(ui_model::Route::Wifi(ui_model::WifiRoute::PasswordEntry)),
+        );
+        handle_presentation_action(&mut settled, input_profile::Action::MoveUp)
+            .expect("reconcile settled menu");
+        let settled_snapshot = settled.wifi.snapshot();
+        assert_eq!(settled_snapshot.view, wifi_settings_controller::View::Menu);
+        assert_eq!(settled_snapshot.phase, wifi_manager::WifiPhase::Idle);
+        assert_eq!(
+            settled.ui.route,
+            ui_model::Route::Wifi(ui_model::WifiRoute::Scan)
+        );
+
+        presentation.wifi.open_manual().expect("manual network");
+        snapshot = presentation.wifi.snapshot();
+        assert_eq!(
+            wifi_route_for_snapshot(&ui_model::WifiRoute::Scan, &snapshot),
+            ui_model::WifiRoute::ManualSsid
+        );
+
+        snapshot.keyboard = None;
+        snapshot.phase = wifi_manager::WifiPhase::Connecting;
+        assert_eq!(
+            wifi_route_for_snapshot(&ui_model::WifiRoute::Scan, &snapshot),
+            ui_model::WifiRoute::Progress
+        );
+        snapshot.phase = wifi_manager::WifiPhase::Failed;
+        snapshot.reason = Some(wifi_manager::ReasonCode::RadioUnavailable);
+        assert_eq!(
+            wifi_route_for_snapshot(&ui_model::WifiRoute::Scan, &snapshot),
+            ui_model::WifiRoute::Error
+        );
+    }
+
+    #[test]
+    fn theme_garden_secondary_exits_to_library_through_controller_path() {
+        let (mut state, catalog, broker_root) = test_state(Route::Library, ui_model::Route::Home);
+        state.presentation.theme_garden = true;
+        let evidence_root = broker_root.join("evidence");
+        let evidence = Evidence::new(&evidence_root).expect("evidence");
+        let mut log = EventLog::new(&evidence.root, "test-run").expect("event log");
+        let launch_catalog =
+            launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
+        let mut platform = TestPlatform;
+
+        handle_button(
+            &mut platform,
+            &evidence,
+            &mut log,
+            &catalog,
+            &launch_catalog,
+            &mut state,
+            ButtonEvent {
+                at_ms: 1,
+                button: Button::Secondary,
+                action: ButtonAction::Press,
+            },
+            "tg4040",
+        )
+        .expect("leave Theme Garden");
+
+        assert!(!state.presentation.theme_garden);
+        assert_eq!(state.route, Route::Library);
+        drop(log);
+        drop(evidence);
+        drop(platform);
+        drop(state);
+        fs::remove_dir_all(broker_root).expect("test broker cleanup");
+    }
+
+    #[test]
+    fn settings_projection_shows_only_the_selected_form_section() {
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation.ui = ui_model::reduce(
+            &presentation.ui,
+            UiAction::Navigate(ui_model::Route::Settings),
+        );
+        let section_list = presentation
+            .screen()
+            .expect("section list")
+            .settings
+            .expect("settings");
+        assert!(section_list
+            .sections
+            .iter()
+            .all(|section| section.controls.is_empty()));
+        assert_eq!(section_list.selected_section_id.as_deref(), Some("display"));
+
+        presentation
+            .settings
+            .press(virtual_keyboard::Button::Down)
+            .expect("select section");
+        presentation
+            .settings
+            .press(virtual_keyboard::Button::Primary)
+            .expect("open form");
+        let form = presentation
+            .screen()
+            .expect("form")
+            .settings
+            .expect("settings");
+        assert_eq!(form.surface, settings_ui::Surface::Form);
+        assert_eq!(form.sections.len(), 1);
+        assert_eq!(form.sections[0].id, "audio");
+        assert_eq!(form.selected_section_id.as_deref(), Some("audio"));
+        assert!(form.sections[0].controls.iter().any(|control| {
+            Some(control.setting_id.as_str()) == form.selected_setting_id.as_deref()
+        }));
+    }
+
+    #[test]
+    fn art_book_settings_and_wifi_surfaces_have_themed_panels() {
+        let routes = [
+            ui_model::Route::Settings,
+            ui_model::Route::Wifi(ui_model::WifiRoute::Scan),
+        ];
+        for presentation_route in routes {
+            let (mut state, catalog, broker_root) = test_state(Route::Library, presentation_route);
+            state.presentation.ui =
+                ui_model::reduce(&state.presentation.ui, UiAction::FinishSplash);
+            let screen = screen_for_state(&state, &catalog).expect("screen");
+            let mut platform = sim_host_platform::HostPlatform::new(
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sim/device/tg4040-host.json"),
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../config/platform/tg4040/compatibility.json"),
+                sim_host_platform::Backend::Dummy,
+            )
+            .expect("host platform");
+            platform.present(&screen).expect("render route");
+            let png = broker_root.join("surface.png");
+            platform.capture_png(&png).expect("capture route");
+            let decoder = png::Decoder::new(fs::File::open(&png).expect("captured PNG"));
+            let mut reader = decoder.read_info().expect("PNG header");
+            let mut pixels = vec![0; reader.output_buffer_size()];
+            let frame = reader.next_frame(&mut pixels).expect("PNG frame");
+            let offset = (300 * frame.width + 500) as usize * 4;
+            let pixel: [u8; 4] = pixels[offset..offset + 4].try_into().expect("pixel");
+            assert_ne!(
+                pixel, screen.palette.background,
+                "{} stayed bare",
+                screen.route
+            );
+            drop(platform);
+            drop(state);
+            fs::remove_dir_all(broker_root).expect("test broker cleanup");
+        }
+    }
 
     #[test]
     fn theme_garden_cycles_real_imports_before_default() {
@@ -1924,7 +2356,54 @@ mod tests {
     }
 }
 
+fn wifi_route_for_snapshot(
+    current: &ui_model::WifiRoute,
+    snapshot: &wifi_settings_controller::Snapshot,
+) -> ui_model::WifiRoute {
+    if snapshot.reason.is_some() || snapshot.phase == wifi_manager::WifiPhase::Failed {
+        return ui_model::WifiRoute::Error;
+    }
+    if snapshot.phase == wifi_manager::WifiPhase::Connecting {
+        return ui_model::WifiRoute::Progress;
+    }
+    if snapshot.view == wifi_settings_controller::View::Menu {
+        return ui_model::WifiRoute::Scan;
+    }
+    if let Some(keyboard) = &snapshot.keyboard {
+        return match keyboard.field {
+            wifi_manager::KeyboardField::Password => ui_model::WifiRoute::PasswordEntry,
+            wifi_manager::KeyboardField::Ssid => match current {
+                ui_model::WifiRoute::HiddenNetwork => ui_model::WifiRoute::HiddenNetwork,
+                _ => ui_model::WifiRoute::ManualSsid,
+            },
+        };
+    }
+    if snapshot.phase == wifi_manager::WifiPhase::AwaitingCredentials {
+        return ui_model::WifiRoute::PasswordEntry;
+    }
+    if snapshot.view == wifi_settings_controller::View::Networks {
+        return match current {
+            ui_model::WifiRoute::AccessPointSelection => ui_model::WifiRoute::AccessPointSelection,
+            _ => ui_model::WifiRoute::Scan,
+        };
+    }
+    current.clone()
+}
+
+fn exit_theme_garden(state: &mut AppState, action: input_profile::Action) {
+    if state.presentation.theme_garden && action == input_profile::Action::Secondary {
+        state.presentation.theme_garden = false;
+        state.route = Route::Library;
+    }
+}
+
 fn reduce_route(state: &mut AppState, route: ui_model::Route) {
+    if state.route == Route::Session
+        && route == ui_model::Route::Games
+        && state.active_session.is_none()
+    {
+        state.route = Route::Games;
+    }
     state.presentation.ui =
         ui_model::reduce(&state.presentation.ui, ui_model::Action::Navigate(route));
 }
@@ -2295,13 +2774,21 @@ fn handle_semantic_action<P: Platform>(
     }
 
     let selection_before = state.selected_content_id.clone();
+    let controller_route = matches!(
+        state.presentation.ui.route,
+        ui_model::Route::Settings | ui_model::Route::Wifi(_)
+    );
     let route_before_presentation = state.route.clone();
+    exit_theme_garden(state, action);
     let vault_button = match raw_button {
         Some(button) => handle_save_vault_button(state, button)?,
         None => false,
     };
     if !vault_button {
         handle_presentation_action(&mut state.presentation, action)?;
+        if controller_route && state.presentation.ui.route == ui_model::Route::Home {
+            state.route = Route::Library;
+        }
     }
     if matches!(state.presentation.ui.route, ui_model::Route::Games)
         && state.route != Route::Session
@@ -2980,17 +3467,41 @@ fn handle_presentation_action(
 ) -> Result<()> {
     if let Some(button) = to_keyboard_button(action) {
         if matches!(state.ui.route, ui_model::Route::Settings) {
+            let surface = state
+                .settings
+                .scene()
+                .map_err(|error| anyhow!(error.to_string()))?
+                .surface;
             state
                 .settings
                 .press(button)
                 .map_err(|error| anyhow!(error.to_string()))?;
+            if action == input_profile::Action::Secondary
+                && surface == settings_ui::Surface::SectionList
+            {
+                state.ui = ui_model::reduce(&state.ui, UiAction::Back);
+            }
             return Ok(());
         }
         if matches!(state.ui.route, ui_model::Route::Wifi(_)) {
-            state
+            let current_route = match &state.ui.route {
+                ui_model::Route::Wifi(route) => route.clone(),
+                _ => unreachable!(),
+            };
+            let view = state.wifi.snapshot().view;
+            let press_result = state
                 .wifi
                 .press(button)
-                .map_err(|error| anyhow!(error.to_string()))?;
+                .map_err(|error| anyhow!(error.to_string()));
+            let route = wifi_route_for_snapshot(&current_route, &state.wifi.snapshot());
+            state.ui =
+                ui_model::reduce(&state.ui, UiAction::Navigate(ui_model::Route::Wifi(route)));
+            press_result?;
+            if action == input_profile::Action::Secondary
+                && view == wifi_settings_controller::View::Menu
+            {
+                state.ui = ui_model::reduce(&state.ui, UiAction::Back);
+            }
             return Ok(());
         }
     }

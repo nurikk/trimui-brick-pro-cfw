@@ -95,6 +95,7 @@ pub struct SettingsView {
     pub width: u16,
     pub height: u16,
     pub surface: settings_ui::Surface,
+    pub selected_section_id: Option<String>,
     pub sections: Vec<SettingsSection>,
     pub selected_setting_id: Option<String>,
     pub pending_count: usize,
@@ -585,29 +586,41 @@ pub fn build_with_sync(
 }
 
 fn settings_view(scene: &settings_ui::Scene) -> SettingsView {
+    let surface = scene.surface;
     SettingsView {
         width: scene.width,
         height: scene.height,
-        surface: scene.surface,
+        surface,
+        selected_section_id: scene.selected_section_id.clone(),
         sections: scene
             .sections
             .iter()
+            .filter(|section| {
+                scene
+                    .form
+                    .as_ref()
+                    .is_none_or(|form| form.section_id == section.id)
+            })
             .map(|section| SettingsSection {
                 id: section.id.clone(),
                 label_key: section.label_key.clone(),
-                controls: section
-                    .groups
-                    .iter()
-                    .flat_map(|group| group.controls.iter())
-                    .map(|control| SettingsControl {
-                        setting_id: control.setting_id.clone(),
-                        label_key: control.label_key.clone(),
-                        kind: control.kind,
-                        value: control.value.clone(),
-                        enabled: control.enabled,
-                        redacted: control.redacted,
-                    })
-                    .collect(),
+                controls: if surface == settings_ui::Surface::SectionList {
+                    Vec::new()
+                } else {
+                    section
+                        .groups
+                        .iter()
+                        .flat_map(|group| group.controls.iter())
+                        .map(|control| SettingsControl {
+                            setting_id: control.setting_id.clone(),
+                            label_key: control.label_key.clone(),
+                            kind: control.kind,
+                            value: control.value.clone(),
+                            enabled: control.enabled,
+                            redacted: control.redacted,
+                        })
+                        .collect()
+                },
             })
             .collect(),
         selected_setting_id: scene

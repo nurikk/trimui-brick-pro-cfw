@@ -2,11 +2,13 @@ use std::{fmt, fs, path::Path, sync::OnceLock};
 
 use png::{BitDepth, ColorType, Decoder, Encoder, Transformations};
 use sdl2::{
+    event::Event,
+    keyboard::Keycode,
     pixels::PixelFormatEnum,
     rect::Rect,
     render::{BlendMode, Canvas},
     video::Window,
-    Sdl,
+    EventPump, Sdl,
 };
 use serde::Deserialize;
 use sim_platform_contract::{
@@ -173,6 +175,7 @@ pub struct HostPlatform {
     logical_width: u32,
     logical_height: u32,
     initial_splash_pending: bool,
+    event_pump: EventPump,
 }
 
 impl HostPlatform {
@@ -243,7 +246,7 @@ impl HostPlatform {
         let video = sdl.video().map_err(backend_error)?;
         let window = video
             .window(
-                "host-native userspace simulator",
+                "Host-native simulator acceptance — not physical TG4040 evidence",
                 u32::from(viewport.width),
                 u32::from(viewport.height),
             )
@@ -255,6 +258,7 @@ impl HostPlatform {
             .software()
             .build()
             .map_err(backend_error)?;
+        let event_pump = sdl.event_pump().map_err(backend_error)?;
         let suspend_state = match profile.suspend.state {
             ProfileSuspendState::Active => SuspendState::Active,
             ProfileSuspendState::Suspended => SuspendState::Suspended,
@@ -320,6 +324,7 @@ impl HostPlatform {
             logical_width: u32::from(viewport.width),
             logical_height: u32::from(viewport.height),
             initial_splash_pending: true,
+            event_pump,
         })
     }
 
@@ -341,10 +346,20 @@ impl Platform for HostPlatform {
     }
 
     fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>> {
-        let Some(event) = self.events.get(self.event_index).copied() else {
+        let event = if let Some(event) = self.events.get(self.event_index).copied() {
+            self.event_index += 1;
+            event
+        } else if let Some((button, action)) =
+            self.event_pump.poll_iter().find_map(sdl_button_event)
+        {
+            ButtonEvent {
+                at_ms: self.logical_time_ms.saturating_add(1),
+                button,
+                action,
+            }
+        } else {
             return Ok(None);
         };
-        self.event_index += 1;
         self.logical_time_ms = event.at_ms;
         match event.action {
             ButtonAction::Press if !self.state.input.pressed.contains(&event.button) => {
@@ -379,6 +394,7 @@ impl Platform for HostPlatform {
         draw_backdrop(&mut self.canvas, screen);
         if art_book {
             match screen.route.as_str() {
+                "controller-routes" => draw_controller_routes(&mut self.canvas, screen)?,
                 "theme-garden" => draw_theme_garden(&mut self.canvas, screen)?,
                 "home" | "systems" | "games" | "games-no-metadata" | "session" => {
                     draw_art_book_next(&mut self.canvas, screen)?;
@@ -738,6 +754,37 @@ impl Platform for HostPlatform {
     }
 }
 
+fn sdl_button_event(event: Event) -> Option<(Button, ButtonAction)> {
+    let (keycode, action) = match event {
+        Event::KeyDown {
+            keycode: Some(keycode),
+            repeat: false,
+            ..
+        } => (keycode, ButtonAction::Press),
+        Event::KeyUp {
+            keycode: Some(keycode),
+            repeat: false,
+            ..
+        } => (keycode, ButtonAction::Release),
+        _ => return None,
+    };
+    let button = match keycode {
+        Keycode::Up => Button::Up,
+        Keycode::Down => Button::Down,
+        Keycode::Left => Button::Left,
+        Keycode::Right => Button::Right,
+        Keycode::Return | Keycode::Z | Keycode::A => Button::Primary,
+        Keycode::Escape | Keycode::X | Keycode::B => Button::Secondary,
+        Keycode::Space => Button::Start,
+        Keycode::Tab => Button::Select,
+        Keycode::Home => Button::Menu,
+        Keycode::PageUp => Button::L1,
+        Keycode::PageDown => Button::R1,
+        _ => return None,
+    };
+    Some((button, action))
+}
+
 fn backend_error(error: impl fmt::Display) -> PlatformError {
     PlatformError::Backend(error.to_string())
 }
@@ -753,6 +800,50 @@ fn draw_backdrop(canvas: &mut Canvas<Window>, screen: &Screen) {
 
 fn is_art_book_next(screen: &Screen) -> bool {
     screen.theme.theme == "Art Book Next (Batocera ES Edition)"
+}
+
+fn draw_controller_routes(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
+    canvas.set_draw_color(rgb([12, 12, 12, 255]));
+    canvas.clear();
+    draw_text(canvas, 48, 36, "CONTROLLER ROUTES", screen.palette.text, 4);
+    draw_text(
+        canvas,
+        48,
+        88,
+        &screen.selected_label,
+        screen.palette.highlight,
+        2,
+    );
+    let selected = screen
+        .menu
+        .iter()
+        .position(|item| item.selected)
+        .unwrap_or(0);
+    let start = selected
+        .saturating_sub(5)
+        .min(screen.menu.len().saturating_sub(12));
+    for (index, item) in screen.menu.iter().skip(start).take(12).enumerate() {
+        let y = 142 + index as i32 * 44;
+        if item.selected {
+            canvas.set_draw_color(rgb([48, 48, 48, 255]));
+            canvas
+                .fill_rect(Rect::new(40, y - 7, 944, 38))
+                .map_err(backend_error)?;
+        }
+        draw_text(
+            canvas,
+            64,
+            y,
+            &item.label,
+            if item.selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            },
+            2,
+        );
+    }
+    Ok(())
 }
 
 fn art_book_asset<'a>(screen: &'a Screen, path: &str) -> Option<(u32, u32, &'a [u8])> {
@@ -1397,7 +1488,10 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
             3,
         );
     }
-    let items = if screen.route == "systems" || screen.game_rows.is_empty() {
+    let items = if screen.route == "systems"
+        || screen.route == "controller-routes"
+        || screen.game_rows.is_empty()
+    {
         &screen.menu
     } else {
         &screen.game_rows
@@ -1408,7 +1502,11 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
         .iter()
         .any(|component| component.kind == "textlist");
     if !has_theme_textlist {
-        for (index, item) in items.iter().take(8).enumerate() {
+        let selected = items.iter().position(|item| item.selected).unwrap_or(0);
+        let start = selected
+            .saturating_sub(3)
+            .min(items.len().saturating_sub(8));
+        for (index, item) in items.iter().skip(start).take(8).enumerate() {
             let y = 92 + index as i32 * 26;
             let color = if item.selected {
                 screen.palette.highlight

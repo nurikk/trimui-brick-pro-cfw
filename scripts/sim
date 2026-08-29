@@ -21,7 +21,7 @@ SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
 CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() {
-    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] [--catalog PATH] [--device-profile PATH] [--theme DIR] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
+    printf '%s\n' "usage: scripts/sim build | run [--backend=host-x11|x11|dummy] [--display :N] [--catalog PATH] [--device-profile PATH] [--theme DIR] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
     exit 2
 }
 
@@ -151,6 +151,8 @@ startup_failure() {
 
 parse_run_options() {
     BACKEND=dummy
+    HOST_X11=0
+    HOST_DISPLAY=
     WAIT_READY=10
     DETACH=0
     CATALOG=sim/fixtures/catalog.json
@@ -160,9 +162,16 @@ parse_run_options() {
     RUN_DIR=
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --backend=host-x11) BACKEND=x11; HOST_X11=1 ;;
             --backend=x11) BACKEND=x11 ;;
             --backend=dummy) BACKEND=dummy ;;
-            --backend=*) fail "backend must be x11 or dummy" ;;
+            --backend=*) fail "backend must be host-x11, x11, or dummy" ;;
+            --display)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --display value"
+                HOST_DISPLAY=$1
+                ;;
+            --display=*) HOST_DISPLAY=${1#--display=} ;;
             --run-dir)
                 shift
                 [ "$#" -gt 0 ] || fail "missing --run-dir value"
@@ -208,6 +217,21 @@ parse_run_options() {
         ''|*[!0-9]*) fail "--wait-ready must be a positive integer" ;;
     esac
     [ "$WAIT_READY" -gt 0 ] || fail "--wait-ready must be a positive integer"
+    if [ "$HOST_X11" -eq 1 ]; then
+        [ -n "$HOST_DISPLAY" ] || HOST_DISPLAY=${DISPLAY:-}
+        case "$HOST_DISPLAY" in
+            :[0-9]*|:[0-9]*.0) ;;
+            *) fail "host-x11 requires a local display such as :0 or :99" ;;
+        esac
+        display_number=${HOST_DISPLAY#:}
+        display_number=${display_number%.0}
+        case "$display_number" in
+            ''|*[!0-9]*) fail "host-x11 display number must be numeric" ;;
+        esac
+        [ -S "/tmp/.X11-unix/X$display_number" ] || fail "host X11 socket is unavailable"
+    elif [ -n "$HOST_DISPLAY" ]; then
+        fail "--display is valid only with --backend=host-x11"
+    fi
     require_run_dir
 }
 
@@ -271,6 +295,7 @@ PY
     ) || fail "device profile target SKU is invalid"
     THEME_MOUNT=
     THEME_ARGS=
+    X11_ARGS=
     if [ -n "$THEME" ]; then
         case "$THEME" in
             /*) ;;
@@ -280,6 +305,9 @@ PY
         THEME_REAL=$(CDPATH= cd -- "$THEME" && pwd -P) || fail "cannot resolve --theme"
         THEME_MOUNT="--mount type=bind,src=$THEME_REAL,dst=/theme,readonly"
         THEME_ARGS="--env TRIMUI_THEME_DIR=/theme"
+    fi
+    if [ "$HOST_X11" -eq 1 ]; then
+        X11_ARGS="--env DISPLAY=$HOST_DISPLAY --env SIM_EXTERNAL_X11=1 --mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly"
     fi
     set -- "$@" --catalog "/src/$CATALOG" --profile "/src/$PROFILE" --device-profile "/src/$DEVICE_PROFILE"
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
@@ -298,6 +326,7 @@ PY
         --pids-limit=64 \
         --user 10001:10001 \
         --mount "type=bind,src=$ROOT,dst=/src,readonly" \
+        $X11_ARGS \
         $THEME_ARGS \
         $THEME_MOUNT \
         --mount "type=bind,src=$RUN_REAL,dst=/evidence" \

@@ -60,6 +60,7 @@ pub enum ShutdownReason {
     LowBattery,
     ColdRecovery,
     BoundedRetry,
+    UserRequested,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -623,6 +624,17 @@ impl LifecycleController {
         self.request_shutdown(platform, ShutdownReason::LowBattery, None)
     }
 
+    pub fn orderly_shutdown<P>(
+        &mut self,
+        platform: &mut P,
+        fault: Option<LifecycleFault>,
+    ) -> Result<(), LifecycleError>
+    where
+        P: Platform,
+    {
+        self.request_shutdown(platform, ShutdownReason::UserRequested, fault)
+    }
+
     pub fn retry_shutdown<P>(
         &mut self,
         platform: &mut P,
@@ -961,6 +973,7 @@ fn shutdown_reason(reason: ShutdownReason) -> &'static str {
         ShutdownReason::LowBattery => "low-battery",
         ShutdownReason::ColdRecovery => "cold-recovery",
         ShutdownReason::BoundedRetry => "bounded-shutdown-retry",
+        ShutdownReason::UserRequested => "user-requested",
     }
 }
 

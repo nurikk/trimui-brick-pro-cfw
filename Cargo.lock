@@ -553,6 +553,7 @@ dependencies = [
  "launcher-theme",
  "media-cache",
  "metadata-scraper",
+ "package-manager",
  "png",
  "save-sync",
  "save-vault",

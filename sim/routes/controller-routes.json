@@ -1,320 +1,634 @@
 {
-  "schema": "controller-route-graph/v1",
+  "schema": "controller-route-graph/v2",
+  "expectedCount": 64,
   "routes": [
     {
       "id": "home-systems",
-      "label": "Systems carousel",
-      "action": "systems",
-      "checkpoint": true,
-      "expectedPresentationRoute": "systems"
+      "label": "Stable-platform systems carousel/list showing NES, PS1, and PortMaster as distinct systems.",
+      "from": "fresh-home",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "games-long-list",
+      "label": "1,402 indexed entries with visible alphabet group and bounded first/last feedback; R1/L1 change group or show boundary without changing route ID.",
+      "from": "fresh-home",
+      "buttons": [
+        "down",
+        "primary"
+      ]
     },
     {
       "id": "home-game-list",
-      "label": "Generated game list",
-      "action": "games",
-      "checkpoint": true,
-      "expectedPresentationRoute": "games"
+      "label": "Ordinary stable-platform game list with selected row, artwork and metadata.",
+      "from": "home-systems",
+      "buttons": [
+        "primary"
+      ]
     },
     {
       "id": "games-details",
-      "label": "Game details and generated media",
-      "action": "media-details",
-      "checkpoint": true,
-      "expectedPresentationRoute": "games"
+      "label": "Selected game details with artwork, description, rating, release date, and launch action.",
+      "from": "home-game-list",
+      "buttons": [
+        "right"
+      ]
     },
     {
       "id": "games-favorite-toggle",
-      "label": "Favorite toggle",
-      "action": "favorite",
-      "checkpoint": false,
-      "expectedPresentationRoute": "home"
+      "label": "Same game details/list with visibly changed favourite state and persisted affordance.",
+      "from": "games-details",
+      "buttons": [
+        "select"
+      ]
     },
     {
       "id": "games-favorites",
-      "label": "Favorites list",
-      "action": "favorites",
-      "checkpoint": true,
-      "expectedPresentationRoute": "favorites"
+      "label": "Favorites list containing the newly toggled game.",
+      "from": "fresh-home",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
     },
     {
       "id": "games-search-keyboard",
-      "label": "Search keyboard and results",
-      "action": "search",
-      "checkpoint": true,
-      "expectedPresentationRoute": "search"
+      "label": "Real virtual keyboard for game search, including editable query and Cancel.",
+      "from": "fresh-home",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "games-search-results",
+      "label": "Filtered game results after Start confirms the search keyboard.",
+      "from": "games-search-keyboard",
+      "buttons": [
+        "start"
+      ]
     },
     {
       "id": "settings-root",
-      "label": "Settings root",
-      "action": "settings",
-      "checkpoint": true,
-      "expectedPresentationRoute": "settings"
+      "label": "Settings section list with Display, Input, Audio, Power, Library, Scraper, Theme, and System.",
+      "from": "fresh-home",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
     },
     {
-      "id": "settings-generated-form",
-      "label": "Generated settings form",
-      "action": "settings-form",
-      "checkpoint": true,
-      "expectedPresentationRoute": "settings"
+      "id": "settings-display",
+      "label": "Display settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-input",
+      "label": "Input/controller settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-audio",
+      "label": "Audio settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-power",
+      "label": "Power settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-library",
+      "label": "Library/gameplay settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-scraper",
+      "label": "Scraper settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-theme",
+      "label": "Theme settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-system",
+      "label": "System settings form with selected control, current value, help, apply mode, and pending badge.",
+      "from": "settings-root",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "settings-confirm-apply-cancel",
+      "label": "Pending-change confirmation showing old/new value and explicit Apply and Cancel choices.",
+      "from": "settings-display",
+      "buttons": [
+        "right",
+        "start"
+      ]
+    },
+    {
+      "id": "settings-validation",
+      "label": "Inline descriptor validation failure retaining the editor and prior committed value.",
+      "from": "settings-input",
+      "buttons": [
+        "primary",
+        "start"
+      ]
     },
     {
       "id": "wifi-scan",
-      "label": "Wi-Fi scan",
-      "action": "wifi-scan",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-scan"
+      "label": "Wi-Fi network list with deduplicated SSIDs, security, known/saved state, and signal.",
+      "from": "settings-system",
+      "buttons": [
+        "primary"
+      ]
     },
     {
-      "id": "wifi-access-points",
-      "label": "Open and secure access points",
-      "action": "wifi-access-points",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-access-point-selection"
+      "id": "wifi-open-confirmation",
+      "label": "Open-network warning requiring explicit confirmation before connect.",
+      "from": "wifi-scan",
+      "buttons": [
+        "down",
+        "down",
+        "primary",
+        "down",
+        "down",
+        "primary"
+      ]
     },
     {
       "id": "wifi-secure-password",
-      "label": "Masked secure network keyboard",
-      "action": "wifi-password",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-password-entry"
+      "label": "Masked WPA password keyboard for selected secure network.",
+      "from": "wifi-scan",
+      "buttons": [
+        "primary"
+      ]
     },
     {
       "id": "wifi-hidden",
-      "label": "Hidden network entry",
-      "action": "wifi-hidden",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-hidden-network"
+      "label": "Hidden-network flow with redacted SSID semantics and security choice.",
+      "from": "wifi-scan",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
     },
     {
       "id": "wifi-manual-ssid",
-      "label": "Manual SSID keyboard",
-      "action": "wifi-manual",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-manual-ssid"
+      "label": "Manual SSID keyboard with bounded text policy.",
+      "from": "wifi-hidden",
+      "buttons": [
+        "primary"
+      ]
     },
     {
-      "id": "wifi-saved-forget",
-      "label": "Saved network and forget flow",
-      "action": "wifi-access-points",
-      "checkpoint": false,
-      "expectedPresentationRoute": "wifi-access-point-selection"
+      "id": "wifi-saved-network",
+      "label": "Selected known/saved network with reconnect and Forget actions.",
+      "from": "wifi-scan",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "wifi-forget-confirmation",
+      "label": "Confirmation naming the saved network and the destructive Forget action.",
+      "from": "wifi-saved-network",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "wifi-forgotten",
+      "label": "Result showing the network removed from saved state while scan results remain.",
+      "from": "wifi-forget-confirmation",
+      "buttons": [
+        "primary"
+      ]
     },
     {
       "id": "wifi-connect-progress",
-      "label": "Wi-Fi connection progress",
-      "action": "wifi-progress",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-progress"
+      "label": "Visible authentication/address progress after confirming credentials.",
+      "from": "wifi-secure-password",
+      "buttons": [
+        "start"
+      ]
     },
     {
       "id": "wifi-retry-error",
-      "label": "Wi-Fi failure and retry",
-      "action": "wifi-error",
-      "checkpoint": true,
-      "expectedPresentationRoute": "wifi-error"
+      "label": "Named connection failure with Retry; A retries into scan/progress without changing route identity until transition succeeds.",
+      "from": "wifi-connect-progress",
+      "buttons": [
+        "primary"
+      ]
     },
     {
       "id": "theme-garden-catalog",
-      "label": "Theme Garden catalog boundary",
-      "action": "theme-garden",
-      "checkpoint": true,
-      "expectedPresentationRoute": "theme-garden"
+      "label": "Curated local Theme Garden catalog with package status and versions.",
+      "from": "settings-theme",
+      "buttons": [
+        "primary"
+      ]
     },
     {
       "id": "theme-garden-preview",
-      "label": "Theme preview lifecycle",
-      "action": "theme-garden",
-      "checkpoint": false,
-      "expectedPresentationRoute": "theme-garden"
+      "label": "Selected theme preview with Apply/Back and no mutation yet.",
+      "from": "theme-garden-catalog",
+      "buttons": [
+        "primary"
+      ]
     },
     {
-      "id": "theme-garden-install-update-remove",
-      "label": "Theme install update and remove lifecycle",
-      "action": "theme-garden",
-      "checkpoint": true,
-      "expectedPresentationRoute": "theme-garden"
+      "id": "theme-garden-install",
+      "label": "Install progress/result for a not-installed theme.",
+      "from": "theme-garden-preview",
+      "buttons": [
+        "primary"
+      ]
     },
     {
-      "id": "scraper-settings",
-      "label": "Scraper settings",
-      "action": "scraper-settings",
-      "checkpoint": true,
-      "expectedPresentationRoute": "scraper-settings"
+      "id": "theme-garden-update",
+      "label": "Update available/progress/result for an installed older version.",
+      "from": "theme-garden-install",
+      "buttons": [
+        "primary"
+      ]
     },
     {
-      "id": "scraper-game",
-      "label": "Single-game scraper",
-      "action": "scraper-game",
-      "checkpoint": false,
-      "expectedPresentationRoute": "scraper-game"
-    },
-    {
-      "id": "scraper-queue",
-      "label": "Bulk scraper queue",
-      "action": "scraper-queue",
-      "checkpoint": false,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "scraper-progress",
-      "label": "Bulk scraper provider fallback progress",
-      "action": "scraper-progress",
-      "checkpoint": true,
-      "expectedPresentationRoute": "scraper-bulk-queue"
-    },
-    {
-      "id": "scraper-paused",
-      "label": "Scraper paused recovery",
-      "action": "scraper-paused",
-      "checkpoint": false,
-      "expectedPresentationRoute": "scraper-bulk-queue"
-    },
-    {
-      "id": "scraper-ambiguity",
-      "label": "Scraper ambiguity choices",
-      "action": "scraper-ambiguity",
-      "checkpoint": true,
-      "expectedPresentationRoute": "scraper-ambiguous-choice"
-    },
-    {
-      "id": "scraper-failure",
-      "label": "Scraper failure summary",
-      "action": "scraper-complete",
-      "checkpoint": true,
-      "expectedPresentationRoute": "scraper-bulk-queue"
-    },
-    {
-      "id": "diagnostics-safe-mode",
-      "label": "Diagnostics and safe mode",
-      "action": "recovery",
-      "checkpoint": true,
-      "expectedPresentationRoute": "recovery"
-    },
-    {
-      "id": "updater-available",
-      "label": "Updater available state",
-      "action": "update",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "updater-rollback",
-      "label": "Updater rollback state",
-      "action": "update",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "faults-storage-full",
-      "label": "Storage full warning",
-      "action": "modal",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "faults-low-battery",
-      "label": "Low battery shutdown warning",
-      "action": "modal",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "game-switcher-list",
-      "label": "Game Switcher autosave list",
-      "action": "resume",
-      "checkpoint": true,
-      "expectedPresentationRoute": "game-switcher"
-    },
-    {
-      "id": "game-switcher-resume",
-      "label": "Resume decision",
-      "action": "resume",
-      "checkpoint": true,
-      "expectedPresentationRoute": "game-switcher"
-    },
-    {
-      "id": "portmaster-catalog",
-      "label": "Signed synthetic PortMaster catalog",
-      "action": "games",
-      "checkpoint": true,
-      "expectedPresentationRoute": "games"
-    },
-    {
-      "id": "portmaster-install",
-      "label": "Synthetic PortMaster install",
-      "action": "modal",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "portmaster-launch-orbit",
-      "label": "Orbit Garden launch surface",
-      "action": "games",
-      "checkpoint": true,
-      "expectedPresentationRoute": "games"
-    },
-    {
-      "id": "portmaster-launch-signal",
-      "label": "Signal Workshop launch surface",
-      "action": "games",
-      "checkpoint": true,
-      "expectedPresentationRoute": "games"
-    },
-    {
-      "id": "portmaster-uninstall-protected-data",
-      "label": "PortMaster uninstall protected-data result",
-      "action": "modal",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "save-vault-history",
-      "label": "Save Vault history",
-      "action": "save-vault-history",
-      "checkpoint": false,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "save-vault-preview",
-      "label": "Save Vault restore preview",
-      "action": "save-vault-preview",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "save-vault-confirm",
-      "label": "Save Vault restore confirmation",
-      "action": "save-vault-confirm",
-      "checkpoint": false,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "save-vault-restore",
-      "label": "Save Vault restored result",
-      "action": "save-vault-restore",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
-    },
-    {
-      "id": "save-sync-conflict",
-      "label": "Save Sync conflict actions",
-      "action": "save-sync-status",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
+      "id": "theme-garden-remove",
+      "label": "Remove confirmation/result while the active safe theme remains usable.",
+      "from": "theme-garden-update",
+      "buttons": [
+        "select",
+        "primary"
+      ]
     },
     {
       "id": "theme-garden-fallback",
-      "label": "Invalid theme safe fallback",
-      "action": "fallback",
-      "checkpoint": true,
-      "expectedPresentationRoute": "recovery"
+      "label": "Invalid-theme recovery showing Safe Art Book fallback and route back to Theme Garden.",
+      "from": "theme-garden-preview",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "scraper-settings",
+      "label": "Scraper provider/parallelism settings and start action.",
+      "from": "settings-scraper",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "scraper-game",
+      "label": "Single-game scrape surface naming content and providers.",
+      "from": "scraper-settings",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "scraper-queue",
+      "label": "Bulk queue with queued titles before work starts.",
+      "from": "scraper-game",
+      "buttons": [
+        "select"
+      ]
+    },
+    {
+      "id": "scraper-progress",
+      "label": "Running bulk queue with visible provider fallback transition and bounded worker rows.",
+      "from": "scraper-queue",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "scraper-paused",
+      "label": "Paused queue with reason and Resume.",
+      "from": "scraper-progress",
+      "buttons": [
+        "select"
+      ]
+    },
+    {
+      "id": "scraper-ambiguity",
+      "label": "Ambiguous result choices for a named game.",
+      "from": "scraper-progress",
+      "buttons": [
+        "right"
+      ]
+    },
+    {
+      "id": "scraper-success",
+      "label": "Completion summary with succeeded/fallback/not-found counts.",
+      "from": "scraper-progress",
+      "buttons": [
+        "start"
+      ]
+    },
+    {
+      "id": "scraper-failure",
+      "label": "Actual failure with provider/reason and Retry returning to progress.",
+      "from": "scraper-progress",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "label": "Diagnostics menu/report with hardware checks, last crash, and support-bundle action.",
+      "from": "fresh-home",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary",
+        "primary"
+      ]
+    },
+    {
+      "id": "diagnostics-safe-mode",
+      "label": "Safe-mode confirmation/policy showing disabled network, third-party themes, indexing, and auto-launch.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "updater-available",
+      "label": "Available update details and install choice.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "updater-rollback",
+      "label": "Rollback candidate/details and explicit restore choice.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "faults-storage-full",
+      "label": "Storage-full warning with saves protected and recovery actions.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "faults-low-battery",
+      "label": "Low-battery warning showing autosave completion and sleep/cancel choices.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
     },
     {
       "id": "shutdown-confirm",
-      "label": "Clean shutdown confirmation",
-      "action": "modal",
-      "checkpoint": true,
-      "expectedPresentationRoute": "home"
+      "label": "Real power-off confirmation with A=orderly shutdown and B=cancel.",
+      "from": "diagnostics",
+      "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "game-switcher-autosave",
+      "label": "In-session autosave completion indicator with generation/content identity.",
+      "from": "platform-nebula-launch",
+      "buttons": [
+        "select"
+      ]
+    },
+    {
+      "id": "game-switcher-exit",
+      "label": "Return-to-library result showing session closed and checkpoint available.",
+      "from": "game-switcher-autosave",
+      "buttons": [
+        "secondary"
+      ]
+    },
+    {
+      "id": "game-switcher-list",
+      "label": "Game Switcher list with the authored checkpoint selected.",
+      "from": "game-switcher-exit",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "game-switcher-resume",
+      "label": "Resume decision for selected checkpoint with resume/fresh/cancel choices.",
+      "from": "game-switcher-list",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "game-switcher-restoration",
+      "label": "Resumed demo visibly restored to the prior interaction marker.",
+      "from": "game-switcher-resume",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "platform-nebula-launch",
+      "label": "Nebula Notes NES session frame 0 with stable nes LaunchRequest identity.",
+      "from": "home-game-list",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "platform-nebula-restored",
+      "label": "Nebula Notes relaunched through Game Switcher at its saved interaction marker.",
+      "from": "platform-nebula-launch",
+      "buttons": [
+        "right",
+        "select",
+        "secondary",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary",
+        "primary"
+      ]
+    },
+    {
+      "id": "platform-mirror-launch",
+      "label": "Mirror Museum PS1 session frame 0 with stable ps1 LaunchRequest identity.",
+      "from": "home-game-list",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "platform-mirror-restored",
+      "label": "Mirror Museum relaunched through Game Switcher at its saved interaction marker.",
+      "from": "platform-mirror-launch",
+      "buttons": [
+        "right",
+        "select",
+        "secondary",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary",
+        "primary"
+      ]
+    },
+    {
+      "id": "portmaster-catalog",
+      "label": "Local signed PortMaster catalog showing Orbit Garden and Signal Workshop install state.",
+      "from": "home-systems",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "portmaster-install",
+      "label": "Two-package install progress and result with signatures verified and both packages installed.",
+      "from": "portmaster-catalog",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "portmaster-launch-orbit",
+      "label": "Real Orbit Garden session; D-pad interaction changes marker, B exits/autosaves, relaunch restores marker.",
+      "from": "portmaster-install",
+      "buttons": [
+        "primary"
+      ]
+    },
+    {
+      "id": "portmaster-launch-signal",
+      "label": "Real Signal Workshop session; D-pad interaction changes marker, B exits/autosaves, relaunch restores marker.",
+      "from": "portmaster-catalog",
+      "buttons": [
+        "down",
+        "primary"
+      ]
+    },
+    {
+      "id": "portmaster-uninstall-protected-data",
+      "label": "Uninstall result for one package with the protected save retained and the other package still installed.",
+      "from": "portmaster-catalog",
+      "buttons": [
+        "select",
+        "primary"
+      ]
     }
   ]
 }

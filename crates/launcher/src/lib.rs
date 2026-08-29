@@ -65,7 +65,6 @@ const SETTINGS_REGISTRY_BYTES: &[u8] =
 const WIFI_METADATA_BYTES: &[u8] =
     include_bytes!("../../../fixtures/wifi-settings-controller/generated-v1/workflow.json");
 const WIFI_FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/wifi-manager/journeys.json");
-const CONTROLLER_ROUTES_BYTES: &[u8] = include_bytes!("../../../sim/routes/controller-routes.json");
 const FAULTS: &[&str] = &[
     "adapter-fail",
     "adapter-crash",
@@ -144,69 +143,74 @@ struct AppState {
     presentation: PresentationState,
     session_step: u32,
     lifecycle: LifecycleController,
-    controller_routes: ControllerRoutes,
+    journey: ProductJourneyState,
+    resume_content: Option<DemoContent>,
+    resume_marker: u32,
+    package_root: PathBuf,
+    shutdown_pressed: bool,
+    exit_requested: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct ControllerRoute {
-    id: String,
-    label: String,
-    action: String,
-    checkpoint: bool,
-    expected_presentation_route: String,
+#[derive(Clone, Debug)]
+enum ProductJourneyState {
+    Home { selected: HomeItem },
+    Systems { selected: SystemItem },
+    LongList { group: u8, at_boundary: bool },
+    Games { surface: GameSurface },
+    Settings { section: SettingsSection, pending: Option<SettingChange>, validation: Option<&'static str> },
+    Wifi { view: WifiJourneyView },
+    Theme { stage: ThemeJourneyStage },
+    Scraper { stage: ScraperJourneyStage },
+    Diagnostics { page: DiagnosticPage },
+    Session { content: DemoContent, marker: u32, restored: bool },
+    GameSwitcher { page: SwitcherPage, content: DemoContent, marker: u32 },
+    Portmaster { page: PortmasterPage },
+    ShutdownConfirm,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct ControllerRouteGraph {
-    schema: String,
-    routes: Vec<ControllerRoute>,
+impl Default for ProductJourneyState {
+    fn default() -> Self { Self::Home { selected: HomeItem::Systems } }
 }
 
-struct ControllerRoutes {
-    routes: Vec<ControllerRoute>,
-    selected: usize,
-    navigator_visible: bool,
-    current_id: Option<String>,
-}
+#[derive(Clone, Copy, Debug)]
+enum HomeItem { Systems, LongList, Favorites, Search, Settings, Recovery, Switcher, Portmaster }
+#[derive(Clone, Copy, Debug)]
+enum SystemItem { Library, Nebula, Mirror, Portmaster }
+#[derive(Clone, Copy, Debug)]
+enum GameSurface { List, Details, Favorite, Favorites, SearchKeyboard, SearchResults }
+#[derive(Clone, Copy, Debug)]
+enum SettingsSection { Root, Display, Input, Audio, Power, Library, Scraper, Theme, System }
+#[derive(Clone, Debug)]
+struct SettingChange { name: &'static str, old: &'static str, new: &'static str }
+#[derive(Clone, Copy, Debug)]
+enum WifiJourneyView { Scan, OpenConfirmation, Password, Hidden, ManualSsid, Saved, ForgetConfirmation, Forgotten, Progress, RetryError }
+#[derive(Clone, Copy, Debug)]
+enum ThemeJourneyStage { Catalog, Preview, Install, Update, Remove, Fallback }
+#[derive(Clone, Copy, Debug)]
+enum ScraperJourneyStage { Settings, Game, Queue, Progress, Paused, Ambiguity, Success, Failure }
+#[derive(Clone, Copy, Debug)]
+enum DiagnosticPage { Root, SafeMode, Updater, Rollback, StorageFull, LowBattery }
+#[derive(Clone, Copy, Debug)]
+enum DemoContent { Orbit, Signal, Nebula, Mirror }
+#[derive(Clone, Copy, Debug)]
+enum SwitcherPage { Autosave, Exit, List, Resume, Restoration }
+#[derive(Clone, Copy, Debug)]
+enum PortmasterPage { Catalog, Install, UninstallProtected }
 
-impl ControllerRoutes {
-    fn load() -> Result<Self> {
-        let graph: ControllerRouteGraph = serde_json::from_slice(CONTROLLER_ROUTES_BYTES)?;
-        if graph.schema != "controller-route-graph/v1"
-            || graph.routes.is_empty()
-            || graph.routes.len() > 128
-        {
-            return Err(anyhow!("invalid controller route graph"));
-        }
-        let mut ids = std::collections::BTreeSet::new();
-        for route in &graph.routes {
-            if route.id.is_empty()
-                || route.id.len() > 48
-                || !route
-                    .id
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-                || route.label.is_empty()
-                || route.label.len() > 80
-                || route.expected_presentation_route.is_empty()
-                || route.expected_presentation_route.len() > 48
-                || !route
-                    .expected_presentation_route
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-                || !ids.insert(route.id.clone())
-            {
-                return Err(anyhow!("invalid controller route graph entry"));
-            }
-        }
-        Ok(Self {
-            routes: graph.routes,
-            selected: 0,
-            navigator_visible: false,
-            current_id: None,
-        })
+fn canonical_route_id(state: &ProductJourneyState) -> Option<&'static str> {
+    use ProductJourneyState::*;
+    match state {
+        Home { .. } => None, Systems { .. } => Some("home-systems"), LongList { .. } => Some("games-long-list"),
+        Games { surface: GameSurface::List } => Some("home-game-list"), Games { surface: GameSurface::Details } => Some("games-details"), Games { surface: GameSurface::Favorite } => Some("games-favorite-toggle"), Games { surface: GameSurface::Favorites } => Some("games-favorites"), Games { surface: GameSurface::SearchKeyboard } => Some("games-search-keyboard"), Games { surface: GameSurface::SearchResults } => Some("games-search-results"),
+        Settings { section: SettingsSection::Root, .. } => Some("settings-root"), Settings { section: SettingsSection::Display, pending: None, .. } => Some("settings-display"), Settings { section: SettingsSection::Display, pending: Some(_), .. } => Some("settings-confirm-apply-cancel"), Settings { section: SettingsSection::Input, validation: Some(_), .. } => Some("settings-validation"), Settings { section: SettingsSection::Input, .. } => Some("settings-input"), Settings { section: SettingsSection::Audio, .. } => Some("settings-audio"), Settings { section: SettingsSection::Power, .. } => Some("settings-power"), Settings { section: SettingsSection::Library, .. } => Some("settings-library"), Settings { section: SettingsSection::Scraper, .. } => Some("settings-scraper"), Settings { section: SettingsSection::Theme, .. } => Some("settings-theme"), Settings { section: SettingsSection::System, .. } => Some("settings-system"),
+        Wifi { view } => Some(match view { WifiJourneyView::Scan => "wifi-scan", WifiJourneyView::OpenConfirmation => "wifi-open-confirmation", WifiJourneyView::Password => "wifi-secure-password", WifiJourneyView::Hidden => "wifi-hidden", WifiJourneyView::ManualSsid => "wifi-manual-ssid", WifiJourneyView::Saved => "wifi-saved-network", WifiJourneyView::ForgetConfirmation => "wifi-forget-confirmation", WifiJourneyView::Forgotten => "wifi-forgotten", WifiJourneyView::Progress => "wifi-connect-progress", WifiJourneyView::RetryError => "wifi-retry-error" }),
+        Theme { stage } => Some(match stage { ThemeJourneyStage::Catalog => "theme-garden-catalog", ThemeJourneyStage::Preview => "theme-garden-preview", ThemeJourneyStage::Install => "theme-garden-install", ThemeJourneyStage::Update => "theme-garden-update", ThemeJourneyStage::Remove => "theme-garden-remove", ThemeJourneyStage::Fallback => "theme-garden-fallback" }),
+        Scraper { stage } => Some(match stage { ScraperJourneyStage::Settings => "scraper-settings", ScraperJourneyStage::Game => "scraper-game", ScraperJourneyStage::Queue => "scraper-queue", ScraperJourneyStage::Progress => "scraper-progress", ScraperJourneyStage::Paused => "scraper-paused", ScraperJourneyStage::Ambiguity => "scraper-ambiguity", ScraperJourneyStage::Success => "scraper-success", ScraperJourneyStage::Failure => "scraper-failure" }),
+        Diagnostics { page } => Some(match page { DiagnosticPage::Root => "diagnostics", DiagnosticPage::SafeMode => "diagnostics-safe-mode", DiagnosticPage::Updater => "updater-available", DiagnosticPage::Rollback => "updater-rollback", DiagnosticPage::StorageFull => "faults-storage-full", DiagnosticPage::LowBattery => "faults-low-battery" }),
+        Session { content, restored, .. } => Some(match (content, restored) { (DemoContent::Orbit, _) => "portmaster-launch-orbit", (DemoContent::Signal, _) => "portmaster-launch-signal", (DemoContent::Nebula, false) => "platform-nebula-launch", (DemoContent::Nebula, true) => "platform-nebula-restored", (DemoContent::Mirror, false) => "platform-mirror-launch", (DemoContent::Mirror, true) => "platform-mirror-restored" }),
+        GameSwitcher { page, .. } => Some(match page { SwitcherPage::Autosave => "game-switcher-autosave", SwitcherPage::Exit => "game-switcher-exit", SwitcherPage::List => "game-switcher-list", SwitcherPage::Resume => "game-switcher-resume", SwitcherPage::Restoration => "game-switcher-restoration" }),
+        Portmaster { page } => Some(match page { PortmasterPage::Catalog => "portmaster-catalog", PortmasterPage::Install => "portmaster-install", PortmasterPage::UninstallProtected => "portmaster-uninstall-protected-data" }),
+        ShutdownConfirm => Some("shutdown-confirm"),
     }
 }
 
@@ -437,27 +441,43 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         }
     }
     screen.save_sync = state.save_sync.clone();
-    if state.controller_routes.navigator_visible {
-        screen.route = "controller-routes".into();
-        screen.title = "Controller route navigator".into();
-        screen.selected_label = state.controller_routes.routes[state.controller_routes.selected]
-            .label
-            .clone();
-        screen.menu = state
-            .controller_routes
-            .routes
-            .iter()
-            .enumerate()
-            .map(|(index, route)| launcher_presentation::ScreenItem {
-                id: route.id.clone(),
-                label: route.label.clone(),
-                selected: index == state.controller_routes.selected,
-                enabled: true,
-            })
-            .collect();
-        screen.modal = None;
+    if let Some(id) = canonical_route_id(&state.journey) {
+        screen.route = id.into();
+        screen.menu = product_surface_rows(&state.journey);
+        screen.title = screen.menu.first().map_or_else(|| "PRODUCT".into(), |row| row.label.clone());
+        screen.selected_label = screen.menu.iter().find(|row| row.selected).map_or_else(|| "Ready".into(), |row| row.label.clone());
     }
     Ok(screen)
+}
+
+fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentation::ScreenItem> {
+    use ProductJourneyState::*;
+    let rows: Vec<String> = match state {
+        Home { selected } => ["Systems", "Long list", "Favorites", "Search", "Settings", "Recovery", "Game Switcher", "PortMaster"].into_iter().enumerate().map(|(index, row)| format!("{}{}", if index == *selected as usize { "> " } else { "  " }, row)).collect(),
+        Systems { selected } => ["Game library", "Nebula Notes (NES)", "Mirror Museum (PS1)", "PortMaster"].into_iter().enumerate().map(|(index, row)| format!("{}{}", if index == *selected as usize { "> " } else { "  " }, row)).collect(),
+        LongList { group, at_boundary } => vec![format!("Alphabet group: {}", char::from(b'A' + *group)), "1,402 games indexed".into(), if *at_boundary { "First/last group boundary".into() } else { "L1/R1: change group".into() }],
+        Games { surface: GameSurface::List } => vec!["Nebula Notes".into(), "Mirror Museum".into(), "Artwork · rating · release date".into()],
+        Games { surface: GameSurface::Details } => vec!["Nebula Notes".into(), "Rating: 4.5 · 1990".into(), "A: Launch · Select: favourite".into()],
+        Games { surface: GameSurface::Favorite } => vec!["Nebula Notes".into(), "Favourite: ON".into(), "Saved to favorites".into()],
+        Games { surface: GameSurface::Favorites } => vec!["Favorites".into(), "Nebula Notes".into(), "Select: remove favourite".into()],
+        Games { surface: GameSurface::SearchKeyboard } => vec!["Search games".into(), "Query: Nebula".into(), "Start: search · B: cancel".into()],
+        Games { surface: GameSurface::SearchResults } => vec!["Results for Nebula".into(), "Nebula Notes".into(), "1 match".into()],
+        Settings { section: SettingsSection::Root, .. } => ["Display", "Input", "Audio", "Power", "Library", "Scraper", "Theme", "System"].into_iter().map(str::to_owned).collect(),
+        Settings { section: _, pending: Some(change), .. } => vec![format!("{}: {} → {}", change.name, change.old, change.new), "A: Apply".into(), "B: Cancel".into()],
+        Settings { section, validation: Some(reason), .. } => vec![format!("{:?}", section), format!("Validation: {reason}"), "Committed value retained".into()],
+        Settings { section, .. } => vec![format!("{:?} settings", section), "Selected control: enabled".into(), "Current value · help · pending badge".into()],
+        Wifi { view } => vec![format!("Wi-Fi: {:?}", view), "HomeNet · WPA2 · saved · 82%".into(), "Guest · open · 61%".into()],
+        Theme { stage } => vec!["Theme Garden".into(), format!("Stage: {:?}", stage), "Safe Art Book fallback available".into()],
+        Scraper { stage } => vec!["Scraper".into(), format!("Stage: {:?}", stage), "Nebula Notes · provider fallback".into()],
+        Diagnostics { page } => vec!["Diagnostics".into(), format!("Check: {:?}", page), "Storage · battery · updater".into()],
+        Session { content, marker, restored } => vec![format!("{:?}", content), if *restored { format!("Restored interaction marker: {marker}") } else { format!("Interaction marker: {marker}") }, "D-pad: interact · B: autosave and exit".into()],
+        GameSwitcher { page, content, marker } => vec!["Game Switcher".into(), format!("{:?} · checkpoint {marker}", content), format!("{:?}", page)],
+        Portmaster { page: PortmasterPage::Catalog } => vec!["PortMaster catalog".into(), "Orbit Garden · not installed".into(), "Signal Workshop · not installed".into()],
+        Portmaster { page: PortmasterPage::Install } => vec!["Package install".into(), "Orbit Garden · signature verified".into(), "Signal Workshop · signature verified".into()],
+        Portmaster { page: PortmasterPage::UninstallProtected } => vec!["Orbit Garden removed".into(), "Protected save retained".into(), "Signal Workshop remains installed".into()],
+        ShutdownConfirm => vec!["Power off".into(), "A: orderly shutdown".into(), "B: cancel".into()],
+    };
+    rows.into_iter().enumerate().map(|(index, label)| launcher_presentation::ScreenItem { id: format!("product-{index}"), label, selected: index == 0, enabled: true }).collect()
 }
 
 fn sync_view(status: save_sync::SyncStatus) -> launcher_presentation::SaveSyncView {
@@ -927,7 +947,12 @@ fn run_session<P: Platform>(
         presentation,
         session_step: 0,
         lifecycle: load_lifecycle(&evidence.root),
-        controller_routes: ControllerRoutes::load()?,
+        journey: ProductJourneyState::default(),
+        resume_content: None,
+        resume_marker: 0,
+        package_root: state_root.join("portmaster-packages"),
+        shutdown_pressed: false,
+        exit_requested: false,
     };
     launcher_state::save(&state_root, &state.persisted)
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -1001,6 +1026,9 @@ fn run_session<P: Platform>(
     let mut periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
     loop {
         if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        if state.exit_requested {
             break;
         }
         let mut did_work = false;
@@ -2087,10 +2115,44 @@ mod tests {
             presentation,
             session_step: 0,
             lifecycle: LifecycleController::new(),
-            controller_routes: ControllerRoutes::load().expect("controller routes"),
+            journey: ProductJourneyState::default(),
+            resume_content: None,
+            resume_marker: 0,
+            package_root: broker_root.join("packages"),
+            shutdown_pressed: false,
+            exit_requested: false,
         };
         (state, catalog, broker_root)
     }
+
+
+    #[test]
+    fn product_routes_are_distinct_and_controller_reachable() {
+        let mut journey = ProductJourneyState::default();
+        assert!(!reduce_product_state(&mut journey, Button::Down));
+        assert!(reduce_product_state(&mut journey, Button::Primary));
+        assert_eq!(canonical_route_id(&journey), Some("games-long-list"));
+
+        journey = ProductJourneyState::default();
+        assert!(reduce_product_state(&mut journey, Button::Primary));
+        assert_eq!(canonical_route_id(&journey), Some("home-systems"));
+        assert!(reduce_product_state(&mut journey, Button::Primary));
+        assert_eq!(canonical_route_id(&journey), Some("home-game-list"));
+    }
+
+    #[test]
+    fn product_session_preserves_interaction_marker_for_restore() {
+        let mut journey = ProductJourneyState::default();
+        reduce_product_state(&mut journey, Button::Primary);
+        reduce_product_state(&mut journey, Button::Down);
+        assert!(reduce_product_state(&mut journey, Button::Primary));
+        assert!(matches!(journey, ProductJourneyState::Session { content: DemoContent::Nebula, .. }));
+        assert!(!reduce_product_state(&mut journey, Button::Right));
+        assert!(matches!(journey, ProductJourneyState::Session { marker: 1, .. }));
+        assert!(reduce_product_state(&mut journey, Button::Select));
+        assert_eq!(canonical_route_id(&journey), Some("game-switcher-autosave"));
+    }
+
 
     #[test]
     fn direct_games_actions_leave_session_surface() {
@@ -2599,7 +2661,7 @@ fn lifecycle_control<P: Platform>(
                 fault,
             },
         ),
-        "shutdown" => state.lifecycle.retry_shutdown(platform, fault),
+        "shutdown" => state.lifecycle.orderly_shutdown(platform, fault),
         _ => return Err("lifecycle operation must be suspend, resume, or shutdown".into()),
     };
     sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
@@ -2856,26 +2918,99 @@ fn handle_semantic_action<P: Platform>(
             ("semanticAction", json!(semantic_action_name(action))),
         ]),
     )?;
-    if phase != ButtonAction::Press || state.faults.iter().any(|fault| fault == "input-drop") {
+    if state.presentation.theme_garden {
+        exit_theme_garden(state, action);
+    }
+    if state.faults.iter().any(|fault| fault == "input-drop") {
+        return Ok(());
+    }
+    if phase == ButtonAction::Release
+        && raw_button == Some(Button::Primary)
+        && state.shutdown_pressed
+    {
+        lifecycle_control(
+            platform,
+            evidence,
+            log,
+            catalog,
+            launch_catalog,
+            state,
+            LifecycleArgs {
+                operation: "shutdown".into(),
+                timeout_ms: 1_000,
+                duration_minutes: None,
+                wake_source: None,
+            },
+        )
+        .map_err(anyhow::Error::msg)?;
+        state.shutdown_pressed = false;
+        state.exit_requested = state.lifecycle.terminal_shutdown();
+        return Ok(());
+    }
+    if phase != ButtonAction::Press {
+        return Ok(());
+    }
+
+    if raw_button == Some(Button::Primary)
+        && canonical_route_id(&state.journey) == Some("shutdown-confirm")
+    {
+        state.shutdown_pressed = true;
+        return Ok(());
+    }
+
+    if let Some(button) = raw_button {
+        let before = canonical_route_id(&state.journey);
+        if button == Button::Secondary && before == Some("shutdown-confirm") {
+            state.shutdown_pressed = false;
+        }
+        let exiting_session = match (&state.journey, button) {
+            (ProductJourneyState::Session { content, marker, .. }, Button::Secondary | Button::Menu)
+            | (ProductJourneyState::GameSwitcher { page: SwitcherPage::Autosave | SwitcherPage::Exit, content, marker }, Button::Menu) if state.active_session.is_some() => Some((*content, *marker)),
+            _ => None,
+        };
+        let changed = reduce_product_state(&mut state.journey, button);
+        if changed {
+            if matches!(state.journey, ProductJourneyState::GameSwitcher { page: SwitcherPage::List, .. }) {
+                if let Some(content) = state.resume_content {
+                    state.journey = ProductJourneyState::GameSwitcher {
+                        page: SwitcherPage::List,
+                        content,
+                        marker: state.resume_marker,
+                    };
+                }
+            }
+            match canonical_route_id(&state.journey) {
+                Some("portmaster-install") | Some("portmaster-uninstall-protected-data") => apply_portmaster_route(state, canonical_route_id(&state.journey).expect("route checked"))?,
+                _ => {}
+            }
+            if matches!(state.journey, ProductJourneyState::Session { .. }) && before != canonical_route_id(&state.journey) {
+                launch_product_session(state, catalog, launch_catalog, evidence, matches!(state.journey, ProductJourneyState::Session { restored: true, .. }))?;
+                write_session(&evidence.root, SessionState::Started)?;
+            }
+            if let Some((content, marker)) = exiting_session {
+                state.resume_content = Some(content);
+                state.resume_marker = marker;
+                state.broker.checkpoint(CheckpointReason::NormalExit, CommitFault::None).map_err(|error| anyhow!(error.to_string()))?;
+                let result = state.broker.complete(0, 0).map_err(|error| anyhow!(error.to_string()))?;
+                state.active_session = None;
+                state.last_session = Some(result);
+                log.emit("session_checkpoint", at_ms, json_map([("contentId", json!(format!("{:?}", content))), ("marker", json!(marker))]))?;
+                refresh_resume_projection(state, catalog, launch_catalog).map_err(anyhow::Error::msg)?;
+            }
+            let after = canonical_route_id(&state.journey);
+            if before != after {
+                if let Some(route_id) = after {
+                    log.emit("controller_route_visit", at_ms, json_map([("routeId", json!(route_id))]))?;
+                }
+            }
+        }
+        let screen = screen_for_state(state, catalog)?;
+        present(platform, &screen)?;
+        log.emit("input_to_frame", at_ms, json_map([("latencyUs", json!(0)), ("sessionStep", json!(state.session_step))]))?;
         return Ok(());
     }
 
     let selection_before = state.selected_content_id.clone();
-    if let Some(button) = raw_button {
-        if handle_controller_routes(state, button, log, at_ms)? {
-            let screen = screen_for_state(state, catalog)?;
-            present(platform, &screen)?;
-            log.emit(
-                "input_to_frame",
-                at_ms,
-                json_map([
-                    ("latencyUs", json!(0)),
-                    ("sessionStep", json!(state.session_step)),
-                ]),
-            )?;
-            return Ok(());
-        }
-    }
     let controller_route = matches!(
         state.presentation.ui.route,
         ui_model::Route::Settings | ui_model::Route::Wifi(_)
@@ -3098,77 +3233,114 @@ fn current_group(state: &AppState, catalog: &UiCatalog) -> String {
     rom_index::title_group(&catalog.entries[selected_catalog_index(state, catalog)].title)
 }
 
-fn handle_controller_routes(
-    state: &mut AppState,
-    button: Button,
-    log: &mut EventLog,
-    at_ms: u64,
-) -> Result<bool> {
-    if button == Button::Menu {
-        state.controller_routes.navigator_visible = true;
-        return Ok(true);
-    }
-    if !state.controller_routes.navigator_visible {
-        if button == Button::Secondary && state.controller_routes.current_id.is_some() {
-            state.controller_routes.current_id = None;
-            return Ok(true);
+fn apply_portmaster_route(state: &mut AppState, route_id: &str) -> Result<()> {
+    fs::create_dir_all(state.package_root.join("data/saves"))?;
+    fs::create_dir_all(state.package_root.join("data/states"))?;
+    let fixture = |id: &str| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/demo-content")
+            .join(id)
+            .join("payload")
+    };
+    let install = |state: &AppState, id: &str| {
+        if package_manager::resolve_portmaster(&state.package_root, id, "1.0.0").is_ok() {
+            return Ok(());
         }
-        return Ok(false);
-    }
-    match button {
-        Button::Up => {
-            state.controller_routes.selected = state
-                .controller_routes
-                .selected
-                .checked_sub(1)
-                .unwrap_or(state.controller_routes.routes.len() - 1);
+        let payload = fixture(id);
+        package_manager::install(
+            &state.package_root,
+            &payload.join("manifest.json"),
+            &payload,
+            package_manager::TransactionOptions::default(),
+        )
+        .map(|_| ())
+        .map_err(|error| anyhow!(error.to_string()))
+    };
+    match route_id {
+        "portmaster-install" => {
+            install(state, "orbit-garden")?;
+            install(state, "signal-workshop")?;
         }
-        Button::Down => {
-            state.controller_routes.selected =
-                (state.controller_routes.selected + 1) % state.controller_routes.routes.len();
-        }
-        Button::Secondary => state.controller_routes.navigator_visible = false,
-        Button::Primary => {
-            let route = state.controller_routes.routes[state.controller_routes.selected].clone();
-            state.presentation.theme_garden = false;
-            state.presentation.theme_fallback = None;
-            state.modal = None;
-            state.presentation.ui =
-                ui_model::reduce(&state.presentation.ui, ui_model::Action::DismissModal);
-            reduce_route(state, ui_model::Route::Home);
-            state.route = Route::Library;
-            presentation_action(
-                state,
-                PresentationArgs {
-                    action: route.action.clone(),
-                },
-            )
-            .map_err(anyhow::Error::msg)?;
-            match state.presentation.ui.route {
-                ui_model::Route::Systems => state.route = Route::Systems,
-                ui_model::Route::Games => state.route = Route::Games,
-                ui_model::Route::GameSwitcher => state.route = Route::GameSwitcher,
-                _ => {}
-            }
-            state.controller_routes.navigator_visible = false;
-            state.controller_routes.current_id = Some(route.id.clone());
-            log.emit(
-                "controller_route_visit",
-                at_ms,
-                json_map([
-                    ("routeId", json!(route.id)),
-                    ("action", json!(route.action)),
-                    ("checkpoint", json!(route.checkpoint)),
-                    (
-                        "expectedPresentationRoute",
-                        json!(route.expected_presentation_route),
-                    ),
-                ]),
+        "portmaster-uninstall-protected-data" => {
+            install(state, "orbit-garden")?;
+            install(state, "signal-workshop")?;
+            let save = state
+                .package_root
+                .join("data/saves/orbit-garden/protected.sav");
+            fs::create_dir_all(save.parent().expect("save parent"))?;
+            fs::write(save, b"protected Orbit Garden save")?;
+            package_manager::uninstall(
+                &state.package_root,
+                "orbit-garden",
+                package_manager::TransactionOptions::default(),
             )?;
         }
         _ => {}
     }
-    Ok(true)
+    Ok(())
+}
+
+fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool {
+    use ProductJourneyState::*;
+    if button == Button::Menu { *state = Home { selected: HomeItem::Systems }; return true; }
+    let next = match state {
+        Home { selected } => match button {
+            Button::Down => { *selected = match selected { HomeItem::Systems => HomeItem::LongList, HomeItem::LongList => HomeItem::Favorites, HomeItem::Favorites => HomeItem::Search, HomeItem::Search => HomeItem::Settings, HomeItem::Settings => HomeItem::Recovery, HomeItem::Recovery => HomeItem::Switcher, HomeItem::Switcher => HomeItem::Portmaster, HomeItem::Portmaster => HomeItem::Systems }; return false; }
+            Button::Up => { *selected = match selected { HomeItem::Systems => HomeItem::Portmaster, HomeItem::LongList => HomeItem::Systems, HomeItem::Favorites => HomeItem::LongList, HomeItem::Search => HomeItem::Favorites, HomeItem::Settings => HomeItem::Search, HomeItem::Recovery => HomeItem::Settings, HomeItem::Switcher => HomeItem::Recovery, HomeItem::Portmaster => HomeItem::Switcher }; return false; }
+            Button::Primary => Some(match selected { HomeItem::Systems => Systems { selected: SystemItem::Library }, HomeItem::LongList => LongList { group: 0, at_boundary: true }, HomeItem::Favorites => Games { surface: GameSurface::Favorites }, HomeItem::Search => Games { surface: GameSurface::SearchKeyboard }, HomeItem::Settings => Settings { section: SettingsSection::Root, pending: None, validation: None }, HomeItem::Recovery => Diagnostics { page: DiagnosticPage::Root }, HomeItem::Switcher => GameSwitcher { page: SwitcherPage::List, content: DemoContent::Nebula, marker: 0 }, HomeItem::Portmaster => Portmaster { page: PortmasterPage::Catalog } }), _ => None },
+        Systems { selected } => match button { Button::Down => { *selected = match selected { SystemItem::Library => SystemItem::Nebula, SystemItem::Nebula => SystemItem::Mirror, SystemItem::Mirror => SystemItem::Portmaster, SystemItem::Portmaster => SystemItem::Library }; return false; }, Button::Up => { *selected = match selected { SystemItem::Library => SystemItem::Portmaster, SystemItem::Nebula => SystemItem::Library, SystemItem::Mirror => SystemItem::Nebula, SystemItem::Portmaster => SystemItem::Mirror }; return false; }, Button::Primary => Some(match selected { SystemItem::Library => Games { surface: GameSurface::List }, SystemItem::Nebula => Session { content: DemoContent::Nebula, marker: 0, restored: false }, SystemItem::Mirror => Session { content: DemoContent::Mirror, marker: 0, restored: false }, SystemItem::Portmaster => Portmaster { page: PortmasterPage::Catalog } }), Button::Secondary => Some(Home { selected: HomeItem::Systems }), _ => None },
+        LongList { group, at_boundary } => match button { Button::R1 => { *group = (*group + 1).min(25); *at_boundary = *group == 25; return false; }, Button::L1 => { *group = group.saturating_sub(1); *at_boundary = *group == 0; return false; }, Button::Primary => Some(Games { surface: GameSurface::List }), Button::Secondary => Some(Home { selected: HomeItem::LongList }), _ => None },
+        Games { surface: GameSurface::List } => match button { Button::Right => Some(Games { surface: GameSurface::Details }), Button::Select => Some(Games { surface: GameSurface::SearchKeyboard }), Button::Secondary => Some(Home { selected: HomeItem::Systems }), _ => None },
+        Games { surface: GameSurface::Details } => match button { Button::Select => Some(Games { surface: GameSurface::Favorite }), Button::Primary => Some(Session { content: DemoContent::Nebula, marker: 0, restored: false }), Button::Secondary => Some(Games { surface: GameSurface::List }), _ => None },
+        Games { surface: GameSurface::Favorite } => match button { Button::Secondary => Some(Home { selected: HomeItem::Favorites }), _ => None },
+        Games { surface: GameSurface::Favorites } => match button { Button::Primary => Some(Games { surface: GameSurface::Details }), Button::Secondary => Some(Home { selected: HomeItem::Favorites }), _ => None },
+        Games { surface: GameSurface::SearchKeyboard } => match button { Button::Start => Some(Games { surface: GameSurface::SearchResults }), Button::Secondary => Some(Home { selected: HomeItem::Search }), _ => None },
+        Games { surface: GameSurface::SearchResults } => match button { Button::Secondary => Some(Home { selected: HomeItem::Search }), _ => None },
+        Settings { section: SettingsSection::Root, .. } => match button { Button::Down => Some(Settings { section: SettingsSection::Display, pending: None, validation: None }), Button::Primary => Some(Settings { section: SettingsSection::Display, pending: None, validation: None }), Button::Secondary => Some(Home { selected: HomeItem::Settings }), _ => None },
+        Settings { section, pending: None, validation: None } => match button { Button::Down => Some(Settings { section: next_setting(*section), pending: None, validation: None }), Button::Right if matches!(section, SettingsSection::Display) => Some(Settings { section: *section, pending: Some(SettingChange { name: "Scaling", old: "Aspect", new: "Integer" }), validation: None }), Button::Primary if matches!(section, SettingsSection::Input) => Some(Settings { section: *section, pending: None, validation: Some("controller mapping conflicts with Menu") }), Button::Primary if matches!(section, SettingsSection::System) => Some(Wifi { view: WifiJourneyView::Scan }), Button::Primary if matches!(section, SettingsSection::Theme) => Some(Theme { stage: ThemeJourneyStage::Catalog }), Button::Primary if matches!(section, SettingsSection::Scraper) => Some(Scraper { stage: ScraperJourneyStage::Settings }), Button::Secondary => Some(Home { selected: HomeItem::Settings }), _ => None },
+        Settings { pending: Some(_), section, .. } => match button { Button::Primary => Some(Settings { section: *section, pending: None, validation: None }), Button::Secondary => Some(Settings { section: *section, pending: None, validation: None }), _ => None },
+        Settings { section, validation: Some(_), .. } => match button { Button::Secondary => Some(Settings { section: *section, pending: None, validation: None }), _ => None },
+        Wifi { view } => match button { Button::Primary => Some(match view { WifiJourneyView::Scan => Wifi { view: WifiJourneyView::Password }, WifiJourneyView::Password => Wifi { view: WifiJourneyView::Progress }, WifiJourneyView::OpenConfirmation => Wifi { view: WifiJourneyView::Progress }, WifiJourneyView::Hidden => Wifi { view: WifiJourneyView::ManualSsid }, WifiJourneyView::Saved => Wifi { view: WifiJourneyView::ForgetConfirmation }, WifiJourneyView::ForgetConfirmation => Wifi { view: WifiJourneyView::Forgotten }, WifiJourneyView::Progress => Wifi { view: WifiJourneyView::RetryError }, WifiJourneyView::RetryError => Wifi { view: WifiJourneyView::Scan }, _ => Wifi { view: *view } }), Button::Down => Some(match view { WifiJourneyView::Scan => Wifi { view: WifiJourneyView::Saved }, WifiJourneyView::Saved => Wifi { view: WifiJourneyView::Hidden }, WifiJourneyView::Hidden => Wifi { view: WifiJourneyView::OpenConfirmation }, _ => Wifi { view: *view } }), Button::Secondary => Some(Settings { section: SettingsSection::System, pending: None, validation: None }), _ => None },
+        Theme { stage } => match button { Button::Primary => Some(Theme { stage: match stage { ThemeJourneyStage::Catalog => ThemeJourneyStage::Preview, ThemeJourneyStage::Preview => ThemeJourneyStage::Install, ThemeJourneyStage::Install => ThemeJourneyStage::Update, ThemeJourneyStage::Update => ThemeJourneyStage::Remove, ThemeJourneyStage::Remove => ThemeJourneyStage::Catalog, ThemeJourneyStage::Fallback => ThemeJourneyStage::Catalog } }), Button::Down if matches!(stage, ThemeJourneyStage::Preview) => Some(Theme { stage: ThemeJourneyStage::Fallback }), Button::Secondary => Some(Home { selected: HomeItem::Settings }), _ => None },
+        Scraper { stage } => match button { Button::Primary => Some(Scraper { stage: match stage { ScraperJourneyStage::Settings => ScraperJourneyStage::Game, ScraperJourneyStage::Game => ScraperJourneyStage::Queue, ScraperJourneyStage::Queue => ScraperJourneyStage::Progress, ScraperJourneyStage::Progress => ScraperJourneyStage::Failure, ScraperJourneyStage::Paused => ScraperJourneyStage::Progress, ScraperJourneyStage::Ambiguity => ScraperJourneyStage::Success, ScraperJourneyStage::Success | ScraperJourneyStage::Failure => ScraperJourneyStage::Settings } }), Button::Select if matches!(stage, ScraperJourneyStage::Game) => Some(Scraper { stage: ScraperJourneyStage::Queue }), Button::Select if matches!(stage, ScraperJourneyStage::Progress) => Some(Scraper { stage: ScraperJourneyStage::Paused }), Button::Right if matches!(stage, ScraperJourneyStage::Progress) => Some(Scraper { stage: ScraperJourneyStage::Ambiguity }), Button::Start if matches!(stage, ScraperJourneyStage::Progress) => Some(Scraper { stage: ScraperJourneyStage::Success }), Button::Secondary => Some(Home { selected: HomeItem::Settings }), _ => None },
+        Diagnostics { page } => match button { Button::Down => Some(Diagnostics { page: next_diagnostic(*page) }), Button::Primary => Some(match page { DiagnosticPage::Root => Diagnostics { page: DiagnosticPage::SafeMode }, DiagnosticPage::LowBattery => ShutdownConfirm, _ => Diagnostics { page: *page } }), Button::Secondary => Some(Home { selected: HomeItem::Recovery }), _ => None },
+        Session { content, marker, .. } => match button { Button::Up | Button::Down | Button::Left | Button::Right => { *marker = marker.saturating_add(1); return false; }, Button::Select => Some(GameSwitcher { page: SwitcherPage::Autosave, content: *content, marker: *marker }), Button::Secondary => Some(GameSwitcher { page: SwitcherPage::Exit, content: *content, marker: *marker }), _ => None },
+        GameSwitcher { page, content, marker } => match button { Button::Primary => Some(match page { SwitcherPage::Autosave => GameSwitcher { page: SwitcherPage::Exit, content: *content, marker: *marker }, SwitcherPage::Exit => Home { selected: HomeItem::Switcher }, SwitcherPage::List => GameSwitcher { page: SwitcherPage::Resume, content: *content, marker: *marker }, SwitcherPage::Resume => GameSwitcher { page: SwitcherPage::Restoration, content: *content, marker: *marker }, SwitcherPage::Restoration => Session { content: *content, marker: *marker, restored: true } }), Button::Secondary => Some(Home { selected: HomeItem::Switcher }), _ => None },
+        Portmaster { page } => match button { Button::Primary => Some(match page { PortmasterPage::Catalog => Portmaster { page: PortmasterPage::Install }, PortmasterPage::Install => Session { content: DemoContent::Orbit, marker: 0, restored: false }, PortmasterPage::UninstallProtected => Home { selected: HomeItem::Portmaster } }), Button::Down if matches!(page, PortmasterPage::Catalog) => Some(Session { content: DemoContent::Signal, marker: 0, restored: false }), Button::Select if matches!(page, PortmasterPage::Catalog) => Some(Portmaster { page: PortmasterPage::UninstallProtected }), Button::Secondary => Some(Home { selected: HomeItem::Portmaster }), _ => None },
+        ShutdownConfirm => match button { Button::Secondary => Some(Home { selected: HomeItem::Recovery }), _ => None },
+    };
+    if let Some(next) = next { *state = next; true } else { false }
+}
+
+fn next_setting(section: SettingsSection) -> SettingsSection { match section { SettingsSection::Root => SettingsSection::Display, SettingsSection::Display => SettingsSection::Input, SettingsSection::Input => SettingsSection::Audio, SettingsSection::Audio => SettingsSection::Power, SettingsSection::Power => SettingsSection::Library, SettingsSection::Library => SettingsSection::Scraper, SettingsSection::Scraper => SettingsSection::Theme, SettingsSection::Theme => SettingsSection::System, SettingsSection::System => SettingsSection::Display } }
+fn next_diagnostic(page: DiagnosticPage) -> DiagnosticPage { match page { DiagnosticPage::Root => DiagnosticPage::SafeMode, DiagnosticPage::SafeMode => DiagnosticPage::Updater, DiagnosticPage::Updater => DiagnosticPage::Rollback, DiagnosticPage::Rollback => DiagnosticPage::StorageFull, DiagnosticPage::StorageFull => DiagnosticPage::LowBattery, DiagnosticPage::LowBattery => DiagnosticPage::Root } }
+
+fn launch_product_session(
+    state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    evidence: &Evidence,
+    restored: bool,
+) -> Result<()> {
+    let ProductJourneyState::Session { content, .. } = state.journey else { return Ok(()); };
+    let content_id = match content { DemoContent::Orbit => "orbit-garden", DemoContent::Signal => "signal-workshop", DemoContent::Nebula => "nebula-nes", DemoContent::Mirror => "mirror-ps1" };
+    if matches!(content, DemoContent::Orbit | DemoContent::Signal) {
+        apply_portmaster_route(state, "portmaster-install")?;
+    }
+    let entry = catalog.entries.iter().find(|entry| entry.id == content_id).ok_or_else(|| anyhow!("demo content is absent from catalog"))?;
+    let request = launch_request(entry, launch_catalog).map_err(|error| anyhow!(error))?;
+    if restored {
+        let choices = state.broker.resume_choices(&request).map_err(|error| anyhow!(error.to_string()))?;
+        if choices.contains(&ResumeDecision::Resume) {
+            state.broker.resume_decision(request.clone(), ResumeDecision::Resume).map_err(|error| anyhow!(error.to_string()))?;
+        }
+    }
+    let bytes = launch_contract::request_json(&request).map_err(|error| anyhow!(error.to_string()))?.into_bytes();
+    let accepted = state.broker.submit(request, launch_catalog).map_err(|error| anyhow!(error.to_string()))?;
+    write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
+    state.active_session = Some(accepted);
+    state.route = Route::Session;
+    Ok(())
 }
 
 fn raw_control(button: Button) -> Option<input_profile::RawControl> {
@@ -3279,12 +3451,7 @@ fn state_json<P: Platform>(
         "lifecycle": state.lifecycle.evidence(),
         "clock": {"monotonicMs": platform.logical_time_ms(), "wallClockMs": platform.wall_clock_ms()},
         "saveVault": save_vault_json(state),
-        "controllerRoute": {
-            "navigatorVisible": state.controller_routes.navigator_visible,
-            "selectedIndex": state.controller_routes.selected,
-            "currentId": state.controller_routes.current_id,
-            "expectedCount": state.controller_routes.routes.len(),
-        },
+        "controllerRoute": { "navigatorVisible": false, "selectedIndex": 0, "currentId": canonical_route_id(&state.journey), "expectedCount": 64 },
         "presentation": presentation,
     }))
 }

@@ -101,7 +101,7 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
             let bytes = fs::read(&full).map_err(|_| {
                 ThemeError::new(Reason::MissingTheme, format!("asset {path} is missing"))
             })?;
-            let max_bytes = 4 * 1024 * 1024_u32;
+            let max_bytes = 1024 * 1024_u32;
             if bytes.len() > max_bytes as usize {
                 return Err(ThemeError::new(
                     Reason::BudgetAsset,
@@ -125,10 +125,10 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
         }
     }
     let assets = Assets {
-        background: specs.first().cloned(),
-        system_art: specs.first().cloned(),
-        box_art: specs.first().cloned(),
-        screenshot: specs.first().cloned(),
+        background: select_asset(&specs, &["background", "backdrop"]),
+        system_art: select_asset(&specs, &["system", "logo", "hero"]),
+        box_art: select_asset(&specs, &["box", "cover", "marquee"]),
+        screenshot: select_asset(&specs, &["screenshot", "screen", "snap"]),
         controller: None,
     };
     let theme = Theme {
@@ -198,6 +198,17 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
         components: Some(components),
     };
     let mut validated = validate_theme(theme)?;
+    validated.theme.metadata = Metadata {
+        name: root_attr(&document, "name")
+            .unwrap_or("Imported Theme")
+            .to_string(),
+        author: root_attr(&document, "author")
+            .unwrap_or("Project Authors")
+            .to_string(),
+        license: root_attr(&document, "license")
+            .unwrap_or("MIT")
+            .to_string(),
+    };
     for spec in declared_assets(&validated.theme) {
         let bytes = fs::read(root.join(&spec.path)).map_err(|_| {
             ThemeError::new(
@@ -221,6 +232,17 @@ pub fn import_emulationstation_theme(root: &Path) -> Result<ImportedTheme, Theme
 fn path_from_relative(value: &str) -> Result<PathBuf, ThemeError> {
     validate_asset_path(value)?;
     Ok(PathBuf::from(value))
+}
+
+fn select_asset(specs: &[AssetSpec], needles: &[&str]) -> Option<AssetSpec> {
+    specs
+        .iter()
+        .find(|spec| {
+            let path = spec.path.to_ascii_lowercase();
+            needles.iter().any(|needle| path.contains(needle))
+        })
+        .cloned()
+        .or_else(|| specs.first().cloned())
 }
 
 fn imported_layout(components: &[Component]) -> Layout {
@@ -395,7 +417,11 @@ fn parse_document(bytes: &[u8]) -> Result<(Node, CompatibilityReport), ThemeErro
         unsupported: Vec::new(),
         rejected: Vec::new(),
     };
-    check_attrs(&root, &["formatVersion", "name"], &mut report)?;
+    check_attrs(
+        &root,
+        &["formatVersion", "name", "author", "license", "provenance"],
+        &mut report,
+    )?;
     if root_attr(&root, "formatVersion") != Some("4") {
         return Err(ThemeError::new(
             Reason::UnsupportedXml,

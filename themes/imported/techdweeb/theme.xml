@@ -1,0 +1,10 @@
+<theme formatVersion="4" name="Techdweeb" author="TechDweeb; XML by Anthony Caccese" license="CC-BY-NC-SA" provenance="https://github.com/anthonycaccese/techdweeb-es@4a27965ed279466c1b1d6f6e98ffc279e2d0f6d4">
+  <view name="system">
+    <image name="background" path="assets/background.png" pos="0 0" size="1024 768" />
+    <image name="hero" path="assets/hero.png" pos="620 120" size="300 300" />
+    <text name="source" pos="48 650" size="420 28" color="#FFFFFF" fontSize="18" text="TECHDWEEB / UPSTREAM BATOCERA THEME" />
+  </view>
+  <view name="games">
+    <textlist name="gamelist" pos="48 110" size="440 480" color="#FFFFFF" fontSize="24" />
+  </view>
+</theme>

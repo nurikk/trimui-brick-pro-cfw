@@ -528,6 +528,7 @@ name = "sim-host-platform"
 version = "0.1.0"
 dependencies = [
  "device-profile",
+ "launcher-presentation",
  "png",
  "sdl2",
  "serde",

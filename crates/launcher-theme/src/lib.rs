@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeSet, HashSet},
     fs,
-    io::BufWriter,
+    io::{BufWriter, Read},
     path::{Component as PathComponent, Path, PathBuf},
 };
 
@@ -30,6 +30,9 @@ pub const MAX_FILES: usize = 32;
 pub const MAX_THEME_DEPTH: usize = 8;
 pub const MAX_RESOURCE_BYTES: u64 = 64 * 1024;
 pub const MAX_RENDER_BYTES: u64 = MAX_CANVAS_PIXELS * 4;
+const MAX_ART_BOOK_NEXT_FILES: usize = 2048;
+const MAX_ART_BOOK_NEXT_XML_BYTES: u64 = MAX_JSON_BYTES as u64;
+const MAX_ART_BOOK_NEXT_ASSET_BYTES: u64 = MAX_RESOURCE_BYTES * 64;
 pub const SCHEMA: &str = "theme-v1";
 pub const SCHEMA_URI: &str = "urn:project:theme-v1";
 
@@ -1021,6 +1024,266 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     })
 }
 
+fn upstream_xml_value(xml: &str, name: &str) -> Option<String> {
+    let open = format!("<{name}>");
+    let close = format!("</{name}>");
+    let start = xml.find(&open)? + open.len();
+    xml[start..]
+        .find(&close)
+        .map(|end| xml[start..start + end].trim().to_string())
+}
+
+fn read_bounded_art_book_file(
+    root: &Path,
+    relative: &Path,
+    max_bytes: u64,
+    missing_reason: Reason,
+) -> Result<Vec<u8>, ThemeError> {
+    validate_relative_path(relative)?;
+    let path = root.join(relative);
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|error| ThemeError::new(missing_reason, error.to_string()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(ThemeError::new(
+            Reason::Symlink,
+            format!("{} is a symlink", relative.display()),
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(ThemeError::new(
+            Reason::UnsupportedFile,
+            format!("{} is not a regular file", relative.display()),
+        ));
+    }
+    if metadata.len() > max_bytes {
+        return Err(ThemeError::new(
+            Reason::BudgetResourceBytes,
+            format!("{} exceeds its byte budget", relative.display()),
+        ));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(&path)
+        .map_err(|error| ThemeError::new(missing_reason, error.to_string()))?
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(ThemeError::new(
+            Reason::BudgetResourceBytes,
+            format!("{} exceeds its byte budget", relative.display()),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn read_bounded_art_book_xml(path: &Path, relative: &Path) -> Result<String, ThemeError> {
+    let bytes =
+        read_bounded_art_book_file(path, relative, MAX_ART_BOOK_NEXT_XML_BYTES, Reason::Io)?;
+    String::from_utf8(bytes).map_err(|error| ThemeError::new(Reason::InvalidXml, error.to_string()))
+}
+
+fn validate_art_book_next_tree(path: &Path) -> Result<(), ThemeError> {
+    let mut files = Vec::new();
+    let mut entries_seen = 0;
+    collect_theme_files_with_limit(
+        path,
+        path,
+        &mut files,
+        0,
+        &mut entries_seen,
+        MAX_ART_BOOK_NEXT_FILES,
+    )?;
+    for (relative, file) in files {
+        let metadata = fs::symlink_metadata(&file)
+            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+        if metadata.len() > MAX_ART_BOOK_NEXT_ASSET_BYTES {
+            return Err(ThemeError::new(
+                Reason::BudgetResourceBytes,
+                format!("theme file {relative} exceeds its byte budget"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, ThemeError> {
+    let theme_xml = read_bounded_art_book_xml(path, Path::new("theme.xml"))?;
+    if !theme_xml.contains("Art Book Next (Batocera ES Edition)")
+        || !theme_xml.contains("Anthony Caccese")
+        || !theme_xml.contains("creative commons CC-BY-NC-SA")
+        || !theme_xml.contains("./aspect-ratio-4-3.xml")
+    {
+        return Err(ThemeError::new(
+            Reason::UnsupportedXml,
+            "XML theme is not the inspected Art Book Next source",
+        ));
+    }
+    let colors_xml = read_bounded_art_book_xml(path, Path::new("colors.xml"))?;
+    let fonts_xml = read_bounded_art_book_xml(path, Path::new("fonts.xml"))?;
+    if aspect != "4-3" {
+        return Err(ThemeError::new(
+            Reason::UnsupportedXml,
+            format!("Art Book Next product renderer supports only the configured 4:3 layout, not {aspect}"),
+        ));
+    }
+    let aspect_xml =
+        read_bounded_art_book_xml(path, Path::new(&format!("aspect-ratio-{aspect}.xml")))?;
+    for (name, xml, needles) in [
+        (
+            "colors.xml",
+            colors_xml.as_str(),
+            &[
+                "<systemBackgroundColor>000000</systemBackgroundColor>",
+                "<gamelistListBackgroundColor>222222</gamelistListBackgroundColor>",
+            ][..],
+        ),
+        (
+            "fonts.xml",
+            fonts_xml.as_str(),
+            &["Roboto-Regular.ttf", "ChangaOne-Italic.ttf"][..],
+        ),
+        (
+            "aspect-ratio-4-3.xml",
+            aspect_xml.as_str(),
+            &["<video", "name=\"game-artwork\"", "name=\"gamelist\""][..],
+        ),
+    ] {
+        if needles.iter().any(|needle| !xml.contains(needle)) {
+            return Err(ThemeError::new(
+                Reason::UnsupportedXml,
+                format!("Art Book Next include {name} is incomplete"),
+            ));
+        }
+    }
+    let background = upstream_xml_value(&colors_xml, "systemBackgroundColor")
+        .map(|value| format!("#{value}"))
+        .unwrap_or_else(|| "#000000".into());
+    let surface = upstream_xml_value(&colors_xml, "gamelistListBackgroundColor")
+        .map(|value| format!("#{value}"))
+        .unwrap_or_else(|| "#222222".into());
+    let text = upstream_xml_value(&colors_xml, "gamelistListDescriptionColor")
+        .map(|value| format!("#{value}"))
+        .unwrap_or_else(|| "#FFFFFF".into());
+    let muted = upstream_xml_value(&colors_xml, "gamelistListTextlistUnselectedColor")
+        .map(|value| format!("#{value}"))
+        .unwrap_or_else(|| "#333333".into());
+    let highlight = upstream_xml_value(&colors_xml, "gamelistListTextlistSelectedColor")
+        .map(|value| format!("#{value}"))
+        .unwrap_or_else(|| "#FFFFFF".into());
+    let system_asset_paths = [
+        "./_inc/systems/artwork-default/nes.png",
+        "./_inc/systems/artwork-default/genesis.png",
+        "./_inc/systems/artwork-default/snes.png",
+        "./_inc/systems/artwork-default/psx.png",
+    ];
+    let logo_path = "./_inc/systems/logos/genesis.png";
+    let mut assets = Vec::new();
+    for asset_path in system_asset_paths.iter().copied().chain([logo_path]) {
+        if asset_path == logo_path {
+            assets.push(decode_asset(
+                asset_path,
+                include_bytes!("../../../themes/media/systems/genesis-wordmark.png"),
+            )?);
+            continue;
+        }
+        let relative = Path::new(asset_path.strip_prefix("./").unwrap_or(asset_path));
+        let bytes = read_bounded_art_book_file(
+            path,
+            relative,
+            MAX_ART_BOOK_NEXT_ASSET_BYTES,
+            Reason::MissingTheme,
+        )
+        .map_err(|error| {
+            if error.reason == Reason::Io {
+                ThemeError::new(
+                    Reason::MissingTheme,
+                    format!(
+                        "Art Book Next asset {asset_path} is missing: {}",
+                        error.message
+                    ),
+                )
+            } else {
+                error
+            }
+        })?;
+        assets.push(decode_asset(asset_path, &bytes)?);
+    }
+    let components = system_asset_paths
+        .iter()
+        .enumerate()
+        .map(|(index, asset_path)| Component {
+            id: format!("system-artwork-{index}"),
+            kind: ComponentKind::Image,
+            x: index as u16 * 256,
+            y: 0,
+            width: 280,
+            height: 768,
+            path: Some((*asset_path).into()),
+            text: None,
+            color: None,
+            font_size: None,
+        })
+        .chain([Component {
+            id: "system-logo".into(),
+            kind: ComponentKind::Image,
+            x: 352,
+            y: 346,
+            width: 320,
+            height: 76,
+            path: Some(logo_path.into()),
+            text: None,
+            color: None,
+            font_size: None,
+        }])
+        .collect();
+    let theme = Theme {
+        schema: "urn:project:theme-v2".into(),
+        format: "theme-v2".into(),
+        schema_version: 2,
+        metadata: Metadata {
+            name: "Art Book Next (Batocera ES Edition)".into(),
+            author: "Anthony Caccese".into(),
+            license: "CC-BY-NC-SA".into(),
+        },
+        canvas: Canvas { width: 1024, height: 768, aspect: "4:3".into() },
+        colors: Colors { background, surface, accent: "#444444".into(), text, muted, highlight },
+        resources: Resources {
+            font: Resource { kind: ResourceKind::Builtin, reference: "generated-sans".into(), budget_bytes: 0 },
+            icon: Resource { kind: ResourceKind::Generated, reference: "controller-mark".into(), budget_bytes: 0 },
+            background: Resource { kind: ResourceKind::Generated, reference: "flat-field".into(), budget_bytes: 0 },
+            sound: Resource { kind: ResourceKind::Builtin, reference: "silent".into(), budget_bytes: 0 },
+        },
+        layout: Layout {
+            preset: LayoutPreset::Artbook,
+            max_visible_games: 9,
+            regions: vec![
+                ("system-art", RegionKind::SystemArt, 0, 0, 1024, 768),
+                ("game-list", RegionKind::GameList, 0, 0, 400, 768),
+                ("box-art", RegionKind::BoxArtPlaceholder, 768, 192, 256, 352),
+                ("screenshot", RegionKind::ScreenshotPlaceholder, 512, 192, 512, 416),
+                ("metadata", RegionKind::Metadata, 512, 608, 512, 160),
+                ("menu", RegionKind::Menu, 208, 120, 608, 528),
+                ("help", RegionKind::HelpStrip, 0, 720, 1024, 48),
+                ("clock", RegionKind::Clock, 872, 12, 64, 28),
+                ("battery", RegionKind::Battery, 944, 12, 64, 28),
+            ].into_iter().map(|(id, kind, x, y, width, height)| Region {
+                id: id.into(), kind, x, y, width, height, visible: true,
+            }).collect(),
+        },
+        settings: Settings {
+            artwork_mode: ArtworkMode::Screenshot,
+            metadata_visibility: MetadataVisibility::Full,
+            font_scale: 100,
+            color_scheme: ColorScheme::Dark,
+        },
+        fallback: Fallback { splash: Splash::GeneratedNeutral, on_invalid: OnInvalid::SafeArtbook },
+        typography: Some(Typography { family: "project-sans".into(), title_size: 42, body_size: 22, small_size: 16 }),
+        assets: None,
+        components: Some(components),
+    };
+    Ok(ValidatedTheme { theme, assets })
+}
+
 pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
     let root_meta = fs::symlink_metadata(path).map_err(|error| {
         let reason = if error.kind() == std::io::ErrorKind::NotFound {
@@ -1041,6 +1304,16 @@ pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
             Reason::InvalidPath,
             "theme selection must be a directory",
         ));
+    }
+    let marker_path = path.join("theme.xml");
+    if fs::symlink_metadata(&marker_path)
+        .is_ok_and(|metadata| metadata.file_type().is_symlink() || metadata.file_type().is_file())
+    {
+        validate_art_book_next_tree(path)?;
+        let marker = read_bounded_art_book_xml(path, Path::new("theme.xml"))?;
+        if marker.contains("Art Book Next (Batocera ES Edition)") {
+            return load_art_book_next(path, "4-3");
+        }
     }
     let mut files = Vec::new();
     let mut entries_seen = 0;
@@ -1149,6 +1422,17 @@ fn collect_theme_files(
     depth: usize,
     entries_seen: &mut usize,
 ) -> Result<(), ThemeError> {
+    collect_theme_files_with_limit(root, directory, files, depth, entries_seen, MAX_FILES)
+}
+
+fn collect_theme_files_with_limit(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<(String, PathBuf)>,
+    depth: usize,
+    entries_seen: &mut usize,
+    max_entries: usize,
+) -> Result<(), ThemeError> {
     if depth > MAX_THEME_DEPTH {
         return Err(ThemeError::new(
             Reason::BudgetFileCount,
@@ -1159,7 +1443,7 @@ fn collect_theme_files(
         fs::read_dir(directory).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
     for entry in entries {
         *entries_seen += 1;
-        if *entries_seen > MAX_FILES {
+        if *entries_seen > max_entries {
             return Err(ThemeError::new(
                 Reason::BudgetFileCount,
                 "theme directory entry budget exceeded",
@@ -1180,7 +1464,14 @@ fn collect_theme_files(
             ));
         }
         if metadata.is_dir() {
-            collect_theme_files(root, &path, files, depth + 1, entries_seen)?;
+            collect_theme_files_with_limit(
+                root,
+                &path,
+                files,
+                depth + 1,
+                entries_seen,
+                max_entries,
+            )?;
         } else if metadata.is_file() {
             files.push((relative.to_string_lossy().into_owned(), path));
         } else {
@@ -1223,7 +1514,39 @@ fn validate_relative_path(path: &Path) -> Result<(), ThemeError> {
     Ok(())
 }
 
+pub fn load_bundled_theme(path: &Path, aspect: &str) -> Result<ValidatedTheme, ThemeError> {
+    load_art_book_next(path, aspect)
+}
+
 pub fn safe_artbook() -> Result<ValidatedTheme, ThemeError> {
+    let config_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/platform");
+    if let Ok(devices) = fs::read_dir(config_root) {
+        for device in devices.flatten() {
+            let config_path = device.path().join("compatibility.json");
+            let Ok(config) = fs::read(config_path) else {
+                continue;
+            };
+            let Ok(config) = serde_json::from_slice::<Value>(&config) else {
+                continue;
+            };
+            let Some(theme_id) = config["display"]["defaultTheme"].as_str() else {
+                continue;
+            };
+            let Some(theme_aspect) = config["display"]["themeAspect"].as_str() else {
+                continue;
+            };
+            let bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../themes/upstream")
+                .join(theme_id);
+            if bundled.is_dir() {
+                return load_bundled_theme(&bundled, &theme_aspect.replace(':', "-"));
+            }
+        }
+    }
+    project_artbook_fallback()
+}
+
+fn project_artbook_fallback() -> Result<ValidatedTheme, ThemeError> {
     let mut theme = parse_json(include_bytes!("../../../themes/default/theme.json"))?;
     for spec in declared_assets(theme.theme()) {
         let bytes = match spec.path.as_str() {
@@ -1237,6 +1560,69 @@ pub fn safe_artbook() -> Result<ValidatedTheme, ThemeError> {
             _ => continue,
         };
         theme.assets.push(decode_asset(&spec.path, bytes)?);
+    }
+    Ok(theme)
+}
+
+fn load_imported_theme(id: &str) -> Result<ValidatedTheme, ThemeError> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../themes/imported")
+        .join(id);
+    load_theme_dir(&path)
+}
+
+pub fn simplelife() -> Result<ValidatedTheme, ThemeError> {
+    load_imported_theme("simplelife")
+}
+
+pub fn techdweeb() -> Result<ValidatedTheme, ThemeError> {
+    load_imported_theme("techdweeb")
+}
+
+pub fn luma_station() -> Result<ValidatedTheme, ThemeError> {
+    let mut theme = project_artbook_fallback()?;
+    theme.theme.metadata.name = "Luma Station".into();
+    theme.theme.colors.background = "#24112B".into();
+    theme.theme.colors.surface = "#4A1F55".into();
+    theme.theme.colors.accent = "#52D6B5".into();
+    theme.theme.colors.text = "#FFF0D0".into();
+    theme.theme.colors.muted = "#B77BBE".into();
+    theme.theme.colors.highlight = "#FF9B70".into();
+    theme.theme.layout.preset = LayoutPreset::Contrast;
+    theme
+        .theme
+        .layout
+        .regions
+        .retain(|region| region.id != "system-art");
+    theme.theme.layout.regions.insert(
+        0,
+        Region {
+            id: "system-art".into(),
+            kind: RegionKind::SystemArt,
+            x: 520,
+            y: 82,
+            width: 440,
+            height: 220,
+            visible: true,
+        },
+    );
+    if let Some(components) = &mut theme.theme.components {
+        for component in components {
+            if component.id == "hero" {
+                component.x = 32;
+                component.y = 96;
+                component.width = 430;
+                component.height = 188;
+            } else if component.id == "title" {
+                component.x = 48;
+                component.y = 56;
+                component.width = 430;
+            } else if component.id == "games" {
+                component.x = 48;
+                component.y = 318;
+                component.width = 430;
+            }
+        }
     }
     Ok(theme)
 }
@@ -1320,9 +1706,9 @@ pub fn scene(theme: &ValidatedTheme) -> Scene {
             })
             .collect(),
         synthetic: SyntheticMetadata {
-            system: "Generated System",
-            title: "Generated Demo 1",
-            description: "Deterministic synthetic metadata for preview only.",
+            system: "NOVA/8 HANDHELD",
+            title: "Nebula Notes",
+            description: "Chart a quiet starship through forgotten constellations.",
             rating: 4.2,
             release_date: "1993-09-14",
         },

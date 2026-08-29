@@ -102,7 +102,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             reduce(
                 &base,
                 Action::SetSearchQuery {
-                    query: "Generated".into(),
+                    query: "Nebula".into(),
                 },
             ),
         ),
@@ -191,12 +191,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             {
                 return Err("save sync presentation contract is incomplete".into());
             }
-            if *name == "splash" && screen.splash != "artbook-generated-splash" {
+            if *name == "splash" && screen.splash != "nova8-splash" {
                 return Err("splash semantic state is missing".into());
             }
             if *name == "recovery"
-                && (screen.theme_fallback.is_none()
-                    || screen.splash != "artbook-generated-fallback")
+                && (screen.theme_fallback.is_none() || screen.splash != "nova8-fallback")
             {
                 return Err("fallback semantic state is incomplete".into());
             }

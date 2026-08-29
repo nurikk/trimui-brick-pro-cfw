@@ -191,7 +191,7 @@ rm -rf -- "$SUPERVISOR_WORK"
 SUPERVISOR_WORK=
 
 STAGE=$WORK/stage
-mkdir -p "$STAGE/usr/bin" "$STAGE/usr/share/trimui" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
+mkdir -p "$STAGE/usr/bin" "$STAGE/usr/share/trimui" "$STAGE/usr/share/trimui/themes" "$STAGE/bootstrap" "$STAGE/config/platform/tg4040"
 install -m 0755 "$WORK/payload/bootstrap-probe" "$STAGE/usr/bin/brickpro-bootstrap-probe"
 install -m 0755 "$WORK/payload/brick-recovery" "$STAGE/usr/bin/brickpro-recovery"
 install -m 0755 "$WORK/payload/brickpro-diagnostics" "$STAGE/usr/bin/brickpro-diagnostics"
@@ -207,6 +207,7 @@ install -m 0755 "$WORK/payload/aarch64-semantic-journey" "$STAGE/usr/bin/brickpr
 install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
     "$STAGE/config/platform/tg4040/compatibility.json"
 install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
+cp -a "$ROOT/themes/upstream/art-book-next-es" "$STAGE/usr/share/trimui/themes/art-book-next-es"
 
 ROOT="$ROOT" STAGE="$STAGE" WORK="$WORK" OUT="$OUT" EPOCH="$EPOCH" \
 BASE_IMAGE="$BASE_IMAGE" BUILD_DEFINITION_SHA256="$BUILD_DEFINITION_SHA256" \

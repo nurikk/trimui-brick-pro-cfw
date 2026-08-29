@@ -51,6 +51,18 @@ pub struct GameDetails {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScreenMedia {
+    pub content_id: String,
+    pub kind: String,
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    #[serde(skip_serializing)]
+    pub pixels: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Affordances {
     pub clock: String,
     pub battery_percent: u8,
@@ -189,6 +201,8 @@ pub struct Screen {
     pub game_rows: Vec<ScreenItem>,
     pub resume: Vec<ui_model::ResumeProjection>,
     pub selected_game: Option<GameDetails>,
+    pub game_media: Vec<ScreenMedia>,
+    pub system_media: Option<ScreenMedia>,
     pub regions: Vec<ScreenRegion>,
     pub palette: Palette,
     pub theme: launcher_theme::Scene,
@@ -314,6 +328,15 @@ pub fn build_with_recent(
         highlight: color(&theme_data.colors.highlight),
     };
     let scene = theme_scene(theme);
+    let game_media = state
+        .games
+        .iter()
+        .flat_map(|game| media_for_content(&game.id.0))
+        .collect();
+    let system_media = state
+        .selected_system
+        .as_ref()
+        .and_then(|system| media_for_system(&system.0));
     let generated_assets = state
         .systems
         .iter()
@@ -341,6 +364,8 @@ pub fn build_with_recent(
         game_rows,
         resume: state.resume_entries.clone(),
         selected_game,
+        game_media,
+        system_media,
         regions: scene
             .regions
             .iter()
@@ -385,8 +410,8 @@ pub fn build_with_recent(
                 state: "controller-contract".into(),
             },
             theme_garden: BoundaryStatus {
-                available: false,
-                state: "unavailable".into(),
+                available: true,
+                state: "built-in-preview".into(),
             },
             update_agent: BoundaryStatus {
                 available: false,
@@ -395,6 +420,152 @@ pub fn build_with_recent(
         },
         save_sync: None,
     }
+}
+
+pub fn media_for_content(content_id: &str) -> Vec<ScreenMedia> {
+    let (cover, screenshot) = match content_id {
+        "generated-game-01" | "nebula-nes" => (
+            (
+                "themes/media/games/nebula-cover.png",
+                include_bytes!("../../../themes/media/games/nebula-cover.png").as_slice(),
+                1024,
+                1536,
+            ),
+            (
+                "themes/media/games/nebula-screen.png",
+                include_bytes!("../../../themes/media/games/nebula-screen.png").as_slice(),
+                1536,
+                1024,
+            ),
+        ),
+        "generated-game-02" | "mirror-ps1" => (
+            (
+                "themes/media/games/mirror-cover.png",
+                include_bytes!("../../../themes/media/games/mirror-cover.png").as_slice(),
+                420,
+                560,
+            ),
+            (
+                "themes/media/games/mirror-screen.png",
+                include_bytes!("../../../themes/media/games/mirror-screen.png").as_slice(),
+                640,
+                360,
+            ),
+        ),
+        "generated-game-03" | "orbit-garden" => (
+            (
+                "themes/media/games/orbit-cover.png",
+                include_bytes!("../../../themes/media/games/orbit-cover.png").as_slice(),
+                420,
+                560,
+            ),
+            (
+                "themes/media/games/orbit-screen.png",
+                include_bytes!("../../../themes/media/games/orbit-screen.png").as_slice(),
+                640,
+                360,
+            ),
+        ),
+        "signal-workshop" => (
+            (
+                "themes/media/games/signal-cover.png",
+                include_bytes!("../../../themes/media/games/signal-cover.png").as_slice(),
+                420,
+                560,
+            ),
+            (
+                "themes/media/games/signal-screen.png",
+                include_bytes!("../../../themes/media/games/signal-screen.png").as_slice(),
+                640,
+                360,
+            ),
+        ),
+        _ => return Vec::new(),
+    };
+    vec![
+        ScreenMedia {
+            content_id: content_id.into(),
+            kind: "box-art".into(),
+            path: cover.0.into(),
+            width: cover.2,
+            height: cover.3,
+            pixels: cover.1.to_vec(),
+        },
+        ScreenMedia {
+            content_id: content_id.into(),
+            kind: "screenshot".into(),
+            path: screenshot.0.into(),
+            width: screenshot.2,
+            height: screenshot.3,
+            pixels: screenshot.1.to_vec(),
+        },
+    ]
+}
+
+pub fn media_for_system(system_id: &str) -> Option<ScreenMedia> {
+    let (path, pixels) = match system_id {
+        "generated-system-alpha" | "nes" | "ps1" => (
+            "themes/media/systems/nova8.png",
+            include_bytes!("../../../themes/media/systems/nova8.png").as_slice(),
+        ),
+        "generated-system-beta" | "portmaster" => (
+            "themes/media/systems/luma.png",
+            include_bytes!("../../../themes/media/systems/luma.png").as_slice(),
+        ),
+        _ => return None,
+    };
+    Some(ScreenMedia {
+        content_id: system_id.into(),
+        kind: "system-art".into(),
+        path: path.into(),
+        width: 640,
+        height: 400,
+        pixels: pixels.to_vec(),
+    })
+}
+
+pub fn catalog_game_details(content_id: &str, title: &str, _system: &str) -> Option<GameDetails> {
+    let (description, rating, release_date) = match content_id {
+        "nebula-nes" => (
+            "Chart a quiet starship through forgotten constellations.",
+            Some(92),
+            Some("1994-04-12"),
+        ),
+        "mirror-ps1" => (
+            "Restore a living gallery where every reflection hides a room.",
+            Some(88),
+            Some("1998-09-21"),
+        ),
+        "orbit-garden" => (
+            "Cultivate tidal gardens on a drifting orbital station.",
+            Some(86),
+            Some("2001-06-17"),
+        ),
+        "signal-workshop" => (
+            "Tune a pocket laboratory of switches, waves, and light.",
+            Some(90),
+            Some("2003-02-08"),
+        ),
+        _ => return None,
+    };
+    Some(GameDetails {
+        id: content_id.into(),
+        title: title.into(),
+        description: description.into(),
+        rating,
+        release_date: release_date.map(str::to_owned),
+        box_art: GeneratedAssetRef {
+            id: format!("media-{content_id}-cover"),
+            kind: AssetKind::BoxArt,
+            alt_text: format!("{title} original cover"),
+        },
+        screenshot: GeneratedAssetRef {
+            id: format!("media-{content_id}-screen"),
+            kind: AssetKind::Screenshot,
+            alt_text: format!("{title} gameplay screenshot"),
+        },
+        favorite: false,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -482,9 +653,9 @@ fn format_debug<T: std::fmt::Debug>(value: &T) -> String {
 
 fn title(route: &Route) -> String {
     match route {
-        Route::Home => "Artbook Home".into(),
-        Route::Systems => "Systems".into(),
-        Route::Games => "Games".into(),
+        Route::Home => "NOVA/8 LIBRARY".into(),
+        Route::Systems => "SYSTEM SELECT".into(),
+        Route::Games => "GAME LIBRARY".into(),
         Route::Search => "Search".into(),
         Route::Favorites => "Favorites".into(),
         Route::Recent => "Recent".into(),
@@ -600,7 +771,7 @@ fn region_kind_name(kind: launcher_theme::RegionKind) -> String {
 }
 
 pub fn is_generated_asset(asset: &GeneratedAssetRef) -> bool {
-    asset.id.starts_with("generated-") || asset.id == "artbook-generated-splash"
+    asset.id.starts_with("generated-") || asset.id == "nova8-splash"
 }
 
 pub fn is_presented_asset_kind(asset: &GeneratedAssetRef) -> bool {
@@ -613,4 +784,34 @@ pub fn is_presented_asset_kind(asset: &GeneratedAssetRef) -> bool {
             | AssetKind::Splash
             | AssetKind::Fallback
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selected_game_media_has_real_role_paths() {
+        let media = media_for_content("nebula-nes");
+        assert_eq!(media.len(), 2);
+        assert_ne!(media[0].path, media[1].path);
+        assert!(media[0].path.contains("games/nebula-cover.png"));
+        assert!(media[1].path.contains("games/nebula-screen.png"));
+        assert_eq!((media[0].width, media[0].height), (1024, 1536));
+        assert_eq!((media[1].width, media[1].height), (1536, 1024));
+    }
+
+    #[test]
+    fn authored_home_and_system_identity_are_not_debug_labels() {
+        let state = ui_model::UiState::generated();
+        assert!(state
+            .systems
+            .iter()
+            .any(|system| system.name == "NOVA/8 HANDHELD"));
+        assert!(state.games.iter().any(|game| game.title == "Nebula Notes"));
+        assert!(!state
+            .games
+            .iter()
+            .any(|game| game.title.starts_with("Generated ")));
+    }
 }

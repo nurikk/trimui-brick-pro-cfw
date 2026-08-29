@@ -1,0 +1,10 @@
+<theme formatVersion="4" name="SimpleLife" author="DarrenCarol / Mr. Overlay" license="not-stated" provenance="https://github.com/DarrenCarol/Simple_Life@b19995f3da751e71cb872610c4d40769c56754bf">
+  <view name="system">
+    <image name="background" path="assets/background.png" pos="0 0" size="1024 768" />
+    <image name="hero" path="assets/hero.png" pos="570 140" size="390 300" />
+    <text name="source" pos="48 650" size="420 28" color="#FFFFFF" fontSize="18" text="SIMPLELIFE / UPSTREAM BATOCERA THEME" />
+  </view>
+  <view name="games">
+    <textlist name="gamelist" pos="48 110" size="440 480" color="#FFFFFF" fontSize="24" />
+  </view>
+</theme>

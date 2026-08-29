@@ -1,7 +1,13 @@
 use std::{fmt, fs, path::Path, sync::OnceLock};
 
-use png::{BitDepth, ColorType, Encoder};
-use sdl2::{pixels::PixelFormatEnum, rect::Rect, render::Canvas, video::Window, Sdl};
+use png::{BitDepth, ColorType, Decoder, Encoder, Transformations};
+use sdl2::{
+    pixels::PixelFormatEnum,
+    rect::Rect,
+    render::{BlendMode, Canvas},
+    video::Window,
+    Sdl,
+};
 use serde::Deserialize;
 use sim_platform_contract::{
     AudioState, BatteryState, Button, ButtonAction, ButtonEvent, DisplayState,
@@ -355,7 +361,7 @@ impl Platform for HostPlatform {
     }
 
     fn present(&mut self, screen: &Screen) -> PlatformResult<()> {
-        if self.initial_splash_pending && screen.splash == "artbook-generated-splash" {
+        if self.initial_splash_pending && screen.splash == "nova8-splash" {
             self.canvas.set_draw_color(rgb(screen.palette.background));
             self.canvas.clear();
             draw_splash(&mut self.canvas, screen);
@@ -363,72 +369,105 @@ impl Platform for HostPlatform {
             self.canvas.present();
             return Ok(());
         }
+        let art_book = is_art_book_next(screen);
+        self.canvas
+            .set_logical_size(
+                if art_book { 1024 } else { self.logical_width },
+                if art_book { 768 } else { self.logical_height },
+            )
+            .map_err(backend_error)?;
         draw_backdrop(&mut self.canvas, screen);
-        draw_theme_components(&mut self.canvas, screen)?;
-        draw_theme_media(&mut self.canvas, screen)?;
-        draw_text(
-            &mut self.canvas,
-            48,
-            28,
-            &screen.title,
-            screen.palette.text,
-            3,
-        );
-        let (viewport_width, _) = self.canvas.output_size().map_err(backend_error)?;
-        draw_text(
-            &mut self.canvas,
-            viewport_width.saturating_sub(256) as i32,
-            26,
-            &screen.affordances.clock,
-            screen.palette.background,
-            2,
-        );
-        let battery = format!(
-            "{}%{}",
-            screen.affordances.battery_percent,
-            if screen.affordances.charging { "+" } else { "" }
-        );
-        draw_text(
-            &mut self.canvas,
-            viewport_width.saturating_sub(136) as i32,
-            26,
-            &battery,
-            screen.palette.background,
-            2,
-        );
-
-        if screen.theme_fallback.is_some() || screen.splash == "artbook-generated-fallback" {
-            draw_fallback(&mut self.canvas, screen);
-        } else if screen.route == "settings" {
-            draw_settings(&mut self.canvas, screen);
-        } else if screen.route.starts_with("wifi-") {
-            draw_wifi(&mut self.canvas, screen);
-        } else if screen.route.starts_with("scraper-") {
-            draw_scraper(&mut self.canvas, screen);
-        } else if screen.route == "game-switcher"
-            || screen.route == "recovery"
-            || is_auxiliary_route(&screen.route)
-        {
-            draw_route_surface(&mut self.canvas, screen);
+        if art_book {
+            match screen.route.as_str() {
+                "home" | "systems" | "games" | "games-no-metadata" => {
+                    draw_art_book_next(&mut self.canvas, screen)?;
+                }
+                "settings" => draw_settings(&mut self.canvas, screen),
+                route if route.starts_with("wifi-") => draw_wifi(&mut self.canvas, screen),
+                route if route.starts_with("scraper-") => draw_scraper(&mut self.canvas, screen),
+                "game-switcher" | "recovery" => {
+                    if screen.theme_fallback.is_some() {
+                        draw_fallback(&mut self.canvas, screen);
+                    } else {
+                        draw_route_surface(&mut self.canvas, screen);
+                    }
+                }
+                _ if is_auxiliary_route(&screen.route) => {
+                    draw_route_surface(&mut self.canvas, screen)
+                }
+                _ => draw_art_book_next(&mut self.canvas, screen)?,
+            }
         } else {
-            draw_catalog(&mut self.canvas, screen);
+            draw_theme_components(&mut self.canvas, screen)?;
+            draw_theme_media(&mut self.canvas, screen)?;
+            draw_text(
+                &mut self.canvas,
+                48,
+                28,
+                &screen.title,
+                screen.palette.text,
+                3,
+            );
+            let (viewport_width, _) = self.canvas.output_size().map_err(backend_error)?;
+            draw_text(
+                &mut self.canvas,
+                viewport_width.saturating_sub(256) as i32,
+                26,
+                &screen.affordances.clock,
+                screen.palette.background,
+                2,
+            );
+            let battery = format!(
+                "{}%{}",
+                screen.affordances.battery_percent,
+                if screen.affordances.charging { "+" } else { "" }
+            );
+            draw_text(
+                &mut self.canvas,
+                viewport_width.saturating_sub(136) as i32,
+                26,
+                &battery,
+                screen.palette.background,
+                2,
+            );
+
+            if screen.theme_fallback.is_some() || screen.splash == "nova8-fallback" {
+                draw_fallback(&mut self.canvas, screen);
+            } else if screen.route == "theme-garden" {
+                draw_theme_garden(&mut self.canvas, screen)?;
+            } else if screen.route == "settings" {
+                draw_settings(&mut self.canvas, screen);
+            } else if screen.route.starts_with("wifi-") {
+                draw_wifi(&mut self.canvas, screen);
+            } else if screen.route.starts_with("scraper-") {
+                draw_scraper(&mut self.canvas, screen);
+            } else if screen.route == "game-switcher"
+                || screen.route == "recovery"
+                || is_auxiliary_route(&screen.route)
+            {
+                draw_route_surface(&mut self.canvas, screen);
+            } else {
+                draw_catalog(&mut self.canvas, screen);
+            }
         }
-        if let Some(modal) = &screen.modal {
-            let dialog = Rect::new(160, 174, 704, 340);
-            self.canvas.set_draw_color(rgb(screen.palette.background));
-            self.canvas.fill_rect(dialog).map_err(backend_error)?;
-            self.canvas.set_draw_color(rgb(screen.palette.highlight));
-            self.canvas.draw_rect(dialog).map_err(backend_error)?;
-            draw_text(&mut self.canvas, 208, 240, modal, screen.palette.text, 2);
-            for (index, binding) in screen.controller_help.iter().take(2).enumerate() {
-                draw_text(
-                    &mut self.canvas,
-                    208 + index as i32 * 260,
-                    432,
-                    &binding.label,
-                    screen.palette.highlight,
-                    1,
-                );
+        if !is_art_book_next(screen) {
+            if let Some(modal) = &screen.modal {
+                let dialog = Rect::new(160, 174, 704, 340);
+                self.canvas.set_draw_color(rgb(screen.palette.background));
+                self.canvas.fill_rect(dialog).map_err(backend_error)?;
+                self.canvas.set_draw_color(rgb(screen.palette.highlight));
+                self.canvas.draw_rect(dialog).map_err(backend_error)?;
+                draw_text(&mut self.canvas, 208, 240, modal, screen.palette.text, 2);
+                for (index, binding) in screen.controller_help.iter().take(2).enumerate() {
+                    draw_text(
+                        &mut self.canvas,
+                        208 + index as i32 * 260,
+                        432,
+                        &binding.label,
+                        screen.palette.highlight,
+                        1,
+                    );
+                }
             }
         }
         let mut help_x = 48;
@@ -711,6 +750,340 @@ fn draw_backdrop(canvas: &mut Canvas<Window>, screen: &Screen) {
     canvas.clear();
 }
 
+fn is_art_book_next(screen: &Screen) -> bool {
+    screen.theme.theme == "Art Book Next (Batocera ES Edition)"
+}
+
+fn art_book_asset<'a>(screen: &'a Screen, path: &str) -> Option<(u32, u32, &'a [u8])> {
+    screen
+        .theme
+        .assets
+        .iter()
+        .find(|asset| asset.path == path)
+        .map(|asset| (asset.width, asset.height, asset.pixels.as_slice()))
+}
+
+fn draw_art_book_logo(
+    canvas: &mut Canvas<Window>,
+    screen: &Screen,
+    bounds: Rect,
+) -> PlatformResult<()> {
+    if let Some((width, height, pixels)) =
+        art_book_asset(screen, "./_inc/systems/logos/genesis.png")
+    {
+        draw_theme_asset(canvas, width, height, pixels, bounds)?;
+    }
+    Ok(())
+}
+
+fn menu_icon_line(
+    canvas: &mut Canvas<Window>,
+    x: i32,
+    y: i32,
+    end_x: i32,
+    end_y: i32,
+) -> PlatformResult<()> {
+    canvas
+        .draw_line(
+            sdl2::rect::Point::new(x, y),
+            sdl2::rect::Point::new(end_x, end_y),
+        )
+        .map_err(backend_error)
+}
+
+fn draw_menu_icon(
+    canvas: &mut Canvas<Window>,
+    index: usize,
+    x: i32,
+    y: i32,
+    selected: bool,
+) -> PlatformResult<()> {
+    canvas.set_draw_color(rgb(if selected {
+        [20, 20, 20, 255]
+    } else {
+        [190, 190, 190, 255]
+    }));
+    match index {
+        0 => {
+            canvas
+                .draw_rect(Rect::new(x + 5, y + 3, 12, 16))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 8, y + 3, x + 8, y + 7)?;
+            menu_icon_line(canvas, x + 14, y + 3, x + 14, y + 7)?;
+            menu_icon_line(canvas, x + 8, y + 13, x + 14, y + 13)?;
+        }
+        1 => {
+            for (offset_x, offset_y, width, height) in
+                [(3, 7, 15, 11), (5, 4, 15, 11), (7, 1, 12, 10)]
+            {
+                canvas
+                    .draw_rect(Rect::new(x + offset_x, y + offset_y, width, height))
+                    .map_err(backend_error)?;
+            }
+        }
+        2 => {
+            canvas
+                .draw_rect(Rect::new(x + 6, y + 3, 10, 9))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 6, y + 5, x + 3, y + 5)?;
+            menu_icon_line(canvas, x + 3, y + 5, x + 3, y + 9)?;
+            menu_icon_line(canvas, x + 3, y + 9, x + 6, y + 9)?;
+            menu_icon_line(canvas, x + 16, y + 5, x + 19, y + 5)?;
+            menu_icon_line(canvas, x + 19, y + 5, x + 19, y + 9)?;
+            menu_icon_line(canvas, x + 19, y + 9, x + 16, y + 9)?;
+            menu_icon_line(canvas, x + 11, y + 12, x + 11, y + 17)?;
+            menu_icon_line(canvas, x + 7, y + 19, x + 15, y + 19)?;
+            menu_icon_line(canvas, x + 8, y + 17, x + 14, y + 17)?;
+        }
+        3 => {
+            canvas
+                .draw_rect(Rect::new(x + 8, y + 8, 6, 6))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 11, y + 1, x + 11, y + 8)?;
+            menu_icon_line(canvas, x + 11, y + 14, x + 11, y + 21)?;
+            menu_icon_line(canvas, x + 1, y + 11, x + 8, y + 11)?;
+            menu_icon_line(canvas, x + 14, y + 11, x + 21, y + 11)?;
+            menu_icon_line(canvas, x + 4, y + 4, x + 8, y + 8)?;
+            menu_icon_line(canvas, x + 14, y + 14, x + 18, y + 18)?;
+        }
+        4 => {
+            canvas
+                .draw_rect(Rect::new(x + 3, y + 3, 16, 11))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 8, y + 17, x + 14, y + 17)?;
+            menu_icon_line(canvas, x + 11, y + 14, x + 11, y + 17)?;
+            menu_icon_line(canvas, x + 6, y + 20, x + 16, y + 20)?;
+        }
+        5 => {
+            canvas
+                .draw_rect(Rect::new(x + 4, y + 6, 14, 10))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 8, y + 8, x + 8, y + 14)?;
+            menu_icon_line(canvas, x + 5, y + 11, x + 11, y + 11)?;
+            menu_icon_line(canvas, x + 14, y + 9, x + 14, y + 9)?;
+            menu_icon_line(canvas, x + 17, y + 12, x + 17, y + 12)?;
+        }
+        6 => {
+            menu_icon_line(canvas, x + 3, y + 8, x + 7, y + 8)?;
+            menu_icon_line(canvas, x + 7, y + 8, x + 12, y + 4)?;
+            menu_icon_line(canvas, x + 12, y + 4, x + 12, y + 18)?;
+            menu_icon_line(canvas, x + 12, y + 18, x + 7, y + 14)?;
+            menu_icon_line(canvas, x + 7, y + 14, x + 3, y + 14)?;
+            menu_icon_line(canvas, x + 16, y + 8, x + 19, y + 11)?;
+            menu_icon_line(canvas, x + 19, y + 11, x + 16, y + 14)?;
+        }
+        7 => {
+            menu_icon_line(canvas, x + 11, y + 8, x + 5, y + 14)?;
+            menu_icon_line(canvas, x + 11, y + 8, x + 17, y + 14)?;
+            menu_icon_line(canvas, x + 5, y + 14, x + 17, y + 14)?;
+            canvas
+                .draw_rect(Rect::new(x + 9, y + 5, 4, 4))
+                .map_err(backend_error)?;
+            canvas
+                .draw_rect(Rect::new(x + 3, y + 14, 4, 4))
+                .map_err(backend_error)?;
+            canvas
+                .draw_rect(Rect::new(x + 15, y + 14, 4, 4))
+                .map_err(backend_error)?;
+        }
+        8 => {
+            canvas
+                .draw_rect(Rect::new(x + 4, y + 3, 11, 11))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 6, y + 3, x + 13, y + 3)?;
+            menu_icon_line(canvas, x + 4, y + 6, x + 4, y + 11)?;
+            menu_icon_line(canvas, x + 15, y + 6, x + 15, y + 11)?;
+            menu_icon_line(canvas, x + 7, y + 14, x + 12, y + 14)?;
+            menu_icon_line(canvas, x + 14, y + 14, x + 20, y + 20)?;
+        }
+        _ => {
+            canvas
+                .draw_rect(Rect::new(x + 8, y + 3, 10, 16))
+                .map_err(backend_error)?;
+            menu_icon_line(canvas, x + 3, y + 11, x + 13, y + 11)?;
+            menu_icon_line(canvas, x + 9, y + 7, x + 13, y + 11)?;
+            menu_icon_line(canvas, x + 9, y + 15, x + 13, y + 11)?;
+        }
+    }
+    Ok(())
+}
+
+fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
+    canvas.set_draw_color(rgb([0, 0, 0, 255]));
+    canvas.clear();
+    let system_assets = [
+        "./_inc/systems/artwork-default/nes.png",
+        "./_inc/systems/artwork-default/genesis.png",
+        "./_inc/systems/artwork-default/snes.png",
+        "./_inc/systems/artwork-default/psx.png",
+    ];
+    if screen.route == "systems" || screen.route == "home" {
+        for (index, path) in system_assets.iter().enumerate() {
+            if let Some((width, height, pixels)) = art_book_asset(screen, path) {
+                draw_theme_asset(
+                    canvas,
+                    width,
+                    height,
+                    pixels,
+                    Rect::new(index as i32 * 256 - 12, 0, 280, 768),
+                )?;
+            }
+        }
+        canvas.set_draw_color(rgb([0, 0, 0, 255]));
+        for x in [244, 500, 756] {
+            canvas
+                .fill_rect(Rect::new(x, 0, 12, 768))
+                .map_err(backend_error)?;
+        }
+        draw_art_book_logo(canvas, screen, Rect::new(352, 346, 320, 76))?;
+    } else {
+        canvas.set_draw_color(rgb([17, 17, 17, 255]));
+        canvas
+            .fill_rect(Rect::new(0, 0, 400, 768))
+            .map_err(backend_error)?;
+        draw_art_book_logo(canvas, screen, Rect::new(32, 30, 240, 57))?;
+        draw_text(canvas, 32, 96, "GAME LIBRARY", [238, 238, 238, 255], 2);
+        for (index, item) in screen.game_rows.iter().take(9).enumerate() {
+            draw_text(
+                canvas,
+                32,
+                150 + index as i32 * 48,
+                &item.label,
+                if item.selected {
+                    [255, 255, 255, 255]
+                } else {
+                    [105, 105, 105, 255]
+                },
+                if item.selected { 3 } else { 2 },
+            );
+        }
+        let screenshot = screen.selected_game.as_ref().and_then(|game| {
+            screen
+                .game_media
+                .iter()
+                .find(|media| media.content_id == game.id && media.kind == "screenshot")
+        });
+        if let Some(media) = screenshot {
+            let bounds = if screen.route == "games-no-metadata" {
+                Rect::new(400, 0, 624, 768)
+            } else {
+                Rect::new(400, 0, 624, 500)
+            };
+            draw_screen_media(canvas, media, bounds)?;
+        }
+        if screen.route != "games-no-metadata" {
+            if let Some(media) = screen.selected_game.as_ref().and_then(|game| {
+                screen
+                    .game_media
+                    .iter()
+                    .find(|media| media.content_id == game.id && media.kind == "box-art")
+            }) {
+                draw_screen_media(canvas, media, Rect::new(800, 352, 192, 140))?;
+            }
+        }
+        if screen.route != "games-no-metadata" {
+            canvas.set_draw_color(rgb([34, 34, 34, 255]));
+            canvas
+                .fill_rect(Rect::new(400, 500, 624, 268))
+                .map_err(backend_error)?;
+            if let Some(game) = &screen.selected_game {
+                draw_text(canvas, 432, 530, &game.title, [255, 255, 255, 255], 3);
+                draw_text_in_bounds(
+                    canvas,
+                    Rect::new(432, 588, 360, 120),
+                    &game.description,
+                    [238, 238, 238, 255],
+                    20,
+                );
+                draw_text(canvas, 832, 570, "RATING 4 / 5", [180, 180, 180, 255], 1);
+                draw_text(canvas, 832, 610, "RELEASE 1994", [150, 150, 150, 255], 1);
+                draw_text(canvas, 832, 650, "PLAYERS 1", [150, 150, 150, 255], 1);
+                draw_text(canvas, 832, 690, "LAST PLAYED —", [150, 150, 150, 255], 1);
+            }
+        } else if let Some(game) = &screen.selected_game {
+            draw_text(canvas, 580, 338, &game.title, [255, 255, 255, 255], 5);
+        }
+    }
+    canvas.set_draw_color(rgb([255, 255, 255, 255]));
+    for (x, y, width) in [(900, 18, 24), (904, 23, 16), (908, 28, 8)] {
+        canvas
+            .draw_line(
+                sdl2::rect::Point::new(x, y),
+                sdl2::rect::Point::new(x + width, y),
+            )
+            .map_err(backend_error)?;
+    }
+    canvas
+        .fill_rect(Rect::new(910, 33, 4, 4))
+        .map_err(backend_error)?;
+    canvas
+        .draw_rect(Rect::new(950, 18, 24, 16))
+        .map_err(backend_error)?;
+    canvas
+        .fill_rect(Rect::new(954, 22, 14, 8))
+        .map_err(backend_error)?;
+    canvas
+        .fill_rect(Rect::new(974, 23, 4, 6))
+        .map_err(backend_error)?;
+    draw_text(
+        canvas,
+        812,
+        18,
+        &screen.affordances.clock,
+        [255, 255, 255, 255],
+        1,
+    );
+    if let Some(modal) = &screen.modal {
+        canvas.set_blend_mode(BlendMode::Blend);
+        canvas.set_draw_color(sdl2::pixels::Color::RGBA(0, 0, 0, 190));
+        canvas
+            .fill_rect(Rect::new(0, 0, 1024, 768))
+            .map_err(backend_error)?;
+        canvas.set_draw_color(rgb([17, 17, 17, 255]));
+        let dialog = Rect::new(208, 108, 608, 552);
+        canvas.fill_rect(dialog).map_err(backend_error)?;
+        if modal == "Generated notice" {
+            draw_text(canvas, 440, 142, "MAIN MENU", [255, 255, 255, 255], 3);
+            let rows = [
+                "GAME SETTINGS >",
+                "GAME COLLECTION SETTINGS >",
+                "RETROACHIEVEMENTS >",
+                "SYSTEM SETTINGS >",
+                "UI SETTINGS >",
+                "CONTROLLER & BLUETOOTH SETTINGS >",
+                "SOUND SETTINGS >",
+                "NETWORK SETTINGS >",
+                "SCRAPER >",
+                "QUIT >",
+            ];
+            for (index, row) in rows.iter().enumerate() {
+                if index == 1 {
+                    canvas.set_draw_color(rgb([145, 145, 145, 255]));
+                    canvas
+                        .fill_rect(Rect::new(208, 190 + index as i32 * 48, 608, 44))
+                        .map_err(backend_error)?;
+                }
+                draw_menu_icon(canvas, index, 224, 201 + index as i32 * 48, index == 1)?;
+                draw_text(
+                    canvas,
+                    260,
+                    198 + index as i32 * 48,
+                    row,
+                    if index == 1 {
+                        [255, 255, 255, 255]
+                    } else {
+                        [145, 145, 145, 255]
+                    },
+                    2,
+                );
+            }
+        } else {
+            draw_text(canvas, 344, 250, modal, [255, 255, 255, 255], 3);
+        }
+    }
+    Ok(())
+}
+
 fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
     for component in &screen.theme.components {
         let bounds = Rect::new(
@@ -778,33 +1151,75 @@ fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> Platfo
 
 fn draw_theme_media(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
     for region in &screen.regions {
-        let path_hint = match region.kind.as_str() {
-            "box-art-placeholder" => "box-art",
-            "screenshot-placeholder" => "screenshot",
+        let bounds = Rect::new(
+            i32::from(region.x),
+            i32::from(region.y),
+            u32::from(region.width),
+            u32::from(region.height),
+        );
+        let media = match region.kind.as_str() {
+            "system-art" => screen.system_media.as_ref(),
+            "box-art-placeholder" => screen.selected_game.as_ref().and_then(|game| {
+                screen
+                    .game_media
+                    .iter()
+                    .find(|media| media.content_id == game.id && media.kind == "box-art")
+            }),
+            "screenshot-placeholder" => screen.selected_game.as_ref().and_then(|game| {
+                screen
+                    .game_media
+                    .iter()
+                    .find(|media| media.content_id == game.id && media.kind == "screenshot")
+            }),
+            _ => None,
+        };
+        if let Some(media) = media {
+            draw_screen_media(canvas, media, bounds)?;
+            continue;
+        }
+        let fallback_path = match region.kind.as_str() {
+            "system-art" => "assets/art.png",
+            "box-art-placeholder" => "assets/box-art.png",
+            "screenshot-placeholder" => "assets/screenshot.png",
             _ => continue,
         };
-        let asset = screen
+        if let Some(asset) = screen
             .theme
             .assets
             .iter()
-            .find(|asset| asset.path.contains(path_hint))
-            .or_else(|| screen.theme.assets.first());
-        if let Some(asset) = asset {
-            draw_theme_asset(
-                canvas,
-                asset.width,
-                asset.height,
-                &asset.pixels,
-                Rect::new(
-                    i32::from(region.x),
-                    i32::from(region.y),
-                    u32::from(region.width),
-                    u32::from(region.height),
-                ),
-            )?;
+            .find(|asset| asset.path == fallback_path)
+        {
+            draw_theme_asset(canvas, asset.width, asset.height, &asset.pixels, bounds)?;
         }
     }
     Ok(())
+}
+
+fn draw_screen_media(
+    canvas: &mut Canvas<Window>,
+    media: &launcher_presentation::ScreenMedia,
+    bounds: Rect,
+) -> PlatformResult<()> {
+    let mut decoder = Decoder::new(std::io::Cursor::new(&media.pixels));
+    decoder.set_transformations(Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().map_err(backend_error)?;
+    let mut raw = vec![0; reader.output_buffer_size()];
+    let frame = reader.next_frame(&mut raw).map_err(backend_error)?;
+    let pixels = match reader.output_color_type() {
+        (ColorType::Rgba, BitDepth::Eight) => raw[..frame.buffer_size()].to_vec(),
+        (ColorType::Rgb, BitDepth::Eight) => raw[..frame.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        _ => return Err(backend_error("unsupported game media color format")),
+    };
+    draw_theme_asset(
+        canvas,
+        reader.info().width,
+        reader.info().height,
+        &pixels,
+        bounds,
+    )
 }
 
 fn draw_theme_asset(
@@ -816,7 +1231,7 @@ fn draw_theme_asset(
 ) -> PlatformResult<()> {
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGBA8888, width, height)
+        .create_texture_streaming(PixelFormatEnum::ABGR8888, width, height)
         .map_err(backend_error)?;
     texture
         .update(None, pixels, (width * 4) as usize)
@@ -850,6 +1265,83 @@ fn is_auxiliary_route(route: &str) -> bool {
     ]
     .iter()
     .any(|prefix| route == *prefix || route.starts_with(&format!("{prefix}-")))
+}
+
+fn draw_theme_garden(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
+    let panel = Rect::new(48, 92, 928, 500);
+    canvas.set_draw_color(rgb(screen.palette.surface));
+    canvas.fill_rect(panel).map_err(backend_error)?;
+    canvas.set_draw_color(rgb(screen.palette.accent));
+    canvas.draw_rect(panel).map_err(backend_error)?;
+    draw_text(canvas, 84, 128, "PREVIEW", screen.palette.highlight, 2);
+    draw_text(canvas, 84, 178, &screen.theme.theme, screen.palette.text, 4);
+    draw_text(
+        canvas,
+        84,
+        246,
+        "A living skin for your library",
+        screen.palette.text,
+        2,
+    );
+    draw_text(
+        canvas,
+        84,
+        286,
+        "Distinct layout, colour, and artwork treatment",
+        screen.palette.muted,
+        1,
+    );
+    draw_text(
+        canvas,
+        84,
+        354,
+        "A  switch theme",
+        screen.palette.highlight,
+        2,
+    );
+    draw_text(
+        canvas,
+        84,
+        402,
+        "B  return to library",
+        screen.palette.text,
+        2,
+    );
+    if matches!(screen.theme.theme.as_str(), "SimpleLife" | "Techdweeb") {
+        if let Some(asset) = screen
+            .theme
+            .assets
+            .iter()
+            .find(|asset| asset.path == "assets/hero.png")
+        {
+            draw_theme_asset(
+                canvas,
+                asset.width,
+                asset.height,
+                &asset.pixels,
+                Rect::new(570, 160, 350, 230),
+            )?;
+        }
+        draw_text(
+            canvas,
+            570,
+            430,
+            "UPSTREAM DATA-ONLY IMPORT",
+            screen.palette.highlight,
+            1,
+        );
+    } else if let Some(media) = &screen.system_media {
+        draw_screen_media(canvas, media, Rect::new(630, 190, 290, 182))?;
+    }
+    draw_text(
+        canvas,
+        84,
+        482,
+        "NOVA/8 THEME GARDEN  /  CURATED FOR 4:3",
+        screen.palette.accent,
+        1,
+    );
+    Ok(())
 }
 
 fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
@@ -1161,7 +1653,7 @@ fn ttf_context() -> Option<&'static sdl2::ttf::Sdl2TtfContext> {
 }
 
 fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
-    let (width, height) = canvas.output_size().unwrap_or((1, 1));
+    let (width, height) = canvas.logical_size();
     draw_text_in_bounds(
         canvas,
         Rect::new(

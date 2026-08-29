@@ -5,7 +5,8 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use launcher_theme::{
-    load_theme_dir, render_png, validate_for_device, DirectCatalogTransport, ThemesCatalog,
+    import_es_theme_dir, load_theme_dir, normalize_theme_png, render_png, validate_for_device,
+    validate_preview_image, CatalogTransport, DirectCatalogTransport, ThemesCatalog,
 };
 use package_manager::{install_with_validation, uninstall, TransactionOptions};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,26 @@ pub const CACHE_PATH: &str = "/data/cache/theme-garden";
 pub const STAGING_PATH: &str = "/data/staging/themes";
 const CATALOG_TARGET: &str = "catalog.json";
 const ARTBOOK: &str = "artbook";
+const USER_THEME_PATH: &str = "/data/themes";
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct UpstreamRecord {
+    id: String,
+    version: String,
+    source: String,
+}
+
+struct UpstreamProfile {
+    id: &'static str,
+    source: &'static str,
+    commit: &'static str,
+    author: &'static str,
+    license: &'static str,
+    background: &'static str,
+    hero: &'static str,
+    hero_position: &'static str,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -282,6 +303,148 @@ impl ThemeGarden {
             .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
 
+    pub fn install_upstream_source<T: CatalogTransport>(
+        &self,
+        catalog_bytes: &[u8],
+        id: &str,
+        transport: &T,
+        interrupt_after: Option<usize>,
+        fail_preview: bool,
+    ) -> Result<ActiveTheme> {
+        let catalog = ThemesCatalog::parse(catalog_bytes)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        atomic_bytes(
+            &self
+                .root
+                .join(CACHE_PATH.trim_start_matches('/'))
+                .join("batocera-themes.json"),
+            catalog_bytes,
+        )?;
+        let entry = catalog
+            .select(id, "1.0.0")
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let profile =
+            upstream_profile(id).context("upstream theme is not in the supported subset")?;
+        if entry.locator != profile.source {
+            bail!("catalog source does not match the supported upstream theme")
+        }
+        let version = entry
+            .updated_at
+            .as_deref()
+            .context("upstream catalog entry has no update date")?;
+        let screenshot_url = entry
+            .screenshot
+            .as_deref()
+            .context("upstream catalog entry has no screenshot")?;
+        let screenshot = transport
+            .fetch(screenshot_url, 4 * 1024 * 1024)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        validate_preview_image(&screenshot).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let preview = self
+            .root
+            .join(CACHE_PATH.trim_start_matches('/'))
+            .join("previews")
+            .join(format!("{id}-{version}.png"));
+        atomic_bytes(&preview, &screenshot)?;
+
+        let partial = self
+            .root
+            .join(STAGING_PATH.trim_start_matches('/'))
+            .join(format!("{id}-{version}.partial"));
+        fs::create_dir_all(partial.join("assets"))?;
+        for (index, (source_path, destination)) in [
+            (profile.background, "assets/background.png"),
+            (profile.hero, "assets/hero.png"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let destination = partial.join(destination);
+            if !destination.is_file() {
+                let url = github_raw_url(profile, source_path)?;
+                let bytes = transport
+                    .fetch(&url, 1024 * 1024)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                let normalized = normalize_theme_png(&bytes, 1024, 768)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                atomic_bytes(&destination, &normalized)?;
+            }
+            if interrupt_after.is_some_and(|limit| index + 1 >= limit) {
+                bail!("simulated interrupted upstream download")
+            }
+        }
+        let xml = format!(
+            "<theme formatVersion=\"4\" name=\"{}\" author=\"{}\" license=\"{}\"><view name=\"system\"><image name=\"background\" path=\"assets/background.png\" pos=\"0 0\" size=\"1024 768\"/><image name=\"hero\" path=\"assets/hero.png\" pos=\"{}\" size=\"390 300\"/></view><view name=\"games\"><textlist name=\"gamelist\" pos=\"48 110\" size=\"440 480\" color=\"#FFFFFF\" fontSize=\"24\"/></view></theme>",
+            profile.id, profile.author, profile.license, profile.hero_position
+        );
+        atomic_bytes(&partial.join("theme.xml"), xml.as_bytes())?;
+        let imported =
+            import_es_theme_dir(&partial).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let candidate = self
+            .root
+            .join(STAGING_PATH.trim_start_matches('/'))
+            .join(format!("{id}-{version}.candidate"));
+        let _ = fs::remove_dir_all(&candidate);
+        imported
+            .write_native_dir(&partial, &candidate)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let rendered = self
+            .root
+            .join(CACHE_PATH.trim_start_matches('/'))
+            .join("renders")
+            .join(format!("{id}-{version}.png"));
+        fs::create_dir_all(rendered.parent().context("render cache has no parent")?)?;
+        let candidate_theme =
+            load_theme_dir(&candidate).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        render_png(&candidate_theme, &rendered)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if fail_preview {
+            bail!("candidate preview validation failed")
+        }
+
+        let installed = self.user_theme_path(id);
+        fs::create_dir_all(
+            installed
+                .parent()
+                .context("user theme path has no parent")?,
+        )?;
+        let previous = installed.with_extension("previous");
+        let _ = fs::remove_dir_all(&previous);
+        if installed.exists() {
+            fs::rename(&installed, &previous)?;
+        }
+        if let Err(error) = fs::rename(&candidate, &installed) {
+            if previous.exists() {
+                let _ = fs::rename(&previous, &installed);
+            }
+            return Err(error.into());
+        }
+        let _ = fs::remove_dir_all(previous);
+        let _ = fs::remove_dir_all(partial);
+        let record = UpstreamRecord {
+            id: id.into(),
+            version: version.into(),
+            source: profile.source.into(),
+        };
+        atomic_json(&self.upstream_record_path(id), &record)?;
+        let active = ActiveTheme {
+            id: id.into(),
+            version: version.into(),
+        };
+        atomic_json(&self.active_path(), &active)?;
+        Ok(active)
+    }
+
+    pub fn update_upstream_source<T: CatalogTransport>(
+        &self,
+        catalog_bytes: &[u8],
+        id: &str,
+        transport: &T,
+        fail_preview: bool,
+    ) -> Result<ActiveTheme> {
+        self.install_upstream_source(catalog_bytes, id, transport, None, fail_preview)
+    }
+
     pub fn details(&self, id: &str) -> Result<Detail> {
         let entry = self.catalog.entry(id)?;
         let record = latest(&entry.versions)?;
@@ -330,6 +493,21 @@ impl ThemeGarden {
             id: ARTBOOK.into(),
             version: "1.0.0".into(),
         }];
+        let upstream_records = self.root.join(".brickpro/theme-garden/upstream");
+        if upstream_records.is_dir() {
+            for record in fs::read_dir(upstream_records)? {
+                let record = record?;
+                if record.file_type()?.is_file() {
+                    let record: UpstreamRecord = serde_json::from_slice(&fs::read(record.path())?)?;
+                    if load_theme_dir(&self.user_theme_path(&record.id)).is_ok() {
+                        installed.push(ActiveTheme {
+                            id: record.id,
+                            version: record.version,
+                        });
+                    }
+                }
+            }
+        }
         let root = self.root.join(".brickpro/packages");
         if root.is_dir() {
             for theme in fs::read_dir(root)? {
@@ -392,7 +570,7 @@ impl ThemeGarden {
         if active.id == ARTBOOK {
             return Ok(active);
         }
-        let compatible = self
+        let catalog_compatible = self
             .catalog
             .entry(&active.id)
             .ok()
@@ -403,12 +581,18 @@ impl ThemeGarden {
                     .find(|record| record.version == active.version)
             })
             .is_some_and(|record| compatible_version(record, &self.device));
-        let theme = self.installed_theme_path(&active);
-        if !compatible
-            || load_theme_dir(&theme)
+        let catalog_theme_compatible = catalog_compatible
+            && load_theme_dir(&self.installed_theme_path(&active))
                 .and_then(|theme| validate_for_device(theme, &self.device))
-                .is_err()
-        {
+                .is_ok();
+        let upstream_compatible = fs::read(self.upstream_record_path(&active.id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<UpstreamRecord>(&bytes).ok())
+            .is_some_and(|record| record.version == active.version)
+            && load_theme_dir(&self.user_theme_path(&active.id))
+                .and_then(|theme| validate_for_device(theme, &self.device))
+                .is_ok();
+        if !catalog_theme_compatible && !upstream_compatible {
             let fallback = default_theme();
             atomic_json(&self.active_path(), &fallback)?;
             return Ok(fallback);
@@ -521,6 +705,12 @@ impl ThemeGarden {
         if self.active()?.id == id {
             atomic_json(&self.active_path(), &default_theme())?
         }
+        let user_theme = self.user_theme_path(id);
+        if user_theme.is_dir() {
+            fs::remove_dir_all(user_theme)?;
+            let _ = fs::remove_file(self.upstream_record_path(id));
+            return Ok(());
+        }
         uninstall(&self.root, id, TransactionOptions::default()).context("remove theme")
     }
 
@@ -588,6 +778,53 @@ impl ThemeGarden {
             .join(&active.version)
             .join("immutable")
     }
+    fn user_theme_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join(USER_THEME_PATH.trim_start_matches('/'))
+            .join(id)
+    }
+    fn upstream_record_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join(".brickpro/theme-garden/upstream")
+            .join(format!("{id}.json"))
+    }
+}
+
+fn upstream_profile(id: &str) -> Option<&'static UpstreamProfile> {
+    static PROFILES: [UpstreamProfile; 2] = [
+        UpstreamProfile {
+            id: "SimpleLife",
+            source: "https://github.com/DarrenCarol/Simple_Life",
+            commit: "b19995f3da751e71cb872610c4d40769c56754bf",
+            author: "DarrenCarol / Mr. Overlay",
+            license: "not-stated",
+            background: "Simple%20Life%201.png",
+            hero: "Simple%20Life%202.png",
+            hero_position: "570 140",
+        },
+        UpstreamProfile {
+            id: "Techdweeb",
+            source: "https://github.com/anthonycaccese/techdweeb-es",
+            commit: "4a27965ed279466c1b1d6f6e98ffc279e2d0f6d4",
+            author: "TechDweeb / Anthony Caccese",
+            license: "CC-BY-NC-SA",
+            background: "_inc/images/system-view/blue.png",
+            hero: "_inc/images/system-view/splash.png",
+            hero_position: "620 120",
+        },
+    ];
+    PROFILES.iter().find(|profile| profile.id == id)
+}
+
+fn github_raw_url(profile: &UpstreamProfile, source_path: &str) -> Result<String> {
+    let repository = profile
+        .source
+        .strip_prefix("https://github.com/")
+        .context("upstream source is not GitHub HTTPS")?;
+    Ok(format!(
+        "https://raw.githubusercontent.com/{repository}/{}/{source_path}",
+        profile.commit
+    ))
 }
 
 fn validate_entry(entry: &CatalogEntry, device: &device_profile::DeviceProfile) -> Result<()> {
@@ -693,4 +930,135 @@ fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 fn atomic_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     atomic_bytes(path, &serde_json::to_vec_pretty(value)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use launcher_theme::{CatalogTransport, Reason, ThemeError};
+
+    use super::*;
+
+    struct MemoryTransport {
+        requests: RefCell<Vec<String>>,
+    }
+
+    impl CatalogTransport for MemoryTransport {
+        fn fetch(&self, locator: &str, _: usize) -> Result<Vec<u8>, ThemeError> {
+            self.requests.borrow_mut().push(locator.to_string());
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+            let asset = if locator.contains("Simple%20Life%201.png") {
+                "themes/default/assets/art.png"
+            } else if locator.contains("Simple%20Life%202.png") {
+                "themes/default/assets/box-art.png"
+            } else if locator.contains("system-view/blue.png") {
+                "themes/default/assets/screenshot.png"
+            } else if locator.contains("system-view/splash.png") {
+                "themes/default/assets/art.png"
+            } else if locator.starts_with("https://batocera.org/upgrades/themes/") {
+                "themes/default/assets/screenshot.png"
+            } else {
+                return Err(ThemeError {
+                    reason: Reason::Io,
+                    message: format!("unexpected URL {locator}"),
+                });
+            };
+            fs::read(root.join(asset)).map_err(|error| ThemeError {
+                reason: Reason::Io,
+                message: error.to_string(),
+            })
+        }
+    }
+
+    #[test]
+    fn direct_upstream_install_previews_then_atomically_activates_user_theme(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let fixtures = repository.join("fixtures/theme-garden");
+        let root = std::env::temp_dir().join(format!(
+            "theme-garden-upstream-install-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let device = device_profile::DeviceProfile::from_path(
+            &repository.join("config/platform/tg4040/compatibility.json"),
+        )?;
+        let garden = ThemeGarden::load(&root, &fixtures, device)?;
+        let transport = MemoryTransport {
+            requests: RefCell::new(Vec::new()),
+        };
+        let feed = br#"{"data":[{"theme":"SimpleLife","author":"DarrenCarol","theme_url":"https://github.com/DarrenCarol/Simple_Life","last_update":"2021-10-06","up_to_date":"0","size":"4","screenshot":"themes/SimpleLife.jpg"}]}"#;
+
+        let active = garden.install_upstream_source(feed, "SimpleLife", &transport, None, false)?;
+
+        assert_eq!(active.id, "SimpleLife");
+        assert_eq!(active.version, "2021-10-06");
+        assert_eq!(garden.active()?.id, "SimpleLife");
+        let installed = root.join("data/themes/SimpleLife");
+        assert!(installed.join("theme.json").is_file());
+        assert!(installed.join("assets/background.png").is_file());
+        assert!(installed.join("assets/hero.png").is_file());
+        assert_eq!(load_theme_dir(&installed)?.name(), "SimpleLife");
+        let requests = transport.requests.borrow();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(
+            requests[0],
+            "https://batocera.org/upgrades/themes/SimpleLife.jpg"
+        );
+        assert!(requests[1].contains("DarrenCarol/Simple_Life/b19995f3"));
+        assert!(requests[2].contains("DarrenCarol/Simple_Life/b19995f3"));
+        assert!(root
+            .join("data/cache/theme-garden/previews/SimpleLife-2021-10-06.png")
+            .is_file());
+        assert_eq!(
+            fs::read(root.join("data/cache/theme-garden/batocera-themes.json"))?,
+            feed
+        );
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn interrupted_second_source_keeps_active_theme_and_remove_falls_back(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let fixtures = repository.join("fixtures/theme-garden");
+        let root = std::env::temp_dir().join(format!(
+            "theme-garden-upstream-lifecycle-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let device = device_profile::DeviceProfile::from_path(
+            &repository.join("config/platform/tg4040/compatibility.json"),
+        )?;
+        let garden = ThemeGarden::load(&root, &fixtures, device)?;
+        let transport = MemoryTransport {
+            requests: RefCell::new(Vec::new()),
+        };
+        let feed = br#"{"data":[{"theme":"SimpleLife","author":"DarrenCarol","theme_url":"https://github.com/DarrenCarol/Simple_Life","last_update":"2021-10-06","up_to_date":"0","size":"4","screenshot":"themes/SimpleLife.jpg"},{"theme":"Techdweeb","author":"anthonycaccese","theme_url":"https://github.com/anthonycaccese/techdweeb-es","last_update":"2026-03-15","up_to_date":"4","size":"1","screenshot":"themes/Techdweeb.jpg"}]}"#;
+        garden.install_upstream_source(feed, "SimpleLife", &transport, None, false)?;
+        assert!(garden
+            .install_upstream_source(feed, "Techdweeb", &transport, Some(1), false)
+            .is_err());
+        assert_eq!(garden.active()?.id, "SimpleLife");
+        assert!(!root.join("data/themes/Techdweeb").exists());
+
+        garden.install_upstream_source(feed, "Techdweeb", &transport, None, false)?;
+
+        assert_eq!(garden.active()?.id, "Techdweeb");
+        let simple = load_theme_dir(&root.join("data/themes/SimpleLife"))?;
+        let techdweeb = load_theme_dir(&root.join("data/themes/Techdweeb"))?;
+        assert_ne!(simple.name(), techdweeb.name());
+        assert_ne!(
+            simple.asset("assets/background.png").unwrap().0,
+            techdweeb.asset("assets/background.png").unwrap().0
+        );
+        garden.remove("Techdweeb")?;
+        assert_eq!(garden.active()?.id, ARTBOOK);
+        assert!(!root.join("data/themes/Techdweeb").exists());
+        assert!(root.join("data/themes/SimpleLife").is_dir());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
 }

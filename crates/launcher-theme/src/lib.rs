@@ -723,6 +723,104 @@ fn decode_asset(path: &str, bytes: &[u8]) -> Result<LoadedAsset, ThemeError> {
     })
 }
 
+pub fn validate_preview_image(bytes: &[u8]) -> Result<(), ThemeError> {
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err(ThemeError::new(
+            Reason::BudgetAsset,
+            "catalog preview exceeds 4 MiB",
+        ));
+    }
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return decode_asset("preview.png", bytes).map(|_| ());
+    }
+    if bytes.starts_with(&[0xff, 0xd8]) && bytes.ends_with(&[0xff, 0xd9]) {
+        return Ok(());
+    }
+    Err(ThemeError::new(
+        Reason::InvalidAsset,
+        "catalog preview is not a bounded PNG or JPEG",
+    ))
+}
+
+pub fn normalize_theme_png(
+    bytes: &[u8],
+    max_width: u32,
+    max_height: u32,
+) -> Result<Vec<u8>, ThemeError> {
+    if bytes.len() > 1024 * 1024 {
+        return Err(ThemeError::new(
+            Reason::BudgetAsset,
+            "upstream PNG exceeds 1 MiB",
+        ));
+    }
+    let mut decoder = png::Decoder::new_with_limits(
+        std::io::Cursor::new(bytes),
+        png::Limits {
+            bytes: 64 * 1024 * 1024,
+        },
+    );
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder
+        .read_info()
+        .map_err(|_| ThemeError::new(Reason::InvalidAsset, "upstream asset is not a PNG"))?;
+    let source_width = reader.info().width;
+    let source_height = reader.info().height;
+    if source_width == 0
+        || source_height == 0
+        || u64::from(source_width) * u64::from(source_height) > 16 * 1024 * 1024
+    {
+        return Err(ThemeError::new(
+            Reason::BudgetAsset,
+            "upstream PNG dimensions exceed limits",
+        ));
+    }
+    let mut raw = vec![0; reader.output_buffer_size()];
+    let frame = reader
+        .next_frame(&mut raw)
+        .map_err(|_| ThemeError::new(Reason::InvalidAsset, "upstream PNG is corrupt"))?;
+    let source_pixels: Vec<u8> = match reader.output_color_type() {
+        (png::ColorType::Rgb, png::BitDepth::Eight) => raw[..frame.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        (png::ColorType::Rgba, png::BitDepth::Eight) => raw[..frame.buffer_size()].to_vec(),
+        _ => {
+            return Err(ThemeError::new(
+                Reason::InvalidAsset,
+                "upstream PNG color format is unsupported",
+            ))
+        }
+    };
+    let divisor = ((source_width + max_width - 1) / max_width)
+        .max((source_height + max_height - 1) / max_height)
+        .max(1);
+    let width = (source_width / divisor).max(1);
+    let height = (source_height / divisor).max(1);
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for y in 0..height {
+        for x in 0..width {
+            let source_x = x * source_width / width;
+            let source_y = y * source_height / height;
+            let source = ((source_y * source_width + source_x) * 4) as usize;
+            let target = ((y * width + x) * 4) as usize;
+            pixels[target..target + 4].copy_from_slice(&source_pixels[source..source + 4]);
+        }
+    }
+    let mut output = Vec::new();
+    {
+        let mut encoder = Encoder::new(&mut output, width, height);
+        encoder.set_color(ColorType::Rgba);
+        encoder.set_depth(BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
+    }
+    Ok(output)
+}
+
 fn reduced_aspect(mut width: u32, mut height: u32) -> String {
     let mut divisor = width;
     let mut remainder = height;
@@ -773,10 +871,13 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     }
     safe_text(&theme.metadata.name, "metadata.name", 32)?;
     safe_text(&theme.metadata.author, "metadata.author", 64)?;
-    if theme.metadata.license != "MIT" {
+    if !matches!(
+        theme.metadata.license.as_str(),
+        "MIT" | "CC-BY-NC-SA" | "not-stated"
+    ) {
         return Err(ThemeError::new(
             Reason::InvalidSchema,
-            "theme license must be MIT",
+            "theme license is unsupported",
         ));
     }
     let canvas_width = u32::from(theme.canvas.width);
@@ -1245,13 +1346,40 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
             author: "Anthony Caccese".into(),
             license: "CC-BY-NC-SA".into(),
         },
-        canvas: Canvas { width: 1024, height: 768, aspect: "4:3".into() },
-        colors: Colors { background, surface, accent: "#444444".into(), text, muted, highlight },
+        canvas: Canvas {
+            width: 1024,
+            height: 768,
+            aspect: "4:3".into(),
+        },
+        colors: Colors {
+            background,
+            surface,
+            accent: "#444444".into(),
+            text,
+            muted,
+            highlight,
+        },
         resources: Resources {
-            font: Resource { kind: ResourceKind::Builtin, reference: "generated-sans".into(), budget_bytes: 0 },
-            icon: Resource { kind: ResourceKind::Generated, reference: "controller-mark".into(), budget_bytes: 0 },
-            background: Resource { kind: ResourceKind::Generated, reference: "flat-field".into(), budget_bytes: 0 },
-            sound: Resource { kind: ResourceKind::Builtin, reference: "silent".into(), budget_bytes: 0 },
+            font: Resource {
+                kind: ResourceKind::Builtin,
+                reference: "generated-sans".into(),
+                budget_bytes: 0,
+            },
+            icon: Resource {
+                kind: ResourceKind::Generated,
+                reference: "controller-mark".into(),
+                budget_bytes: 0,
+            },
+            background: Resource {
+                kind: ResourceKind::Generated,
+                reference: "flat-field".into(),
+                budget_bytes: 0,
+            },
+            sound: Resource {
+                kind: ResourceKind::Builtin,
+                reference: "silent".into(),
+                budget_bytes: 0,
+            },
         },
         layout: Layout {
             preset: LayoutPreset::Artbook,
@@ -1260,15 +1388,31 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
                 ("system-art", RegionKind::SystemArt, 0, 0, 1024, 768),
                 ("game-list", RegionKind::GameList, 0, 0, 400, 768),
                 ("box-art", RegionKind::BoxArtPlaceholder, 768, 192, 256, 352),
-                ("screenshot", RegionKind::ScreenshotPlaceholder, 512, 192, 512, 416),
+                (
+                    "screenshot",
+                    RegionKind::ScreenshotPlaceholder,
+                    512,
+                    192,
+                    512,
+                    416,
+                ),
                 ("metadata", RegionKind::Metadata, 512, 608, 512, 160),
                 ("menu", RegionKind::Menu, 208, 120, 608, 528),
                 ("help", RegionKind::HelpStrip, 0, 720, 1024, 48),
                 ("clock", RegionKind::Clock, 872, 12, 64, 28),
                 ("battery", RegionKind::Battery, 944, 12, 64, 28),
-            ].into_iter().map(|(id, kind, x, y, width, height)| Region {
-                id: id.into(), kind, x, y, width, height, visible: true,
-            }).collect(),
+            ]
+            .into_iter()
+            .map(|(id, kind, x, y, width, height)| Region {
+                id: id.into(),
+                kind,
+                x,
+                y,
+                width,
+                height,
+                visible: true,
+            })
+            .collect(),
         },
         settings: Settings {
             artwork_mode: ArtworkMode::Screenshot,
@@ -1276,8 +1420,16 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
             font_scale: 100,
             color_scheme: ColorScheme::Dark,
         },
-        fallback: Fallback { splash: Splash::GeneratedNeutral, on_invalid: OnInvalid::SafeArtbook },
-        typography: Some(Typography { family: "project-sans".into(), title_size: 42, body_size: 22, small_size: 16 }),
+        fallback: Fallback {
+            splash: Splash::GeneratedNeutral,
+            on_invalid: OnInvalid::SafeArtbook,
+        },
+        typography: Some(Typography {
+            family: "project-sans".into(),
+            title_size: 42,
+            body_size: 22,
+            small_size: 16,
+        }),
         assets: None,
         components: Some(components),
     };

@@ -1,4 +1,4 @@
-<theme formatVersion="4" name="SimpleLife" author="DarrenCarol / Mr. Overlay" license="not-stated" provenance="https://github.com/DarrenCarol/Simple_Life@b19995f3da751e71cb872610c4d40769c56754bf">
+<theme formatVersion="4" name="SimpleLife" author="DarrenCarol / Mr. Overlay" license="not-stated">
   <view name="system">
     <image name="background" path="assets/background.png" pos="0 0" size="1024 768" />
     <image name="hero" path="assets/hero.png" pos="570 140" size="390 300" />

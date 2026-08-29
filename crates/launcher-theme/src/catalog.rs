@@ -78,6 +78,16 @@ pub struct ThemesCatalogEntry {
     pub author: String,
     #[serde(default)]
     pub screenshot: Option<String>,
+    #[serde(default, rename = "updatedAt")]
+    pub updated_at: Option<String>,
+    #[serde(default, rename = "sizeMb")]
+    pub size_mb: Option<u64>,
+    #[serde(default, rename = "upstreamStatus")]
+    pub upstream_status: Option<u8>,
+    #[serde(default, rename = "aspectRatios")]
+    pub aspect_ratios: Vec<String>,
+    #[serde(default, rename = "knulliCompatible")]
+    pub knulli_compatible: Option<bool>,
 }
 
 impl ThemesCatalog {
@@ -100,7 +110,7 @@ impl ThemesCatalog {
                     .data
                     .into_iter()
                     .map(ThemesCatalogEntry::from_feed)
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             }
         } else {
             serde_json::from_value(value)
@@ -226,24 +236,42 @@ struct BatoceraEntry {
     author: String,
     theme_url: String,
     #[serde(rename = "last_update")]
-    _last_update: String,
+    last_update: String,
     #[serde(rename = "up_to_date")]
-    _up_to_date: String,
-    #[serde(rename = "size")]
-    _size: String,
+    up_to_date: String,
+    size: String,
     screenshot: String,
 }
 
 impl ThemesCatalogEntry {
-    fn from_feed(entry: BatoceraEntry) -> Self {
-        Self {
-            id: entry.theme,
-            name: entry.author.clone(),
+    fn from_feed(entry: BatoceraEntry) -> Result<Self, ThemeError> {
+        if !calendar_date(&entry.last_update) {
+            return Err(ThemeError::new(
+                Reason::InvalidSchema,
+                "Batocera last_update must be YYYY-MM-DD",
+            ));
+        }
+        let size_mb = entry
+            .size
+            .parse::<u64>()
+            .map_err(|_| ThemeError::new(Reason::InvalidSchema, "Batocera size must be numeric"))?;
+        let upstream_status = entry.up_to_date.parse::<u8>().map_err(|_| {
+            ThemeError::new(Reason::InvalidSchema, "Batocera up_to_date must be numeric")
+        })?;
+        let screenshot = batocera_screenshot_url(&entry.screenshot)?;
+        Ok(Self {
+            id: entry.theme.clone(),
+            name: entry.theme,
             version: "1.0.0".into(),
             locator: entry.theme_url,
             author: entry.author,
-            screenshot: Some(entry.screenshot),
-        }
+            screenshot: Some(screenshot),
+            updated_at: Some(entry.last_update),
+            size_mb: Some(size_mb),
+            upstream_status: Some(upstream_status),
+            aspect_ratios: Vec::new(),
+            knulli_compatible: None,
+        })
     }
 }
 
@@ -261,17 +289,46 @@ fn validate_entry(entry: &ThemesCatalogEntry) -> Result<(), ThemeError> {
             format!("invalid themes.json entry {}", entry.id),
         ));
     }
-    if entry
-        .screenshot
-        .as_ref()
-        .is_some_and(|path| !safe_catalog_path(path))
-    {
+    if entry.screenshot.as_ref().is_some_and(|path| {
+        if path.starts_with("https://") {
+            !safe_locator(path)
+        } else {
+            !safe_catalog_path(path)
+        }
+    }) {
         return Err(ThemeError::new(
             Reason::InvalidPath,
             "unsafe catalog screenshot path",
         ));
     }
     Ok(())
+}
+
+fn batocera_screenshot_url(path: &str) -> Result<String, ThemeError> {
+    if !safe_catalog_path(path) || !path.starts_with("themes/") {
+        return Err(ThemeError::new(
+            Reason::InvalidPath,
+            "unsafe Batocera screenshot path",
+        ));
+    }
+    Ok(format!("https://batocera.org/upgrades/{path}"))
+}
+
+fn calendar_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+        && value[5..7]
+            .parse::<u8>()
+            .is_ok_and(|month| (1..=12).contains(&month))
+        && value[8..10]
+            .parse::<u8>()
+            .is_ok_and(|day| (1..=31).contains(&day))
 }
 
 fn identifier(value: &str) -> bool {

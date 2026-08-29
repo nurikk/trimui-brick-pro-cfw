@@ -205,9 +205,7 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
         author: root_attr(&document, "author")
             .unwrap_or("Project Authors")
             .to_string(),
-        license: root_attr(&document, "license")
-            .unwrap_or("MIT")
-            .to_string(),
+        license: root_attr(&document, "license").unwrap_or("MIT").to_string(),
     };
     for spec in declared_assets(&validated.theme) {
         let bytes = fs::read(root.join(&spec.path)).map_err(|_| {
@@ -419,7 +417,7 @@ fn parse_document(bytes: &[u8]) -> Result<(Node, CompatibilityReport), ThemeErro
     };
     check_attrs(
         &root,
-        &["formatVersion", "name", "author", "license", "provenance"],
+        &["formatVersion", "name", "author", "license"],
         &mut report,
     )?;
     if root_attr(&root, "formatVersion") != Some("4") {

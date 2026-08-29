@@ -308,6 +308,37 @@ fn themes_json_catalog_rejects_unsafe_locator() -> Result<(), Box<dyn std::error
 }
 
 #[test]
+fn batocera_feed_preserves_observed_catalog_metadata_without_inference(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let feed = br#"{"data":[{"theme":"SimpleLife","author":"DarrenCarol","theme_url":"https://github.com/DarrenCarol/Simple_Life","last_update":"2021-10-06","up_to_date":"0","size":"4","screenshot":"themes/SimpleLife.jpg"},{"theme":"Techdweeb","author":"anthonycaccese","theme_url":"https://github.com/anthonycaccese/techdweeb-es","last_update":"2026-03-15","up_to_date":"4","size":"1","screenshot":"themes/Techdweeb.jpg"}]}"#;
+    let catalog = ThemesCatalog::parse(feed)?;
+
+    let simple = catalog.select("SimpleLife", "1.0.0")?;
+    assert_eq!(simple.name, "SimpleLife");
+    assert_eq!(simple.author, "DarrenCarol");
+    assert_eq!(simple.locator, "https://github.com/DarrenCarol/Simple_Life");
+    assert_eq!(
+        simple.screenshot.as_deref(),
+        Some("https://batocera.org/upgrades/themes/SimpleLife.jpg")
+    );
+    assert_eq!(simple.updated_at.as_deref(), Some("2021-10-06"));
+    assert_eq!(simple.size_mb, Some(4));
+    assert_eq!(simple.upstream_status, Some(0));
+    assert!(simple.aspect_ratios.is_empty());
+    assert_eq!(simple.knulli_compatible, None);
+
+    let techdweeb = catalog.select("Techdweeb", "1.0.0")?;
+    assert_eq!(techdweeb.name, "Techdweeb");
+    assert_eq!(techdweeb.author, "anthonycaccese");
+    assert_eq!(techdweeb.updated_at.as_deref(), Some("2026-03-15"));
+    assert_eq!(techdweeb.size_mb, Some(1));
+    assert_eq!(techdweeb.upstream_status, Some(4));
+    assert!(techdweeb.aspect_ratios.is_empty());
+    assert_eq!(techdweeb.knulli_compatible, None);
+    Ok(())
+}
+
+#[test]
 fn xml_scripts_and_traversal_are_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::temp_dir().join(format!("launcher-theme-negative-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

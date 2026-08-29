@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
+use launcher_theme::DirectCatalogTransport;
 use package_manager::{validate_manifest, PackageManifest};
 use theme_garden::{Catalog, ThemeGarden, CACHE_PATH, STAGING_PATH};
 
@@ -44,7 +45,29 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        _ => bail!("usage: theme-garden journey --fixtures PATH --root SYNTHETIC_ROOT --device-profile PATH | parse --catalog PATH --device-profile PATH"),
+        Some("source-install") => {
+            let fixtures = required_path(&mut args, "--fixtures")?;
+            let root = required_path(&mut args, "--root")?;
+            let catalog = required_path(&mut args, "--catalog")?;
+            let id = required_value(&mut args, "--id")?;
+            let device_profile = required_path(&mut args, "--device-profile")?;
+            if args.next().is_some() { bail!("unexpected argument") }
+            let garden = ThemeGarden::load(
+                &root,
+                &fixtures,
+                device_profile::DeviceProfile::from_path(&device_profile)?,
+            )?;
+            let active = garden.install_upstream_source(
+                &fs::read(catalog)?,
+                &id,
+                &DirectCatalogTransport,
+                None,
+                false,
+            )?;
+            println!("PASS installed {} {}", active.id, active.version);
+            Ok(())
+        }
+        _ => bail!("usage: theme-garden journey --fixtures PATH --root SYNTHETIC_ROOT --device-profile PATH | parse --catalog PATH --device-profile PATH | source-install --fixtures PATH --root PATH --catalog PATH --id ID --device-profile PATH"),
     }
 }
 
@@ -201,6 +224,13 @@ fn journey(fixtures: &Path, root: &Path, device: device_profile::DeviceProfile) 
 fn required_path(args: &mut impl Iterator<Item = String>, option: &str) -> Result<PathBuf> {
     match (args.next().as_deref(), args.next()) {
         (Some(value), Some(path)) if value == option => Ok(PathBuf::from(path)),
+        (Some(value), _) => bail!("expected {option}, got {value}"),
+        (None, _) => bail!("missing {option}"),
+    }
+}
+fn required_value(args: &mut impl Iterator<Item = String>, option: &str) -> Result<String> {
+    match (args.next().as_deref(), args.next()) {
+        (Some(value), Some(item)) if value == option => Ok(item),
         (Some(value), _) => bail!("expected {option}, got {value}"),
         (None, _) => bail!("missing {option}"),
     }

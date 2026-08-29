@@ -65,6 +65,7 @@ const SETTINGS_REGISTRY_BYTES: &[u8] =
 const WIFI_METADATA_BYTES: &[u8] =
     include_bytes!("../../../fixtures/wifi-settings-controller/generated-v1/workflow.json");
 const WIFI_FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/wifi-manager/journeys.json");
+const CONTROLLER_ROUTES_BYTES: &[u8] = include_bytes!("../../../sim/routes/controller-routes.json");
 const FAULTS: &[&str] = &[
     "adapter-fail",
     "adapter-crash",
@@ -143,6 +144,70 @@ struct AppState {
     presentation: PresentationState,
     session_step: u32,
     lifecycle: LifecycleController,
+    controller_routes: ControllerRoutes,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ControllerRoute {
+    id: String,
+    label: String,
+    action: String,
+    checkpoint: bool,
+    expected_presentation_route: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ControllerRouteGraph {
+    schema: String,
+    routes: Vec<ControllerRoute>,
+}
+
+struct ControllerRoutes {
+    routes: Vec<ControllerRoute>,
+    selected: usize,
+    navigator_visible: bool,
+    current_id: Option<String>,
+}
+
+impl ControllerRoutes {
+    fn load() -> Result<Self> {
+        let graph: ControllerRouteGraph = serde_json::from_slice(CONTROLLER_ROUTES_BYTES)?;
+        if graph.schema != "controller-route-graph/v1"
+            || graph.routes.is_empty()
+            || graph.routes.len() > 128
+        {
+            return Err(anyhow!("invalid controller route graph"));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for route in &graph.routes {
+            if route.id.is_empty()
+                || route.id.len() > 48
+                || !route
+                    .id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || route.label.is_empty()
+                || route.label.len() > 80
+                || route.expected_presentation_route.is_empty()
+                || route.expected_presentation_route.len() > 48
+                || !route
+                    .expected_presentation_route
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || !ids.insert(route.id.clone())
+            {
+                return Err(anyhow!("invalid controller route graph entry"));
+            }
+        }
+        Ok(Self {
+            routes: graph.routes,
+            selected: 0,
+            navigator_visible: false,
+            current_id: None,
+        })
+    }
 }
 
 struct SaveVaultUi {
@@ -372,6 +437,26 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         }
     }
     screen.save_sync = state.save_sync.clone();
+    if state.controller_routes.navigator_visible {
+        screen.route = "controller-routes".into();
+        screen.title = "Controller route navigator".into();
+        screen.selected_label = state.controller_routes.routes[state.controller_routes.selected]
+            .label
+            .clone();
+        screen.menu = state
+            .controller_routes
+            .routes
+            .iter()
+            .enumerate()
+            .map(|(index, route)| launcher_presentation::ScreenItem {
+                id: route.id.clone(),
+                label: route.label.clone(),
+                selected: index == state.controller_routes.selected,
+                enabled: true,
+            })
+            .collect();
+        screen.modal = None;
+    }
     Ok(screen)
 }
 
@@ -842,6 +927,7 @@ fn run_session<P: Platform>(
         presentation,
         session_step: 0,
         lifecycle: load_lifecycle(&evidence.root),
+        controller_routes: ControllerRoutes::load()?,
     };
     launcher_state::save(&state_root, &state.persisted)
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -929,7 +1015,7 @@ fn run_session<P: Platform>(
             periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
             did_work = true;
         }
-        if !fixture_done {
+        if !fixture_done || keep_alive {
             if let Some(event) = platform
                 .next_button_event()
                 .map_err(|error| anyhow!(error))?
@@ -2001,6 +2087,7 @@ mod tests {
             presentation,
             session_step: 0,
             lifecycle: LifecycleController::new(),
+            controller_routes: ControllerRoutes::load().expect("controller routes"),
         };
         (state, catalog, broker_root)
     }
@@ -2774,6 +2861,21 @@ fn handle_semantic_action<P: Platform>(
     }
 
     let selection_before = state.selected_content_id.clone();
+    if let Some(button) = raw_button {
+        if handle_controller_routes(state, button, log, at_ms)? {
+            let screen = screen_for_state(state, catalog)?;
+            present(platform, &screen)?;
+            log.emit(
+                "input_to_frame",
+                at_ms,
+                json_map([
+                    ("latencyUs", json!(0)),
+                    ("sessionStep", json!(state.session_step)),
+                ]),
+            )?;
+            return Ok(());
+        }
+    }
     let controller_route = matches!(
         state.presentation.ui.route,
         ui_model::Route::Settings | ui_model::Route::Wifi(_)
@@ -2996,6 +3098,79 @@ fn current_group(state: &AppState, catalog: &UiCatalog) -> String {
     rom_index::title_group(&catalog.entries[selected_catalog_index(state, catalog)].title)
 }
 
+fn handle_controller_routes(
+    state: &mut AppState,
+    button: Button,
+    log: &mut EventLog,
+    at_ms: u64,
+) -> Result<bool> {
+    if button == Button::Menu {
+        state.controller_routes.navigator_visible = true;
+        return Ok(true);
+    }
+    if !state.controller_routes.navigator_visible {
+        if button == Button::Secondary && state.controller_routes.current_id.is_some() {
+            state.controller_routes.current_id = None;
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+    match button {
+        Button::Up => {
+            state.controller_routes.selected = state
+                .controller_routes
+                .selected
+                .checked_sub(1)
+                .unwrap_or(state.controller_routes.routes.len() - 1);
+        }
+        Button::Down => {
+            state.controller_routes.selected =
+                (state.controller_routes.selected + 1) % state.controller_routes.routes.len();
+        }
+        Button::Secondary => state.controller_routes.navigator_visible = false,
+        Button::Primary => {
+            let route = state.controller_routes.routes[state.controller_routes.selected].clone();
+            state.presentation.theme_garden = false;
+            state.presentation.theme_fallback = None;
+            state.modal = None;
+            state.presentation.ui =
+                ui_model::reduce(&state.presentation.ui, ui_model::Action::DismissModal);
+            reduce_route(state, ui_model::Route::Home);
+            state.route = Route::Library;
+            presentation_action(
+                state,
+                PresentationArgs {
+                    action: route.action.clone(),
+                },
+            )
+            .map_err(anyhow::Error::msg)?;
+            match state.presentation.ui.route {
+                ui_model::Route::Systems => state.route = Route::Systems,
+                ui_model::Route::Games => state.route = Route::Games,
+                ui_model::Route::GameSwitcher => state.route = Route::GameSwitcher,
+                _ => {}
+            }
+            state.controller_routes.navigator_visible = false;
+            state.controller_routes.current_id = Some(route.id.clone());
+            log.emit(
+                "controller_route_visit",
+                at_ms,
+                json_map([
+                    ("routeId", json!(route.id)),
+                    ("action", json!(route.action)),
+                    ("checkpoint", json!(route.checkpoint)),
+                    (
+                        "expectedPresentationRoute",
+                        json!(route.expected_presentation_route),
+                    ),
+                ]),
+            )?;
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
 fn raw_control(button: Button) -> Option<input_profile::RawControl> {
     Some(match button {
         Button::Up => input_profile::RawControl::Up,
@@ -3104,6 +3279,12 @@ fn state_json<P: Platform>(
         "lifecycle": state.lifecycle.evidence(),
         "clock": {"monotonicMs": platform.logical_time_ms(), "wallClockMs": platform.wall_clock_ms()},
         "saveVault": save_vault_json(state),
+        "controllerRoute": {
+            "navigatorVisible": state.controller_routes.navigator_visible,
+            "selectedIndex": state.controller_routes.selected,
+            "currentId": state.controller_routes.current_id,
+            "expectedCount": state.controller_routes.routes.len(),
+        },
         "presentation": presentation,
     }))
 }
@@ -3643,7 +3824,7 @@ impl EventLog {
     }
 
     fn emit(&mut self, event: &str, at_ms: u64, details: Map<String, Value>) -> Result<u64> {
-        if self.sequence >= 512 {
+        if self.sequence >= 4096 {
             return Err(anyhow!("event limit exceeded"));
         }
         let sequence = self.sequence;

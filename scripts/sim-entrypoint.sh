@@ -33,7 +33,7 @@ forward_term() {
     exit 0
 }
 
-if [ "${1:-}" = "--backend=x11" ]; then
+if [ "${1:-}" = "--backend=x11" ] && [ "${SIM_EXTERNAL_X11:-0}" != 1 ]; then
     Xvfb :99 -screen 0 1024x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
     xvfb_pid=$!
     export DISPLAY=:99

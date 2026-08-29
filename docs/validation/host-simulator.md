@@ -19,7 +19,9 @@ The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, sem
 ./scripts/sim stop --run-dir "$RUN"
 ```
 
-Use `--backend=x11` to exercise SDL through Xvfb inside the container; no host display forwarding is required. `clean-run` removes the simulator's known artifacts, including durable state/index data, in the external run directory before starting a new run. `run` rejects any existing managed evidence and structurally validates readiness and the first-frame event before returning success.
+Use `--backend=x11` only for the container-private SDL fixture lane. For headed acceptance, use an existing local X server with `--backend=host-x11 --display :N`. That mode mounts the host X11 socket read-only while retaining the read-only root, dropped capabilities, non-root UID, PID limit, and `--network none`; it never starts the private Xvfb. The SDL window follows the device profile (1024×768 for TG4040) and is titled `Host-native simulator acceptance — not physical TG4040 evidence`. Arrow keys, Return/Z/A, Escape/X/B, Space, Tab, Home, PageUp, and PageDown map to controller buttons. `clean-run` removes the simulator's known artifacts, including durable state/index data, in the external run directory before starting a new run. `run` rejects any existing managed evidence and structurally validates readiness and the first-frame event before returning success.
+
+The launcher and `tools/sim/journeys/controller-route-coverage.py` consume the canonical graph at `sim/routes/controller-routes.json`. Home/Menu opens its visible navigator, Up/Down selects a route, Primary enters it, and Secondary cancels. The coverage journey uses only controller button commands, writes exact expected/visited/missing/duplicate/unexpected IDs and paired screenshot checkpoints, and compares two fresh roots; it never calls the direct `presentation` fixture command.
 
 ## Contract and boundaries
 
@@ -56,6 +58,14 @@ RUN_X11=$(mktemp -d)
 ./scripts/sim run --backend=x11 --run-dir "$RUN_X11" --wait-ready 30 --detach
 ./scripts/sim stop --run-dir "$RUN_X11"
 grep -q '"event":"clean_shutdown"' "$RUN_X11/logs/launcher.jsonl"
+
+RUN_HEADED=$(mktemp -d)
+./scripts/sim run --backend=host-x11 --display :0 --run-dir "$RUN_HEADED" --wait-ready 30 --detach
+./scripts/sim stop --backend=host-x11 --display :0 --run-dir "$RUN_HEADED"
+
+COVERAGE=$(mktemp -d)
+rm -rf "$COVERAGE"
+tools/sim/journeys/controller-route-coverage.py --out "$COVERAGE" --backend dummy
 
 STALE=$(mktemp -d)
 printf '%s\n' '{}' > "$STALE/readiness.json"

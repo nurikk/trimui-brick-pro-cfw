@@ -1,0 +1,320 @@
+{
+  "schema": "controller-route-graph/v1",
+  "routes": [
+    {
+      "id": "home-systems",
+      "label": "Systems carousel",
+      "action": "systems",
+      "checkpoint": true,
+      "expectedPresentationRoute": "systems"
+    },
+    {
+      "id": "home-game-list",
+      "label": "Generated game list",
+      "action": "games",
+      "checkpoint": true,
+      "expectedPresentationRoute": "games"
+    },
+    {
+      "id": "games-details",
+      "label": "Game details and generated media",
+      "action": "media-details",
+      "checkpoint": true,
+      "expectedPresentationRoute": "games"
+    },
+    {
+      "id": "games-favorite-toggle",
+      "label": "Favorite toggle",
+      "action": "favorite",
+      "checkpoint": false,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "games-favorites",
+      "label": "Favorites list",
+      "action": "favorites",
+      "checkpoint": true,
+      "expectedPresentationRoute": "favorites"
+    },
+    {
+      "id": "games-search-keyboard",
+      "label": "Search keyboard and results",
+      "action": "search",
+      "checkpoint": true,
+      "expectedPresentationRoute": "search"
+    },
+    {
+      "id": "settings-root",
+      "label": "Settings root",
+      "action": "settings",
+      "checkpoint": true,
+      "expectedPresentationRoute": "settings"
+    },
+    {
+      "id": "settings-generated-form",
+      "label": "Generated settings form",
+      "action": "settings-form",
+      "checkpoint": true,
+      "expectedPresentationRoute": "settings"
+    },
+    {
+      "id": "wifi-scan",
+      "label": "Wi-Fi scan",
+      "action": "wifi-scan",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-scan"
+    },
+    {
+      "id": "wifi-access-points",
+      "label": "Open and secure access points",
+      "action": "wifi-access-points",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-access-point-selection"
+    },
+    {
+      "id": "wifi-secure-password",
+      "label": "Masked secure network keyboard",
+      "action": "wifi-password",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-password-entry"
+    },
+    {
+      "id": "wifi-hidden",
+      "label": "Hidden network entry",
+      "action": "wifi-hidden",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-hidden-network"
+    },
+    {
+      "id": "wifi-manual-ssid",
+      "label": "Manual SSID keyboard",
+      "action": "wifi-manual",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-manual-ssid"
+    },
+    {
+      "id": "wifi-saved-forget",
+      "label": "Saved network and forget flow",
+      "action": "wifi-access-points",
+      "checkpoint": false,
+      "expectedPresentationRoute": "wifi-access-point-selection"
+    },
+    {
+      "id": "wifi-connect-progress",
+      "label": "Wi-Fi connection progress",
+      "action": "wifi-progress",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-progress"
+    },
+    {
+      "id": "wifi-retry-error",
+      "label": "Wi-Fi failure and retry",
+      "action": "wifi-error",
+      "checkpoint": true,
+      "expectedPresentationRoute": "wifi-error"
+    },
+    {
+      "id": "theme-garden-catalog",
+      "label": "Theme Garden catalog boundary",
+      "action": "theme-garden",
+      "checkpoint": true,
+      "expectedPresentationRoute": "theme-garden"
+    },
+    {
+      "id": "theme-garden-preview",
+      "label": "Theme preview lifecycle",
+      "action": "theme-garden",
+      "checkpoint": false,
+      "expectedPresentationRoute": "theme-garden"
+    },
+    {
+      "id": "theme-garden-install-update-remove",
+      "label": "Theme install update and remove lifecycle",
+      "action": "theme-garden",
+      "checkpoint": true,
+      "expectedPresentationRoute": "theme-garden"
+    },
+    {
+      "id": "scraper-settings",
+      "label": "Scraper settings",
+      "action": "scraper-settings",
+      "checkpoint": true,
+      "expectedPresentationRoute": "scraper-settings"
+    },
+    {
+      "id": "scraper-game",
+      "label": "Single-game scraper",
+      "action": "scraper-game",
+      "checkpoint": false,
+      "expectedPresentationRoute": "scraper-game"
+    },
+    {
+      "id": "scraper-queue",
+      "label": "Bulk scraper queue",
+      "action": "scraper-queue",
+      "checkpoint": false,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "scraper-progress",
+      "label": "Bulk scraper provider fallback progress",
+      "action": "scraper-progress",
+      "checkpoint": true,
+      "expectedPresentationRoute": "scraper-bulk-queue"
+    },
+    {
+      "id": "scraper-paused",
+      "label": "Scraper paused recovery",
+      "action": "scraper-paused",
+      "checkpoint": false,
+      "expectedPresentationRoute": "scraper-bulk-queue"
+    },
+    {
+      "id": "scraper-ambiguity",
+      "label": "Scraper ambiguity choices",
+      "action": "scraper-ambiguity",
+      "checkpoint": true,
+      "expectedPresentationRoute": "scraper-ambiguous-choice"
+    },
+    {
+      "id": "scraper-failure",
+      "label": "Scraper failure summary",
+      "action": "scraper-complete",
+      "checkpoint": true,
+      "expectedPresentationRoute": "scraper-bulk-queue"
+    },
+    {
+      "id": "diagnostics-safe-mode",
+      "label": "Diagnostics and safe mode",
+      "action": "recovery",
+      "checkpoint": true,
+      "expectedPresentationRoute": "recovery"
+    },
+    {
+      "id": "updater-available",
+      "label": "Updater available state",
+      "action": "update",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "updater-rollback",
+      "label": "Updater rollback state",
+      "action": "update",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "faults-storage-full",
+      "label": "Storage full warning",
+      "action": "modal",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "faults-low-battery",
+      "label": "Low battery shutdown warning",
+      "action": "modal",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "game-switcher-list",
+      "label": "Game Switcher autosave list",
+      "action": "resume",
+      "checkpoint": true,
+      "expectedPresentationRoute": "game-switcher"
+    },
+    {
+      "id": "game-switcher-resume",
+      "label": "Resume decision",
+      "action": "resume",
+      "checkpoint": true,
+      "expectedPresentationRoute": "game-switcher"
+    },
+    {
+      "id": "portmaster-catalog",
+      "label": "Signed synthetic PortMaster catalog",
+      "action": "games",
+      "checkpoint": true,
+      "expectedPresentationRoute": "games"
+    },
+    {
+      "id": "portmaster-install",
+      "label": "Synthetic PortMaster install",
+      "action": "modal",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "portmaster-launch-orbit",
+      "label": "Orbit Garden launch surface",
+      "action": "games",
+      "checkpoint": true,
+      "expectedPresentationRoute": "games"
+    },
+    {
+      "id": "portmaster-launch-signal",
+      "label": "Signal Workshop launch surface",
+      "action": "games",
+      "checkpoint": true,
+      "expectedPresentationRoute": "games"
+    },
+    {
+      "id": "portmaster-uninstall-protected-data",
+      "label": "PortMaster uninstall protected-data result",
+      "action": "modal",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "save-vault-history",
+      "label": "Save Vault history",
+      "action": "save-vault-history",
+      "checkpoint": false,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "save-vault-preview",
+      "label": "Save Vault restore preview",
+      "action": "save-vault-preview",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "save-vault-confirm",
+      "label": "Save Vault restore confirmation",
+      "action": "save-vault-confirm",
+      "checkpoint": false,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "save-vault-restore",
+      "label": "Save Vault restored result",
+      "action": "save-vault-restore",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "save-sync-conflict",
+      "label": "Save Sync conflict actions",
+      "action": "save-sync-status",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    },
+    {
+      "id": "theme-garden-fallback",
+      "label": "Invalid theme safe fallback",
+      "action": "fallback",
+      "checkpoint": true,
+      "expectedPresentationRoute": "recovery"
+    },
+    {
+      "id": "shutdown-confirm",
+      "label": "Clean shutdown confirmation",
+      "action": "modal",
+      "checkpoint": true,
+      "expectedPresentationRoute": "home"
+    }
+  ]
+}

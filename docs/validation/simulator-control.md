@@ -69,8 +69,11 @@ including the armed deadline, wake source/reason, and typed orderly-shutdown
 request. It also includes a `launcher-presentation/v1` Artbook screen. The screen
 is built from generated `ui-model`, Artbook theme, `settings-ui`, and Wi-Fi
 controller projections, including bounded ROM-index status and persisted recent
-entries. `presentation --action` accepts only the generated route/workflow
-allowlist and carries no values or secrets. The state object is also written
+entries. `controllerRoute` reports the canonical navigator, selected index,
+current route ID, and expected count. Home/Menu, Up/Down, Primary, and Secondary
+drive it through the same button path as a local keyboard or controller.
+`presentation --action` remains a narrow fixture command and is not used by the
+controller acceptance runner. The state object is also written
 beside each requested artifact. Validate it with the `state` definition in
 `control.schema.json`; no pixels are inspected.
 
@@ -85,10 +88,13 @@ validates and emits a typed `launch-contract::LaunchRequest` through the broker
 boundary before starting a session. Platform entries use simulator-owned
 generated runner/core metadata; no real ROM/core compatibility is claimed. The
 request is written to `launch-request.json`; broker completion or failure is
-reflected in `state`, `session.json`, and JSONL events. Settings, search, and
-favorites are exposed only as generated controller/persistence projections;
-themes, updater behavior, VNC/noVNC, real emulation, and real hardware are not
-implemented or claimed.
+reflected in `state`, `session.json`, and JSONL events. The canonical controller
+graph covers generated systems, game details, settings, Wi-Fi, Theme Garden,
+scraper, diagnostics, updater, fault, Game Switcher,
+PortMaster, Save Vault/Save Sync, and shutdown surfaces. Coverage proves visible
+controller reachability, while the existing focused journeys remain authoritative
+for side effects. VNC/noVNC, real emulation, and real hardware are not implemented
+or claimed.
 
 Every screenshot or checkpoint creates a nonempty PNG and paired semantic JSON
 under `$RUN/screenshots` or `$RUN/checkpoints`. The JSONL log contains only

@@ -652,6 +652,7 @@ fn run_session<P: Platform>(
 ) -> Result<()> {
     let startup_started = Instant::now();
     let identity = platform.identity();
+    let display = platform.display_state().map_err(|error| anyhow!(error))?;
     let catalog_started = Instant::now();
     let launch_catalog: LaunchCatalog = launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES)
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -796,8 +797,8 @@ fn run_session<P: Platform>(
         "first_frame",
         platform.logical_time_ms(),
         json_map([
-            ("logicalWidth", json!(1024)),
-            ("logicalHeight", json!(768)),
+            ("logicalWidth", json!(display.logical_width)),
+            ("logicalHeight", json!(display.logical_height)),
             ("hostElapsedUs", json!(first_frame_us)),
             ("batteryLevelPercent", json!(snapshot.battery_level_percent)),
             ("charging", json!(snapshot.charging)),

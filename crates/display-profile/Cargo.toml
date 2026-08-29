@@ -11,3 +11,4 @@ path = "src/bin/display-profile-fixtures.rs"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+device-profile = { path = "../device-profile" }

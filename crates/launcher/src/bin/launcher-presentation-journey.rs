@@ -31,6 +31,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root)?;
     let profile = PathBuf::from("sim/device/tg4040-host.json");
+    let device_profile = PathBuf::from("config/platform/tg4040/compatibility.json");
     let theme = safe_artbook()?;
     let settings = settings()?;
     let mut wifi = wifi()?;
@@ -144,7 +145,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for pass in 0..2 {
-        let mut platform = HostPlatform::new(&profile, Backend::Dummy)?;
+        let mut platform = HostPlatform::new(&profile, &device_profile, Backend::Dummy)?;
         for (name, state) in &states {
             let screen = build_with_sync(
                 state,

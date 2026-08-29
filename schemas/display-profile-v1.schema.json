@@ -16,7 +16,7 @@
     "logicalOutput": {
       "type": "object", "additionalProperties": false,
       "required": ["width", "height"],
-      "properties": {"width": {"const": 1024}, "height": {"const": 768}}
+      "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}
     },
     "identifierSelection": {
       "type": "object", "additionalProperties": false,
@@ -46,7 +46,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "targetSku", "channel", "logicalOutput", "defaultSelection"],
       "properties": {
-        "id": {"$ref": "#/$defs/id"}, "targetSku": {"const": "TG4040"}, "channel": {"$ref": "#/$defs/channel"},
+        "id": {"$ref": "#/$defs/id"}, "targetSku": {"type": "string", "minLength": 1}, "channel": {"$ref": "#/$defs/channel"},
         "logicalOutput": {"$ref": "#/$defs/logicalOutput"}, "defaultSelection": {"$ref": "#/$defs/selection"}
       }
     },
@@ -60,7 +60,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "targetSku", "channel", "systemIds", "defaultSelection", "gameOverrides"],
       "properties": {
-        "id": {"$ref": "#/$defs/id"}, "targetSku": {"const": "TG4040"}, "channel": {"$ref": "#/$defs/channel"},
+        "id": {"$ref": "#/$defs/id"}, "targetSku": {"type": "string", "minLength": 1}, "channel": {"$ref": "#/$defs/channel"},
         "systemIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
         "defaultSelection": {"$ref": "#/$defs/selection"},
         "gameOverrides": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/gameOverride"}}
@@ -72,7 +72,7 @@
       "properties": {
         "$schema": {"const": "https://example.invalid/trimui-display-profile-v1.schema.json"},
         "format": {"const": "trimui-display-profile"}, "schemaVersion": {"const": 1}, "kind": {"const": "catalog"},
-        "targetSku": {"const": "TG4040"}, "logicalOutput": {"$ref": "#/$defs/logicalOutput"},
+        "targetSku": {"type": "string", "minLength": 1}, "logicalOutput": {"$ref": "#/$defs/logicalOutput"},
         "systems": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/system"}},
         "profiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/profile"}}
       }

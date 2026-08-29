@@ -15,6 +15,7 @@ use sim_host_platform::{Backend, HostPlatform};
 
 struct Args {
     profile: PathBuf,
+    device_profile: PathBuf,
     catalog: PathBuf,
     evidence: PathBuf,
     backend: Backend,
@@ -31,6 +32,7 @@ fn main() {
 
 fn parse_args() -> Result<Args> {
     let mut profile = None;
+    let mut device_profile = None;
     let mut catalog = None;
     let mut evidence = None;
     let mut backend = None;
@@ -43,6 +45,13 @@ fn parse_args() -> Result<Args> {
                     arguments
                         .next()
                         .ok_or_else(|| anyhow!("missing --profile value"))?,
+                ))
+            }
+            "--device-profile" => {
+                device_profile = Some(PathBuf::from(
+                    arguments
+                        .next()
+                        .ok_or_else(|| anyhow!("missing --device-profile value"))?,
                 ))
             }
             "--catalog" => {
@@ -67,6 +76,7 @@ fn parse_args() -> Result<Args> {
     }
     Ok(Args {
         profile: profile.ok_or_else(|| anyhow!("missing --profile"))?,
+        device_profile: device_profile.ok_or_else(|| anyhow!("missing --device-profile"))?,
         catalog: catalog.ok_or_else(|| anyhow!("missing --catalog"))?,
         evidence: evidence.ok_or_else(|| anyhow!("missing --evidence"))?,
         backend: backend.ok_or_else(|| anyhow!("missing --backend"))?,
@@ -83,6 +93,6 @@ fn execute(args: Args) -> Result<()> {
         &args.evidence,
         args.keep_alive,
         &stop,
-        || HostPlatform::new(&args.profile, args.backend),
+        || HostPlatform::new(&args.profile, &args.device_profile, args.backend),
     )
 }

@@ -1,0 +1,15 @@
+{
+  "deviceId": "synthetic-wide",
+  "display": {
+    "expected": {
+      "format": "rgba8888",
+      "height": 720,
+      "strideBytes": 5120,
+      "width": 1280
+    },
+    "orientation": "landscape",
+    "themeAspect": "16:9"
+  },
+  "schemaVersion": "1.0.0",
+  "targetSku": "SYNTHETIC-WIDE"
+}

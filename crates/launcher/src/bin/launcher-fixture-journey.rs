@@ -15,6 +15,10 @@ const PROFILE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../sim/device/tg4040-host.json"
 );
+const DEVICE_PROFILE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../config/platform/tg4040/compatibility.json"
+);
 const UI_CATALOG: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../sim/fixtures/catalog.json"
@@ -85,7 +89,11 @@ fn run_once(number: u8) -> Journey {
     let started = Instant::now();
     let stop = Arc::new(AtomicBool::new(false));
     sim_launcher::run(Path::new(UI_CATALOG), &root, false, &stop, || {
-        HostPlatform::new(Path::new(PROFILE), Backend::Dummy)
+        HostPlatform::new(
+            Path::new(PROFILE),
+            Path::new(DEVICE_PROFILE),
+            Backend::Dummy,
+        )
     })
     .expect("host-native journey");
     let cold_start_us = started.elapsed().as_micros();

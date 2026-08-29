@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+device-profile = { path = "../device-profile" }
 png.workspace = true
 sdl2 = { workspace = true, features = ["ttf"] }
 serde.workspace = true

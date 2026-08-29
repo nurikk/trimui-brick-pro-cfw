@@ -24,15 +24,51 @@ pub use importer::{
 #[cfg(test)]
 mod tests;
 
-pub const CANVAS_WIDTH: u32 = 1024;
-pub const CANVAS_HEIGHT: u32 = 768;
+pub const MAX_CANVAS_PIXELS: u64 = 4 * 1024 * 1024;
 pub const MAX_JSON_BYTES: usize = 128 * 1024;
 pub const MAX_FILES: usize = 32;
 pub const MAX_THEME_DEPTH: usize = 8;
 pub const MAX_RESOURCE_BYTES: u64 = 64 * 1024;
-pub const MAX_RENDER_BYTES: u64 = CANVAS_WIDTH as u64 * CANVAS_HEIGHT as u64 * 4;
+pub const MAX_RENDER_BYTES: u64 = MAX_CANVAS_PIXELS * 4;
 pub const SCHEMA: &str = "theme-v1";
 pub const SCHEMA_URI: &str = "urn:project:theme-v1";
+
+pub fn select_theme_layout<'a>(
+    device: &device_profile::DeviceProfile,
+    available_layouts: &'a [&str],
+) -> Result<&'a str, ThemeError> {
+    let selected = device.theme_layout_file();
+    available_layouts
+        .iter()
+        .copied()
+        .find(|layout| *layout == selected)
+        .ok_or_else(|| {
+            ThemeError::new(
+                Reason::InvalidLayout,
+                format!(
+                    "theme has no layout for device aspect {}",
+                    device.theme_aspect()
+                ),
+            )
+        })
+}
+
+pub fn validate_for_device(
+    theme: ValidatedTheme,
+    device: &device_profile::DeviceProfile,
+) -> Result<ValidatedTheme, ThemeError> {
+    let (width, height) = device.logical_size();
+    if theme.theme.canvas.width != width
+        || theme.theme.canvas.height != height
+        || theme.theme.canvas.aspect != device.theme_aspect()
+    {
+        return Err(ThemeError::new(
+            Reason::InvalidLayout,
+            "theme canvas does not match selected device profile",
+        ));
+    }
+    Ok(theme)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -684,6 +720,19 @@ fn decode_asset(path: &str, bytes: &[u8]) -> Result<LoadedAsset, ThemeError> {
     })
 }
 
+fn reduced_aspect(mut width: u32, mut height: u32) -> String {
+    let mut divisor = width;
+    let mut remainder = height;
+    while remainder != 0 {
+        let next = divisor % remainder;
+        divisor = remainder;
+        remainder = next;
+    }
+    width /= divisor;
+    height /= divisor;
+    format!("{width}:{height}")
+}
+
 fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     let v1 = theme.schema == SCHEMA_URI && theme.format == SCHEMA && theme.schema_version == 1;
     let v2 = theme.schema == "urn:project:theme-v2"
@@ -727,13 +776,16 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
             "theme license must be MIT",
         ));
     }
-    if theme.canvas.width as u32 != CANVAS_WIDTH
-        || theme.canvas.height as u32 != CANVAS_HEIGHT
-        || theme.canvas.aspect != "4:3"
+    let canvas_width = u32::from(theme.canvas.width);
+    let canvas_height = u32::from(theme.canvas.height);
+    if canvas_width == 0
+        || canvas_height == 0
+        || u64::from(canvas_width) * u64::from(canvas_height) > MAX_CANVAS_PIXELS
+        || theme.canvas.aspect != reduced_aspect(canvas_width, canvas_height)
     {
         return Err(ThemeError::new(
             Reason::InvalidLayout,
-            "canvas must be 1024x768 with 4:3 aspect",
+            "canvas dimensions or aspect are invalid",
         ));
     }
     for (label, value) in [
@@ -817,8 +869,8 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
         }
         if region.width == 0
             || region.height == 0
-            || u32::from(region.x) + u32::from(region.width) > CANVAS_WIDTH
-            || u32::from(region.y) + u32::from(region.height) > CANVAS_HEIGHT
+            || u32::from(region.x) + u32::from(region.width) > canvas_width
+            || u32::from(region.y) + u32::from(region.height) > canvas_height
         {
             return Err(ThemeError::new(
                 Reason::InvalidLayout,
@@ -876,8 +928,8 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
             }
             if component.width == 0
                 || component.height == 0
-                || u32::from(component.x) + u32::from(component.width) > CANVAS_WIDTH
-                || u32::from(component.y) + u32::from(component.height) > CANVAS_HEIGHT
+                || u32::from(component.x) + u32::from(component.width) > canvas_width
+                || u32::from(component.y) + u32::from(component.height) > canvas_height
             {
                 return Err(ThemeError::new(
                     Reason::InvalidLayout,
@@ -1311,7 +1363,9 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
     let file =
         fs::File::create(path).map_err(|error| ThemeError::new(Reason::Io, error.to_string()))?;
     let writer = BufWriter::new(file);
-    let mut encoder = Encoder::new(writer, CANVAS_WIDTH, CANVAS_HEIGHT);
+    let width = u32::from(theme.theme.canvas.width);
+    let height = u32::from(theme.theme.canvas.height);
+    let mut encoder = Encoder::new(writer, width, height);
     encoder.set_color(ColorType::Rgba);
     encoder.set_depth(BitDepth::Eight);
     let mut output = encoder
@@ -1324,9 +1378,9 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
     let text = hex_color(&colors.text, "text").unwrap_or(background);
     let muted = hex_color(&colors.muted, "muted").unwrap_or(background);
     let highlight = hex_color(&colors.highlight, "highlight").unwrap_or(accent);
-    let mut data = vec![0_u8; MAX_RENDER_BYTES as usize];
-    for y in 0..CANVAS_HEIGHT as u16 {
-        for x in 0..CANVAS_WIDTH as u16 {
+    let mut data = vec![0_u8; (u64::from(width) * u64::from(height) * 4) as usize];
+    for y in 0..height as u16 {
+        for x in 0..width as u16 {
             let mut color = background;
             for region in &theme.theme.layout.regions {
                 if !region.visible
@@ -1358,7 +1412,7 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
                     color = highlight;
                 }
             }
-            let offset = (y as usize * CANVAS_WIDTH as usize + x as usize) * 4;
+            let offset = (y as usize * width as usize + x as usize) * 4;
             data[offset..offset + 4].copy_from_slice(&color);
         }
     }
@@ -1379,9 +1433,8 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
                     let sx = x * asset.width / u32::from(region.width);
                     let sy = y * asset.height / u32::from(region.height);
                     let source = ((sy * asset.width + sx) * 4) as usize;
-                    let target =
-                        (((u32::from(region.y) + y) * CANVAS_WIDTH + u32::from(region.x) + x) * 4)
-                            as usize;
+                    let target = (((u32::from(region.y) + y) * width + u32::from(region.x) + x) * 4)
+                        as usize;
                     data[target..target + 4].copy_from_slice(&asset.pixels[source..source + 4]);
                 }
             }

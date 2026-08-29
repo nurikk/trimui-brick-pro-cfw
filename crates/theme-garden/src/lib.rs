@@ -4,12 +4,13 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use launcher_theme::{load_theme_dir, render_png, DirectCatalogTransport, ThemesCatalog};
+use launcher_theme::{
+    load_theme_dir, render_png, validate_for_device, DirectCatalogTransport, ThemesCatalog,
+};
 use package_manager::{install_with_validation, uninstall, TransactionOptions};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const TARGET_SKU: &str = "TG4040";
 pub const THEME_API: &str = "1.0.0";
 pub const CACHE_PATH: &str = "/data/cache/theme-garden";
 pub const STAGING_PATH: &str = "/data/staging/themes";
@@ -138,16 +139,17 @@ pub struct FlowRecord {
 pub struct ThemeGarden {
     root: PathBuf,
     fixtures: PathBuf,
+    device: device_profile::DeviceProfile,
     catalog: Catalog,
 }
 
 impl Catalog {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8], device: &device_profile::DeviceProfile) -> Result<Self> {
         let catalog: Self = serde_json::from_slice(bytes).context("parse theme catalog")?;
         if catalog.schema != "urn:project:theme-catalog-v1"
             || catalog.format != "theme-catalog-v1"
             || catalog.schema_version != 1
-            || catalog.target_sku != TARGET_SKU
+            || catalog.target_sku != device.target_sku()
             || catalog.themes.len() != 3
             || !version(&catalog.catalog_version)
         {
@@ -155,7 +157,7 @@ impl Catalog {
         }
         let mut ids = Vec::new();
         for entry in &catalog.themes {
-            validate_entry(entry)?;
+            validate_entry(entry, device)?;
             if ids.iter().any(|id| *id == entry.id) {
                 bail!("catalog theme identity is duplicated")
             }
@@ -182,10 +184,14 @@ impl ThemeGarden {
         })
     }
 
-    pub fn load(root: &Path, fixtures: &Path) -> Result<Self> {
+    pub fn load(
+        root: &Path,
+        fixtures: &Path,
+        device: device_profile::DeviceProfile,
+    ) -> Result<Self> {
         let repository = fixtures.join("repository");
         let target = fs::read(repository.join(CATALOG_TARGET))?;
-        let catalog = Catalog::parse(&target)?;
+        let catalog = Catalog::parse(&target, &device)?;
         let cache = root.join(CACHE_PATH.trim_start_matches('/'));
         fs::create_dir_all(&cache)?;
         let record = CacheRecord {
@@ -199,16 +205,21 @@ impl ThemeGarden {
         Ok(Self {
             root: root.into(),
             fixtures: fixtures.into(),
+            device,
             catalog,
         })
     }
 
-    pub fn from_cache(root: &Path, fixtures: &Path) -> Result<Self> {
+    pub fn from_cache(
+        root: &Path,
+        fixtures: &Path,
+        device: device_profile::DeviceProfile,
+    ) -> Result<Self> {
         let cache = root.join(CACHE_PATH.trim_start_matches('/'));
         let target = fs::read(cache.join("catalog.json"))?;
         let metadata: CacheRecord =
             serde_json::from_slice(&fs::read(cache.join("metadata.json"))?)?;
-        let catalog = Catalog::parse(&target)?;
+        let catalog = Catalog::parse(&target, &device)?;
         if metadata.catalog_version != catalog.catalog_version
             || metadata.target_path != CATALOG_TARGET
             || metadata.target_length != target.len() as u64
@@ -220,6 +231,7 @@ impl ThemeGarden {
         Ok(Self {
             root: root.into(),
             fixtures: fixtures.into(),
+            device,
             catalog,
         })
     }
@@ -242,10 +254,18 @@ impl ThemeGarden {
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         if let Some(fixture) = entry.locator.strip_prefix("fixture:") {
             let theme_path = fixture_root.join(fixture);
-            return load_theme_dir(&theme_path).map_err(|error| anyhow::anyhow!(error.to_string()));
+            return validate_for_device(
+                load_theme_dir(&theme_path).map_err(|error| anyhow::anyhow!(error.to_string()))?,
+                &self.device,
+            )
+            .map_err(|error| anyhow::anyhow!(error.to_string()));
         }
-        ThemesCatalog::load_theme(&catalog, id, version, &DirectCatalogTransport)
-            .map_err(|error| anyhow::anyhow!(error.to_string()))
+        validate_for_device(
+            ThemesCatalog::load_theme(&catalog, id, version, &DirectCatalogTransport)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?,
+            &self.device,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
 
     pub fn fetch_themes_json<T: launcher_theme::CatalogTransport>(
@@ -299,7 +319,9 @@ impl ThemeGarden {
             return Ok(output);
         }
         fs::create_dir_all(output.parent().context("preview path has no parent")?)?;
-        render_png(&preview.theme, &output).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let theme = validate_for_device(preview.theme, &self.device)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        render_png(&theme, &output).map_err(|error| anyhow::anyhow!(error.to_string()))?;
         Ok(output)
     }
 
@@ -380,8 +402,13 @@ impl ThemeGarden {
                     .iter()
                     .find(|record| record.version == active.version)
             })
-            .is_some_and(compatible_version);
-        if !compatible || load_theme_dir(&self.installed_theme_path(&active)).is_err() {
+            .is_some_and(|record| compatible_version(record, &self.device));
+        let theme = self.installed_theme_path(&active);
+        if !compatible
+            || load_theme_dir(&theme)
+                .and_then(|theme| validate_for_device(theme, &self.device))
+                .is_err()
+        {
             let fallback = default_theme();
             atomic_json(&self.active_path(), &fallback)?;
             return Ok(fallback);
@@ -422,8 +449,8 @@ impl ThemeGarden {
             .iter()
             .find(|record| record.version == requested_version)
             .with_context(|| format!("catalog has no {id} version {requested_version}"))?;
-        if !compatible_version(record) {
-            bail!("theme is incompatible with TG4040")
+        if !compatible_version(record, &self.device) {
+            bail!("theme is incompatible with selected device")
         }
         let manifest = fs::read(self.manifest_fixture_path(record)?)?;
         let manifest_path = self.acquire(id, &record.version, &manifest, interrupt_after)?;
@@ -438,6 +465,7 @@ impl ThemeGarden {
         let cache_root = root.join(CACHE_PATH.trim_start_matches('/'));
         let id_owned = entry.id.clone();
         let version_owned = record.version.clone();
+        let device = self.device.clone();
         let result = install_with_validation(
             &root,
             &manifest_path,
@@ -447,8 +475,12 @@ impl ThemeGarden {
                 if manifest.id != id_owned || manifest.version != version_owned || fail_preview {
                     bail!("candidate preview validation failed")
                 }
-                let validated = load_theme_dir(&staging.join("immutable"))
-                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                let validated = validate_for_device(
+                    load_theme_dir(&staging.join("immutable"))
+                        .map_err(|error| anyhow::anyhow!(error.to_string()))?,
+                    &device,
+                )
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
                 let output = cache_root
                     .join("previews")
                     .join(format!("{}-{}.png", manifest.id, manifest.version));
@@ -558,7 +590,7 @@ impl ThemeGarden {
     }
 }
 
-fn validate_entry(entry: &CatalogEntry) -> Result<()> {
+fn validate_entry(entry: &CatalogEntry, device: &device_profile::DeviceProfile) -> Result<()> {
     if !identifier(&entry.id)
         || entry.author != "Project Authors"
         || entry.license != "MIT"
@@ -572,7 +604,7 @@ fn validate_entry(entry: &CatalogEntry) -> Result<()> {
         if !version(&record.version)
             || record.theme_api_version != THEME_API
             || record.theme_api_compatibility != ">=1.0.0 <2.0.0"
-            || record.target_sku != TARGET_SKU
+            || record.target_sku != device.target_sku()
             || record.target_path != expected_target(&entry.id, &record.version)
             || record.package.sha256.len() != 64
             || !record
@@ -602,8 +634,8 @@ fn expected_target(id: &str, version: &str) -> String {
         format!("themes/{id}/manifest-{version}.json")
     }
 }
-fn compatible_version(record: &ThemeVersion) -> bool {
-    record.target_sku == TARGET_SKU
+fn compatible_version(record: &ThemeVersion, device: &device_profile::DeviceProfile) -> bool {
+    record.target_sku == device.target_sku()
         && record.theme_api_version == THEME_API
         && record.theme_api_compatibility == ">=1.0.0 <2.0.0"
 }

@@ -1,10 +1,5 @@
 {
   "contractVersion": "1.0.0",
-  "targetSku": "TG4040",
-  "display": {
-    "logicalWidth": 1024,
-    "logicalHeight": 768
-  },
   "controls": {
     "initialPressed": [],
     "events": [

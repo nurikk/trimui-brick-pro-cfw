@@ -87,6 +87,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 name = "compatibility-recipes"
 version = "0.1.0"
 dependencies = [
+ "device-profile",
  "display-profile",
  "emulator-catalog",
  "input-profile",
@@ -125,6 +126,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "device-profile"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -138,6 +147,7 @@ dependencies = [
 name = "display-profile"
 version = "0.1.0"
 dependencies = [
+ "device-profile",
  "serde",
  "serde_json",
 ]
@@ -235,6 +245,7 @@ dependencies = [
 name = "launcher-theme"
 version = "0.1.0"
 dependencies = [
+ "device-profile",
  "png",
  "serde",
  "serde_json",
@@ -516,6 +527,7 @@ dependencies = [
 name = "sim-host-platform"
 version = "0.1.0"
 dependencies = [
+ "device-profile",
  "png",
  "sdl2",
  "serde",
@@ -602,6 +614,7 @@ name = "theme-garden"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "device-profile",
  "hex",
  "launcher-theme",
  "package-manager",
@@ -666,6 +679,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boot-state",
+ "device-profile",
  "save-vault",
  "serde",
  "serde_json",

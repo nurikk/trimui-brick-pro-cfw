@@ -7,8 +7,6 @@
   "additionalProperties": false,
   "required": [
     "contractVersion",
-    "targetSku",
-    "display",
     "controls",
     "battery",
     "led",
@@ -24,25 +22,7 @@
       "type": "string",
       "const": "1.0.0"
     },
-    "targetSku": {
-      "type": "string",
-      "const": "TG4040"
-    },
-    "display": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["logicalWidth", "logicalHeight"],
-      "properties": {
-        "logicalWidth": {
-          "type": "integer",
-          "const": 1024
-        },
-        "logicalHeight": {
-          "type": "integer",
-          "const": 768
-        }
-      }
-    },
+
     "controls": {
       "type": "object",
       "description": "Deterministic semantic control state and an ordered injected event sequence, not physical input.",

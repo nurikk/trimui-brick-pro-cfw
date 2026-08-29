@@ -335,6 +335,7 @@ fn presentation_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         "home",
         "systems",
         "games",
+        "games-no-metadata",
         "favorites",
         "recent",
         "resume",

@@ -33,6 +33,8 @@ struct CompatibilityDisplay {
     orientation: Orientation,
     #[serde(rename = "themeAspect")]
     theme_aspect: ThemeAspect,
+    #[serde(default, rename = "defaultTheme")]
+    _default_theme: Option<String>,
     #[serde(default, rename = "physicalPanel")]
     physical_panel: Option<PhysicalPanel>,
     #[serde(default, rename = "status")]

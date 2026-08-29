@@ -2,6 +2,7 @@
   "candidateStatus": "no-device-bootstrap-candidate",
   "deviceId": "tg4040",
   "display": {
+    "defaultTheme": "art-book-next-es",
     "expected": {
       "format": "rgba8888",
       "height": 768,

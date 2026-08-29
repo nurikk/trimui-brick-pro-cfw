@@ -627,9 +627,9 @@ impl UiState {
             capabilities: PlatformCapabilities::default(),
             modal: None,
             splash: SplashState::Visible(GeneratedAssetRef {
-                id: "artbook-generated-splash".into(),
+                id: "nova8-splash".into(),
                 kind: AssetKind::Splash,
-                alt_text: "Generated Artbook placeholder splash".into(),
+                alt_text: "NOVA/8 console splash".into(),
             }),
             scraper: ScraperState::default(),
             wifi: WifiState::default(),
@@ -964,9 +964,9 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
             next.splash = SplashState::Fallback {
                 reason,
                 asset: GeneratedAssetRef {
-                    id: "artbook-generated-fallback".into(),
+                    id: "nova8-fallback".into(),
                     kind: AssetKind::Fallback,
-                    alt_text: "Generated Artbook safe fallback".into(),
+                    alt_text: "NOVA/8 safe fallback".into(),
                 },
             };
         }
@@ -1510,31 +1510,31 @@ fn generated_systems() -> Vec<SystemSummary> {
     vec![
         SystemSummary {
             id: SystemId::new("generated-system-alpha"),
-            name: "System Alpha".into(),
+            name: "NOVA/8 HANDHELD".into(),
             artwork: generated_asset(
                 "generated-art-system-alpha",
                 AssetKind::SystemArtwork,
-                "Generated system alpha artwork",
+                "NOVA/8 handheld identity artwork",
             ),
             logo: generated_asset(
                 "generated-logo-system-alpha",
                 AssetKind::SystemLogo,
-                "Generated system alpha logo",
+                "NOVA/8 handheld wordmark",
             ),
             game_count: 2,
         },
         SystemSummary {
             id: SystemId::new("generated-system-beta"),
-            name: "System Beta".into(),
+            name: "LUMA STATION".into(),
             artwork: generated_asset(
                 "generated-art-system-beta",
                 AssetKind::SystemArtwork,
-                "Generated system beta artwork",
+                "Luma Station identity artwork",
             ),
             logo: generated_asset(
                 "generated-logo-system-beta",
                 AssetKind::SystemLogo,
-                "Generated system beta logo",
+                "Luma Station wordmark",
             ),
             game_count: 1,
         },
@@ -1546,60 +1546,57 @@ fn generated_games() -> Vec<GameSummary> {
         GameSummary {
             id: GameId::new("generated-game-01"),
             system_id: SystemId::new("generated-system-alpha"),
-            title: "Generated Adventure One".into(),
-            description: "A project-authored placeholder description for a readable game row."
-                .into(),
+            title: "Nebula Notes".into(),
+            description: "Chart a quiet starship through forgotten constellations.".into(),
             rating: Some(82),
             release_date: Some("1994-04-12".into()),
             box_art: generated_asset(
                 "generated-box-art-01",
                 AssetKind::BoxArt,
-                "Generated box art for placeholder game one",
+                "Nebula Notes original cover",
             ),
             screenshot: generated_asset(
                 "generated-screen-01",
                 AssetKind::Screenshot,
-                "Generated screenshot for placeholder game one",
+                "Nebula Notes gameplay screenshot",
             ),
             favorite: false,
         },
         GameSummary {
             id: GameId::new("generated-game-02"),
             system_id: SystemId::new("generated-system-alpha"),
-            title: "Generated Puzzle Two".into(),
-            description: "A project-authored placeholder description with no external metadata."
-                .into(),
+            title: "Mirror Museum".into(),
+            description: "Restore a living gallery where every reflection hides a room.".into(),
             rating: Some(74),
             release_date: Some("1996-08-03".into()),
             box_art: generated_asset(
                 "generated-box-art-02",
                 AssetKind::BoxArt,
-                "Generated box art for placeholder game two",
+                "Mirror Museum original cover",
             ),
             screenshot: generated_asset(
                 "generated-screen-02",
                 AssetKind::Screenshot,
-                "Generated screenshot for placeholder game two",
+                "Mirror Museum gameplay screenshot",
             ),
             favorite: true,
         },
         GameSummary {
             id: GameId::new("generated-game-03"),
             system_id: SystemId::new("generated-system-beta"),
-            title: "Generated Strategy Three".into(),
-            description: "A project-authored placeholder description for a dense list contract."
-                .into(),
+            title: "Orbit Garden".into(),
+            description: "Cultivate tidal gardens on a drifting orbital station.".into(),
             rating: None,
             release_date: None,
             box_art: generated_asset(
                 "generated-box-art-03",
                 AssetKind::BoxArt,
-                "Generated box art for placeholder game three",
+                "Orbit Garden original cover",
             ),
             screenshot: generated_asset(
                 "generated-screen-03",
                 AssetKind::Screenshot,
-                "Generated screenshot for placeholder game three",
+                "Orbit Garden gameplay screenshot",
             ),
             favorite: false,
         },

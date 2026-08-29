@@ -165,10 +165,40 @@ impl Default for SaveVaultUi {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct DeviceCompatibility {
+    display: DisplayCompatibility,
+}
+
+#[derive(Debug, Deserialize)]
+struct DisplayCompatibility {
+    #[serde(rename = "defaultTheme")]
+    default_theme: String,
+    #[serde(rename = "themeAspect")]
+    theme_aspect: String,
+}
+
+fn bundled_theme_for_device(target_sku: &str) -> Result<ValidatedTheme> {
+    let device = target_sku.to_ascii_lowercase();
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../config/platform")
+        .join(device)
+        .join("compatibility.json");
+    let config: DeviceCompatibility = serde_json::from_slice(&fs::read(config_path)?)?;
+    let aspect = config.display.theme_aspect.replace(':', "-");
+    let theme_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../themes/upstream")
+        .join(&config.display.default_theme);
+    launcher_theme::load_bundled_theme(&theme_path, &aspect)
+        .map_err(|error| anyhow!(error.to_string()))
+}
+
 struct PresentationState {
     ui: ui_model::UiState,
     theme: ValidatedTheme,
     theme_fallback: Option<launcher_theme::Reason>,
+    theme_garden: bool,
+    metadata_off: bool,
     settings: SettingsUi,
     wifi: WifiSettingsController,
     index: launcher_presentation::IndexView,
@@ -176,7 +206,7 @@ struct PresentationState {
 }
 
 impl PresentationState {
-    fn new() -> Result<Self> {
+    fn new(target_sku: &str) -> Result<Self> {
         let mut ui = ui_model::UiState::generated();
         ui = ui_model::reduce(
             &ui,
@@ -240,8 +270,15 @@ impl PresentationState {
             .map_err(|error| anyhow!(error.to_string()))?;
         Ok(Self {
             ui,
-            theme: launcher_theme::safe_artbook().map_err(|error| anyhow!(error.to_string()))?,
+            theme: std::env::var_os("TRIMUI_THEME_DIR")
+                .map(|path| launcher_theme::preview_path_or_fallback(Path::new(&path)))
+                .transpose()
+                .map_err(|error| anyhow!(error.to_string()))?
+                .map(|preview| preview.theme)
+                .unwrap_or(bundled_theme_for_device(target_sku)?),
             theme_fallback: None,
+            theme_garden: false,
+            metadata_off: false,
             settings,
             wifi,
             index: launcher_presentation::IndexView::default(),
@@ -269,7 +306,19 @@ impl PresentationState {
 
 fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<PresentationScreen> {
     let mut screen = state.presentation.screen()?;
-    if matches!(state.route, Route::Games | Route::Session) {
+    if state.presentation.metadata_off && state.presentation.ui.route == ui_model::Route::Games {
+        screen.route = "games-no-metadata".into();
+    }
+    if state.presentation.theme_garden {
+        screen.route = "theme-garden".into();
+        screen.focus = "preview".into();
+        screen.title = "THEME GARDEN".into();
+        screen.selected_label = format!("ACTIVE THEME: {}", state.presentation.theme.name());
+        screen.system_media = launcher_presentation::media_for_system("portmaster");
+    }
+    if matches!(state.route, Route::Games | Route::Session)
+        && state.presentation.ui.route != ui_model::Route::Systems
+    {
         let selected_index = selected_catalog_index(state, catalog);
         screen.game_rows = catalog
             .entries
@@ -283,9 +332,25 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
                 enabled: true,
             })
             .collect();
-        screen.selected_label = catalog.entries[selected_catalog_index(state, catalog)]
-            .title
-            .clone();
+        let entry = &catalog.entries[selected_index];
+        screen.selected_label = entry.title.clone();
+        screen.selected_game =
+            launcher_presentation::catalog_game_details(&entry.id, &entry.title, &entry.system);
+        screen.game_media = launcher_presentation::media_for_content(&entry.id);
+        if !matches!(state.presentation.theme.name(), "SimpleLife" | "Techdweeb") {
+            screen.system_media = launcher_presentation::media_for_system(&entry.system);
+        }
+    } else if state.route == Route::Systems
+        || state.presentation.ui.route == ui_model::Route::Systems
+    {
+        let system_id = if screen.selected_label == "LUMA STATION" {
+            "portmaster"
+        } else {
+            "nes"
+        };
+        if !matches!(state.presentation.theme.name(), "SimpleLife" | "Techdweeb") {
+            screen.system_media = launcher_presentation::media_for_system(system_id);
+        }
     }
     if matches!(state.route, Route::Session)
         && matches!(state.presentation.ui.route, ui_model::Route::Games)
@@ -293,6 +358,15 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         let entry = &catalog.entries[selected_catalog_index(state, catalog)];
         screen.title = entry.title.clone();
         screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
+    }
+    if state.presentation.theme_garden {
+        screen.selected_game = None;
+        screen.game_media.clear();
+        if !matches!(state.presentation.theme.name(), "SimpleLife" | "Techdweeb") {
+            screen.system_media = launcher_presentation::media_for_system("portmaster");
+        } else {
+            screen.system_media = None;
+        }
     }
     screen.save_sync = state.save_sync.clone();
     Ok(screen)
@@ -703,7 +777,7 @@ fn run_session<P: Platform>(
         ]),
     )?;
     let persisted = launcher_state::load(&state_root);
-    let mut presentation = PresentationState::new()?;
+    let mut presentation = PresentationState::new(&identity.target_sku)?;
     if let Some(progress) = persisted.scraper_progress.clone() {
         presentation.ui = ui_model::reduce(
             &presentation.ui,
@@ -1266,6 +1340,15 @@ fn refresh_presentation_affordances<P: Platform>(
     Ok(())
 }
 
+fn next_theme_garden_name(current: &str) -> &'static str {
+    match current {
+        "Art Book Next (Batocera ES Edition)" => "Luma Station",
+        "Luma Station" => "SimpleLife",
+        "SimpleLife" => "Techdweeb",
+        _ => "Art Book Next (Batocera ES Edition)",
+    }
+}
+
 fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(), String> {
     use ui_model::{Action, AmbiguousChoice, GameId, ScraperAction, WifiAction};
 
@@ -1276,7 +1359,14 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
             state.route = Route::Library;
         }
         "systems" => reduce_route(state, ui_model::Route::Systems),
-        "games" => reduce_route(state, ui_model::Route::Games),
+        "games" => {
+            state.presentation.metadata_off = false;
+            reduce_route(state, ui_model::Route::Games);
+        }
+        "games-no-metadata" => {
+            state.presentation.metadata_off = true;
+            reduce_route(state, ui_model::Route::Games);
+        }
         "favorites" => reduce_route(state, ui_model::Route::Favorites),
         "recent" => reduce_route(state, ui_model::Route::Recent),
         "resume" => {
@@ -1304,7 +1394,18 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
             state.modal = Some("media-details-projected".into());
         }
         "theme-garden" => {
-            state.modal = Some("theme-garden-unavailable".into());
+            state.presentation.theme_garden = true;
+            state.presentation.metadata_off = false;
+            state.presentation.theme = match next_theme_garden_name(state.presentation.theme.name())
+            {
+                "Luma Station" => {
+                    launcher_theme::luma_station().map_err(|error| error.to_string())?
+                }
+                "SimpleLife" => launcher_theme::simplelife().map_err(|error| error.to_string())?,
+                "Techdweeb" => launcher_theme::techdweeb().map_err(|error| error.to_string())?,
+                _ => launcher_theme::safe_artbook().map_err(|error| error.to_string())?,
+            };
+            state.modal = None;
         }
         "update" => {
             state.modal = Some("update-unavailable".into());
@@ -1347,6 +1448,7 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
             );
         }
         "modal" => {
+            state.presentation.metadata_off = false;
             state.presentation.ui = ui_model::reduce(
                 &state.presentation.ui,
                 Action::ShowModal(ui_model::ModalState::Info {
@@ -1801,6 +1903,25 @@ fn synthetic_progress(slots: u8, completed: u16) -> ui_model::ScraperProgress {
 
 fn sync_scraper_persistence(state: &mut AppState) {
     state.persisted.scraper_progress = state.presentation.ui.scraper.progress.clone();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_theme_garden_name;
+
+    #[test]
+    fn theme_garden_cycles_real_imports_before_default() {
+        assert_eq!(
+            next_theme_garden_name("Art Book Next (Batocera ES Edition)"),
+            "Luma Station"
+        );
+        assert_eq!(next_theme_garden_name("Luma Station"), "SimpleLife");
+        assert_eq!(next_theme_garden_name("SimpleLife"), "Techdweeb");
+        assert_eq!(
+            next_theme_garden_name("Techdweeb"),
+            "Art Book Next (Batocera ES Edition)"
+        );
+    }
 }
 
 fn reduce_route(state: &mut AppState, route: ui_model::Route) {

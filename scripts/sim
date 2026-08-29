@@ -21,7 +21,7 @@ SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
 CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() {
-    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] [--catalog PATH] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
+    printf '%s\n' "usage: scripts/sim build | run [--backend=x11|dummy] [--catalog PATH] [--device-profile PATH] [--theme DIR] --run-dir DIR [--wait-ready SECONDS] [--detach] | stop --run-dir DIR | clean-run RUN_OPTIONS | lifecycle-journey" >&2
     exit 2
 }
 
@@ -156,6 +156,7 @@ parse_run_options() {
     CATALOG=sim/fixtures/catalog.json
     PROFILE=sim/device/tg4040-host.json
     DEVICE_PROFILE=config/platform/tg4040/compatibility.json
+    THEME=
     RUN_DIR=
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -186,6 +187,12 @@ parse_run_options() {
                 DEVICE_PROFILE=$1
                 ;;
             --device-profile=*) DEVICE_PROFILE=${1#--device-profile=} ;;
+            --theme)
+                shift
+                [ "$#" -gt 0 ] || fail "missing --theme value"
+                THEME=$1
+                ;;
+            --theme=*) THEME=${1#--theme=} ;;
             --wait-ready)
                 shift
                 [ "$#" -gt 0 ] || fail "missing --wait-ready value"
@@ -262,6 +269,18 @@ except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
 print(target)
 PY
     ) || fail "device profile target SKU is invalid"
+    THEME_MOUNT=
+    THEME_ARGS=
+    if [ -n "$THEME" ]; then
+        case "$THEME" in
+            /*) ;;
+            *) fail "--theme must be an absolute directory" ;;
+        esac
+        [ -d "$THEME" ] || fail "theme directory does not exist"
+        THEME_REAL=$(CDPATH= cd -- "$THEME" && pwd -P) || fail "cannot resolve --theme"
+        THEME_MOUNT="--mount type=bind,src=$THEME_REAL,dst=/theme,readonly"
+        THEME_ARGS="--env TRIMUI_THEME_DIR=/theme"
+    fi
     set -- "$@" --catalog "/src/$CATALOG" --profile "/src/$PROFILE" --device-profile "/src/$DEVICE_PROFILE"
     [ "$DETACH" -eq 1 ] && set -- "$@" --keep-alive
     docker run -d \
@@ -279,6 +298,8 @@ PY
         --pids-limit=64 \
         --user 10001:10001 \
         --mount "type=bind,src=$ROOT,dst=/src,readonly" \
+        $THEME_ARGS \
+        $THEME_MOUNT \
         --mount "type=bind,src=$RUN_REAL,dst=/evidence" \
         --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
         "$IMAGE" "$@" >/dev/null

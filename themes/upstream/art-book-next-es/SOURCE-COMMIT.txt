@@ -1,0 +1,13 @@
+Art Book Next (Batocera ES Edition)
+
+Upstream repository: https://github.com/anthonycaccese/art-book-next-es
+Pinned commit: 9a50ef366e750aabfab29e6915a2867607212971
+License: CC-BY-NC-SA (Creative Commons Attribution-NonCommercial-ShareAlike)
+Author: Anthony Caccese
+
+This directory is the complete upstream checkout content used by the offline
+firmware default. The upstream XML, 4:3 layout, images, SVGs, fonts, sounds,
+and README are retained unchanged. The launcher fallback is non-removable;
+optional Theme Garden themes are separate runtime selections.
+
+License text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode

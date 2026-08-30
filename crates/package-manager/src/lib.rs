@@ -61,8 +61,7 @@ pub enum PackageType {
 #[serde(deny_unknown_fields)]
 pub struct ManifestFile {
     pub path: String,
-    #[serde(default)]
-    pub sha256: Option<String>,
+    pub sha256: String,
     pub length: u64,
     #[serde(rename = "class")]
     pub file_class: FileClass,
@@ -242,14 +241,13 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     let mut casefolded_paths = Vec::new();
     for file in &manifest.files {
         validate_relative_path(&file.path)?;
-        if let Some(hash) = &file.sha256 {
-            if hash.len() != 64
-                || !hash
-                    .bytes()
-                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            {
-                bail!("file hash is not lowercase SHA-256")
-            }
+        if file.sha256.len() != 64
+            || !file
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            bail!("file hash is not lowercase SHA-256")
         }
         if file.length > MAX_EXPANDED_BYTES
             || total
@@ -625,10 +623,8 @@ fn verify_file(file: &ManifestFile, bytes: &[u8]) -> Result<()> {
     if bytes.len() as u64 != file.length {
         bail!("payload length differs from manifest")
     }
-    if let Some(expected) = &file.sha256 {
-        if hex::encode(Sha256::digest(bytes)) != *expected {
-            bail!("payload hash differs from manifest")
-        }
+    if hex::encode(Sha256::digest(bytes)) != file.sha256 {
+        bail!("payload hash differs from manifest")
     }
     Ok(())
 }
@@ -854,4 +850,120 @@ fn version(value: &str) -> bool {
         && value
             .split('.')
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PORTMASTER_MANIFEST: &[u8] = include_bytes!(
+        "../../../fixtures/session-broker/generated-v1/portmaster-payload/manifest.json"
+    );
+    const PORTMASTER_PAYLOAD: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/session-broker/generated-v1/portmaster-payload"
+    );
+
+    fn temporary_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "package-manager-{name}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(root.join("data/saves")).unwrap();
+        fs::create_dir_all(root.join("data/states")).unwrap();
+        root
+    }
+
+    fn manifest_without_hash(path: &str) -> Vec<u8> {
+        let mut manifest: Value = serde_json::from_slice(PORTMASTER_MANIFEST).unwrap();
+        manifest["files"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|file| file["path"] == path)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("sha256");
+        serde_json::to_vec(&manifest).unwrap()
+    }
+
+    #[test]
+    fn schema_and_runtime_require_each_file_hash() {
+        let schema: Value =
+            serde_json::from_slice(include_bytes!("../../../schemas/package-v1.schema.json"))
+                .unwrap();
+        assert!(schema["properties"]["files"]["items"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "sha256"));
+
+        for path in ["immutable/port/launch.sh", "immutable/port/metadata.json"] {
+            let root = temporary_root("missing-hash");
+            let manifest_path = root.join("manifest.json");
+            fs::write(&manifest_path, manifest_without_hash(path)).unwrap();
+            assert!(install(
+                &root,
+                &manifest_path,
+                Path::new(PORTMASTER_PAYLOAD),
+                TransactionOptions::default(),
+            )
+            .is_err());
+            assert!(!root.join(PACKAGE_STATE).exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn shipped_portmaster_manifests_validate() {
+        for bytes in [
+            include_bytes!("../../../fixtures/demo-content/orbit-garden/payload/manifest.json")
+                as &[u8],
+            include_bytes!("../../../fixtures/demo-content/signal-workshop/payload/manifest.json"),
+            PORTMASTER_MANIFEST,
+            include_bytes!(
+                "../../../fixtures/session-broker/generated-v1/portmaster-success-payload/manifest.json"
+            ),
+        ] {
+            validate_manifest(&serde_json::from_slice(bytes).unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn rejects_mismatch_and_post_install_tampering() {
+        let manifest: PackageManifest = serde_json::from_slice(PORTMASTER_MANIFEST).unwrap();
+        let file = manifest
+            .files
+            .iter()
+            .find(|file| file.path == "immutable/port/launch.sh")
+            .unwrap();
+        let mut bytes = fs::read(Path::new(PORTMASTER_PAYLOAD).join(&file.path)).unwrap();
+        bytes[0] ^= 1;
+        assert!(verify_file(file, &bytes).is_err());
+
+        let root = temporary_root("tamper");
+        install(
+            &root,
+            Path::new(PORTMASTER_PAYLOAD)
+                .join("manifest.json")
+                .as_path(),
+            Path::new(PORTMASTER_PAYLOAD),
+            TransactionOptions::default(),
+        )
+        .unwrap();
+        resolve_portmaster(&root, "generated-portmaster", "1.0.0").unwrap();
+        fs::write(
+            root.join(".brickpro/packages/generated-portmaster/1.0.0/immutable/port/metadata.json"),
+            b"tampered",
+        )
+        .unwrap();
+        assert!(resolve_portmaster(&root, "generated-portmaster", "1.0.0").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

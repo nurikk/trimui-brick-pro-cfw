@@ -1,4 +1,8 @@
-use std::{fs, path::{Path, PathBuf}, process};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process,
+};
 
 use launcher_presentation::{build_with_sync, SaveSyncCandidateView, SaveSyncView};
 use launcher_theme::safe_artbook;

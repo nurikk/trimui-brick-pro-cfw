@@ -360,16 +360,19 @@ pub fn validate_recipe(recipe: &Recipe, context: &ValidationContext) -> Result<(
         .validate(&device)
         .map_err(|_| RecipeError::new("profile-invalid", "display catalog validation failed"))?;
     display
-        .resolve(&device, &ResolutionRequest {
-            schema: display_profile::SCHEMA.into(),
-            format: display_profile::FORMAT.into(),
-            schema_version: 1,
-            kind: RequestKind::ResolutionRequest,
-            channel: display_profile::Channel::Stable,
-            system_id: recipe.system_id.clone(),
-            profile_id: recipe.profiles.display_profile_id.clone(),
-            game_id: None,
-        })
+        .resolve(
+            &device,
+            &ResolutionRequest {
+                schema: display_profile::SCHEMA.into(),
+                format: display_profile::FORMAT.into(),
+                schema_version: 1,
+                kind: RequestKind::ResolutionRequest,
+                channel: display_profile::Channel::Stable,
+                system_id: recipe.system_id.clone(),
+                profile_id: recipe.profiles.display_profile_id.clone(),
+                game_id: None,
+            },
+        )
         .map_err(|_| {
             RecipeError::new(
                 "profile-invalid",

@@ -2152,6 +2152,65 @@ mod tests {
     }
 
     #[test]
+    fn fresh_home_manifest_controls_reach_declared_routes() {
+        let graph: Value =
+            serde_json::from_slice(include_bytes!("../../../sim/routes/controller-routes.json"))
+                .expect("controller route graph");
+        let routes = graph["routes"].as_array().expect("routes array");
+        let button = |name: &str| match name {
+            "down" => Button::Down,
+            "left" => Button::Left,
+            "right" => Button::Right,
+            "up" => Button::Up,
+            "primary" => Button::Primary,
+            "secondary" => Button::Secondary,
+            "select" => Button::Select,
+            "start" => Button::Start,
+            "menu" => Button::Menu,
+            "l1" => Button::L1,
+            "r1" => Button::R1,
+            other => panic!("unsupported controller button: {other}"),
+        };
+
+        for route in routes
+            .iter()
+            .filter(|route| route["from"].as_str().unwrap_or("fresh-home") == "fresh-home")
+        {
+            let mut journey = ProductJourneyState::default();
+            let buttons = route["buttons"].as_array().expect("route buttons");
+            for name in buttons
+                .iter()
+                .map(|button| button.as_str().expect("button name"))
+            {
+                reduce_product_state(&mut journey, button(name));
+            }
+            assert_eq!(
+                canonical_route_id(&journey),
+                route["id"].as_str(),
+                "fresh-home controls did not reach {}",
+                route["id"]
+            );
+        }
+
+        let favorites = routes
+            .iter()
+            .find(|route| route["id"] == "games-favorites")
+            .expect("favorites route");
+        let diagnostics = routes
+            .iter()
+            .find(|route| route["id"] == "diagnostics")
+            .expect("diagnostics route");
+        assert_eq!(
+            favorites["buttons"],
+            serde_json::json!(["down", "down", "primary"])
+        );
+        assert_eq!(
+            diagnostics["buttons"],
+            serde_json::json!(["down", "down", "down", "down", "down", "primary"])
+        );
+    }
+
+    #[test]
     fn product_routes_are_distinct_and_controller_reachable() {
         let mut journey = ProductJourneyState::default();
         assert!(!reduce_product_state(&mut journey, Button::Down));

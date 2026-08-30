@@ -1,4 +1,4 @@
-use std::{fmt, fs, path::Path, sync::OnceLock};
+use std::{cell::Cell, fmt, fs, path::Path, sync::OnceLock};
 
 use png::{BitDepth, ColorType, Decoder, Encoder, Transformations};
 use sdl2::{
@@ -161,6 +161,75 @@ struct Clock {
     _step_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct UiLayout {
+    scale_percent: u16,
+    row_height: i32,
+    spacing: i32,
+    icon_size: u32,
+    help_y: i32,
+    help_step: i32,
+    help_label_offset: i32,
+    viewport_width: u32,
+    viewport_height: u32,
+    visible_menu_items: usize,
+}
+
+impl UiLayout {
+    fn for_screen(
+        screen: &Screen,
+        automatic_scale_percent: u16,
+        viewport_width: u32,
+        viewport_height: u32,
+    ) -> Self {
+        let scale_percent = screen
+            .ui_size
+            .preset_scale_percent()
+            .unwrap_or(automatic_scale_percent);
+        let geometry = launcher_presentation::layout_geometry(
+            screen,
+            viewport_width,
+            viewport_height,
+            automatic_scale_percent,
+        );
+        Self {
+            scale_percent,
+            row_height: 26 * i32::from(scale_percent) / 100,
+            spacing: 12 * i32::from(scale_percent) / 100,
+            icon_size: (24 * u32::from(scale_percent) / 100).max(16),
+            help_y: 704 - (i32::from(scale_percent).saturating_sub(100) / 4),
+            help_step: 180 * i32::from(scale_percent) / 100,
+            help_label_offset: 78 * i32::from(scale_percent) / 100,
+            viewport_width: geometry.viewport_width,
+            viewport_height: geometry.viewport_height,
+            visible_menu_items: geometry.visible_menu_items,
+        }
+    }
+
+    fn text_point(self, base: i32) -> u16 {
+        (base * i32::from(self.scale_percent) / 100).max(8) as u16
+    }
+}
+
+thread_local! {
+    static ACTIVE_LAYOUT: Cell<UiLayout> = const { Cell::new(UiLayout {
+        scale_percent: 100,
+        row_height: 26,
+        spacing: 12,
+        icon_size: 24,
+        help_y: 704,
+        help_step: 180,
+        help_label_offset: 78,
+        viewport_width: 1024,
+        viewport_height: 768,
+        visible_menu_items: 12,
+    }) };
+}
+
+fn active_layout() -> UiLayout {
+    ACTIVE_LAYOUT.with(Cell::get)
+}
+
 pub struct HostPlatform {
     _sdl: Sdl,
     canvas: Canvas<Window>,
@@ -175,6 +244,7 @@ pub struct HostPlatform {
     logical_width: u32,
     logical_height: u32,
     initial_splash_pending: bool,
+    automatic_scale_percent: u16,
     event_pump: EventPump,
 }
 
@@ -324,12 +394,17 @@ impl HostPlatform {
             logical_width: u32::from(viewport.width),
             logical_height: u32::from(viewport.height),
             initial_splash_pending: true,
+            automatic_scale_percent: device.automatic_scale_percent(),
             event_pump,
         })
     }
 
     pub fn target_sku(&self) -> &str {
         &self.target_sku
+    }
+
+    pub fn automatic_scale_percent(&self) -> u16 {
+        self.automatic_scale_percent
     }
 }
 
@@ -376,6 +451,16 @@ impl Platform for HostPlatform {
     }
 
     fn present(&mut self, screen: &Screen) -> PlatformResult<()> {
+        let layout = UiLayout::for_screen(
+            screen,
+            self.automatic_scale_percent,
+            self.logical_width,
+            self.logical_height,
+        );
+        ACTIVE_LAYOUT.with(|active| active.set(layout));
+        self.canvas
+            .set_logical_size(self.logical_width, self.logical_height)
+            .map_err(backend_error)?;
         if self.initial_splash_pending && screen.splash == "nova8-splash" {
             self.canvas.set_draw_color(rgb(screen.palette.background));
             self.canvas.clear();
@@ -385,12 +470,6 @@ impl Platform for HostPlatform {
             return Ok(());
         }
         let art_book = is_art_book_next(screen);
-        self.canvas
-            .set_logical_size(
-                if art_book { 1024 } else { self.logical_width },
-                if art_book { 768 } else { self.logical_height },
-            )
-            .map_err(backend_error)?;
         draw_backdrop(&mut self.canvas, screen);
         if art_book {
             match screen.route.as_str() {
@@ -472,7 +551,7 @@ impl Platform for HostPlatform {
         }
         if !is_art_book_next(screen) {
             if let Some(modal) = &screen.modal {
-                let dialog = Rect::new(160, 174, 704, 340);
+                let dialog = layout_rect(160, 174, 704, 340);
                 self.canvas.set_draw_color(rgb(screen.palette.background));
                 self.canvas.fill_rect(dialog).map_err(backend_error)?;
                 self.canvas.set_draw_color(rgb(screen.palette.highlight));
@@ -490,25 +569,29 @@ impl Platform for HostPlatform {
                 }
             }
         }
+        let layout = active_layout();
         let mut help_x = 48;
         for binding in screen.controller_help.iter().take(5) {
+            if help_x + layout.help_step > self.logical_width as i32 {
+                break;
+            }
             let label = button_label(binding.button);
             draw_controller_badge(
                 &mut self.canvas,
                 help_x,
-                704,
+                layout.help_y,
                 screen.palette.highlight,
                 label,
             );
             draw_text(
                 &mut self.canvas,
-                help_x + 78,
-                709,
+                help_x + layout.help_label_offset,
+                layout.help_y + 5,
                 &binding.label,
                 screen.palette.text,
                 1,
             );
-            help_x += 180;
+            help_x += layout.help_step;
         }
         self.canvas.present();
         Ok(())
@@ -822,15 +905,20 @@ fn draw_controller_routes(canvas: &mut Canvas<Window>, screen: &Screen) -> Platf
         .iter()
         .position(|item| item.selected)
         .unwrap_or(0);
+    let layout = active_layout();
+    let max_visible = (12 * 100 / u32::from(layout.scale_percent)).max(1) as i32;
+    let visible = ((layout.viewport_height as i32 - 142) / layout.row_height.max(1))
+        .clamp(1, max_visible)
+        .min(layout.visible_menu_items as i32) as usize;
     let start = selected
-        .saturating_sub(5)
-        .min(screen.menu.len().saturating_sub(12));
-    for (index, item) in screen.menu.iter().skip(start).take(12).enumerate() {
-        let y = 142 + index as i32 * 44;
+        .saturating_sub(visible / 2)
+        .min(screen.menu.len().saturating_sub(visible));
+    for (index, item) in screen.menu.iter().skip(start).take(visible).enumerate() {
+        let y = 142 + index as i32 * (layout.row_height + layout.spacing);
         if item.selected {
             canvas.set_draw_color(rgb([48, 48, 48, 255]));
             canvas
-                .fill_rect(Rect::new(40, y - 7, 944, 38))
+                .fill_rect(layout_rect(40, y - 7, 944, 38))
                 .map_err(backend_error)?;
         }
         draw_text(
@@ -880,8 +968,8 @@ fn menu_icon_line(
 ) -> PlatformResult<()> {
     canvas
         .draw_line(
-            sdl2::rect::Point::new(x, y),
-            sdl2::rect::Point::new(end_x, end_y),
+            sdl2::rect::Point::new(reflow_point(x, y).0, reflow_point(x, y).1),
+            sdl2::rect::Point::new(reflow_point(end_x, end_y).0, reflow_point(end_x, end_y).1),
         )
         .map_err(backend_error)
 }
@@ -901,7 +989,7 @@ fn draw_menu_icon(
     match index {
         0 => {
             canvas
-                .draw_rect(Rect::new(x + 5, y + 3, 12, 16))
+                .draw_rect(layout_rect(x + 5, y + 3, 12, 16))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 8, y + 3, x + 8, y + 7)?;
             menu_icon_line(canvas, x + 14, y + 3, x + 14, y + 7)?;
@@ -912,13 +1000,13 @@ fn draw_menu_icon(
                 [(3, 7, 15, 11), (5, 4, 15, 11), (7, 1, 12, 10)]
             {
                 canvas
-                    .draw_rect(Rect::new(x + offset_x, y + offset_y, width, height))
+                    .draw_rect(layout_rect(x + offset_x, y + offset_y, width, height))
                     .map_err(backend_error)?;
             }
         }
         2 => {
             canvas
-                .draw_rect(Rect::new(x + 6, y + 3, 10, 9))
+                .draw_rect(layout_rect(x + 6, y + 3, 10, 9))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 6, y + 5, x + 3, y + 5)?;
             menu_icon_line(canvas, x + 3, y + 5, x + 3, y + 9)?;
@@ -932,7 +1020,7 @@ fn draw_menu_icon(
         }
         3 => {
             canvas
-                .draw_rect(Rect::new(x + 8, y + 8, 6, 6))
+                .draw_rect(layout_rect(x + 8, y + 8, 6, 6))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 11, y + 1, x + 11, y + 8)?;
             menu_icon_line(canvas, x + 11, y + 14, x + 11, y + 21)?;
@@ -943,7 +1031,7 @@ fn draw_menu_icon(
         }
         4 => {
             canvas
-                .draw_rect(Rect::new(x + 3, y + 3, 16, 11))
+                .draw_rect(layout_rect(x + 3, y + 3, 16, 11))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 8, y + 17, x + 14, y + 17)?;
             menu_icon_line(canvas, x + 11, y + 14, x + 11, y + 17)?;
@@ -951,7 +1039,7 @@ fn draw_menu_icon(
         }
         5 => {
             canvas
-                .draw_rect(Rect::new(x + 4, y + 6, 14, 10))
+                .draw_rect(layout_rect(x + 4, y + 6, 14, 10))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 8, y + 8, x + 8, y + 14)?;
             menu_icon_line(canvas, x + 5, y + 11, x + 11, y + 11)?;
@@ -972,18 +1060,18 @@ fn draw_menu_icon(
             menu_icon_line(canvas, x + 11, y + 8, x + 17, y + 14)?;
             menu_icon_line(canvas, x + 5, y + 14, x + 17, y + 14)?;
             canvas
-                .draw_rect(Rect::new(x + 9, y + 5, 4, 4))
+                .draw_rect(layout_rect(x + 9, y + 5, 4, 4))
                 .map_err(backend_error)?;
             canvas
-                .draw_rect(Rect::new(x + 3, y + 14, 4, 4))
+                .draw_rect(layout_rect(x + 3, y + 14, 4, 4))
                 .map_err(backend_error)?;
             canvas
-                .draw_rect(Rect::new(x + 15, y + 14, 4, 4))
+                .draw_rect(layout_rect(x + 15, y + 14, 4, 4))
                 .map_err(backend_error)?;
         }
         8 => {
             canvas
-                .draw_rect(Rect::new(x + 4, y + 3, 11, 11))
+                .draw_rect(layout_rect(x + 4, y + 3, 11, 11))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 6, y + 3, x + 13, y + 3)?;
             menu_icon_line(canvas, x + 4, y + 6, x + 4, y + 11)?;
@@ -993,7 +1081,7 @@ fn draw_menu_icon(
         }
         _ => {
             canvas
-                .draw_rect(Rect::new(x + 8, y + 3, 10, 16))
+                .draw_rect(layout_rect(x + 8, y + 3, 10, 16))
                 .map_err(backend_error)?;
             menu_icon_line(canvas, x + 3, y + 11, x + 13, y + 11)?;
             menu_icon_line(canvas, x + 9, y + 7, x + 13, y + 11)?;
@@ -1020,29 +1108,49 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
                     width,
                     height,
                     pixels,
-                    Rect::new(index as i32 * 256 - 12, 0, 280, 768),
+                    layout_rect(index as i32 * 256, 0, 256, 768),
                 )?;
             }
         }
         canvas.set_draw_color(rgb([0, 0, 0, 255]));
         for x in [244, 500, 756] {
             canvas
-                .fill_rect(Rect::new(x, 0, 12, 768))
+                .fill_rect(layout_rect(x, 0, 12, 768))
                 .map_err(backend_error)?;
         }
-        draw_art_book_logo(canvas, screen, Rect::new(352, 346, 320, 76))?;
+        draw_art_book_logo(canvas, screen, layout_rect(352, 346, 320, 76))?;
     } else {
         canvas.set_draw_color(rgb([17, 17, 17, 255]));
         canvas
-            .fill_rect(Rect::new(0, 0, 400, 768))
+            .fill_rect(layout_rect(0, 0, 400, 768))
             .map_err(backend_error)?;
-        draw_art_book_logo(canvas, screen, Rect::new(32, 30, 240, 57))?;
+        draw_art_book_logo(canvas, screen, layout_rect(32, 30, 240, 57))?;
         draw_text(canvas, 32, 96, "GAME LIBRARY", [238, 238, 238, 255], 2);
-        for (index, item) in screen.game_rows.iter().take(9).enumerate() {
+        let layout = active_layout();
+        let max_visible = (9 * 100 / u32::from(layout.scale_percent)).max(1) as i32;
+        let visible = ((layout.viewport_height as i32 - 150)
+            / (layout.row_height + layout.spacing).max(1))
+        .clamp(1, max_visible)
+        .min(layout.visible_menu_items as i32) as usize;
+        let selected = screen
+            .game_rows
+            .iter()
+            .position(|item| item.selected)
+            .unwrap_or(0);
+        let start = selected
+            .saturating_sub(visible / 2)
+            .min(screen.game_rows.len().saturating_sub(visible));
+        for (index, item) in screen
+            .game_rows
+            .iter()
+            .skip(start)
+            .take(visible)
+            .enumerate()
+        {
             draw_text(
                 canvas,
                 32,
-                150 + index as i32 * 48,
+                150 + index as i32 * (layout.row_height + layout.spacing),
                 &item.label,
                 if item.selected {
                     [255, 255, 255, 255]
@@ -1060,9 +1168,9 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
         });
         if let Some(media) = screenshot {
             let bounds = if screen.route == "games-no-metadata" {
-                Rect::new(400, 0, 624, 768)
+                layout_rect(400, 0, 624, 768)
             } else {
-                Rect::new(400, 0, 624, 500)
+                layout_rect(400, 0, 624, 500)
             };
             draw_screen_media(canvas, media, bounds)?;
         }
@@ -1073,19 +1181,19 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
                     .iter()
                     .find(|media| media.content_id == game.id && media.kind == "box-art")
             }) {
-                draw_screen_media(canvas, media, Rect::new(800, 352, 192, 140))?;
+                draw_screen_media(canvas, media, layout_rect(800, 352, 192, 140))?;
             }
         }
         if screen.route != "games-no-metadata" {
             canvas.set_draw_color(rgb([34, 34, 34, 255]));
             canvas
-                .fill_rect(Rect::new(400, 500, 624, 268))
+                .fill_rect(layout_rect(400, 500, 624, 268))
                 .map_err(backend_error)?;
             if let Some(game) = &screen.selected_game {
                 draw_text(canvas, 432, 530, &game.title, [255, 255, 255, 255], 3);
                 draw_text_in_bounds(
                     canvas,
-                    Rect::new(432, 588, 360, 120),
+                    layout_rect(432, 588, 360, 120),
                     &game.description,
                     [238, 238, 238, 255],
                     20,
@@ -1101,24 +1209,26 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
     }
     canvas.set_draw_color(rgb([255, 255, 255, 255]));
     for (x, y, width) in [(900, 18, 24), (904, 23, 16), (908, 28, 8)] {
+        let (start_x, start_y) = reflow_point(x, y);
+        let (end_x, end_y) = reflow_point(x + width, y);
         canvas
             .draw_line(
-                sdl2::rect::Point::new(x, y),
-                sdl2::rect::Point::new(x + width, y),
+                sdl2::rect::Point::new(start_x, start_y),
+                sdl2::rect::Point::new(end_x, end_y),
             )
             .map_err(backend_error)?;
     }
     canvas
-        .fill_rect(Rect::new(910, 33, 4, 4))
+        .fill_rect(layout_rect(910, 33, 4, 4))
         .map_err(backend_error)?;
     canvas
-        .draw_rect(Rect::new(950, 18, 24, 16))
+        .draw_rect(layout_rect(950, 18, 24, 16))
         .map_err(backend_error)?;
     canvas
-        .fill_rect(Rect::new(954, 22, 14, 8))
+        .fill_rect(layout_rect(954, 22, 14, 8))
         .map_err(backend_error)?;
     canvas
-        .fill_rect(Rect::new(974, 23, 4, 6))
+        .fill_rect(layout_rect(974, 23, 4, 6))
         .map_err(backend_error)?;
     draw_text(
         canvas,
@@ -1132,10 +1242,10 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
         canvas.set_blend_mode(BlendMode::Blend);
         canvas.set_draw_color(sdl2::pixels::Color::RGBA(0, 0, 0, 190));
         canvas
-            .fill_rect(Rect::new(0, 0, 1024, 768))
+            .fill_rect(layout_rect(0, 0, 1024, 768))
             .map_err(backend_error)?;
         canvas.set_draw_color(rgb([17, 17, 17, 255]));
-        let dialog = Rect::new(208, 108, 608, 552);
+        let dialog = layout_rect(208, 108, 608, 552);
         canvas.fill_rect(dialog).map_err(backend_error)?;
         if modal == "Generated notice" {
             draw_text(canvas, 440, 142, "MAIN MENU", [255, 255, 255, 255], 3);
@@ -1155,7 +1265,7 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
                 if index == 1 {
                     canvas.set_draw_color(rgb([145, 145, 145, 255]));
                     canvas
-                        .fill_rect(Rect::new(208, 190 + index as i32 * 48, 608, 44))
+                        .fill_rect(layout_rect(208, 190 + index as i32 * 48, 608, 44))
                         .map_err(backend_error)?;
                 }
                 draw_menu_icon(canvas, index, 224, 201 + index as i32 * 48, index == 1)?;
@@ -1181,7 +1291,7 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
 
 fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
     for component in &screen.theme.components {
-        let bounds = Rect::new(
+        let bounds = layout_rect(
             i32::from(component.bounds.x),
             i32::from(component.bounds.y),
             u32::from(component.bounds.width),
@@ -1229,7 +1339,7 @@ fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> Platfo
                     } else {
                         color
                     };
-                    let row = Rect::new(
+                    let row = layout_rect(
                         bounds.x(),
                         bounds.y() + line_height * (index as i32 + 1),
                         bounds.width(),
@@ -1246,7 +1356,7 @@ fn draw_theme_components(canvas: &mut Canvas<Window>, screen: &Screen) -> Platfo
 
 fn draw_theme_media(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
     for region in &screen.regions {
-        let bounds = Rect::new(
+        let bounds = layout_rect(
             i32::from(region.x),
             i32::from(region.y),
             u32::from(region.width),
@@ -1380,7 +1490,7 @@ fn is_auxiliary_route(route: &str) -> bool {
 }
 
 fn draw_theme_garden(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformResult<()> {
-    let panel = Rect::new(48, 92, 928, 500);
+    let panel = layout_rect(48, 92, 928, 500);
     canvas.set_draw_color(rgb(screen.palette.surface));
     canvas.fill_rect(panel).map_err(backend_error)?;
     canvas.set_draw_color(rgb(screen.palette.accent));
@@ -1431,7 +1541,7 @@ fn draw_theme_garden(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformRe
                 asset.width,
                 asset.height,
                 &asset.pixels,
-                Rect::new(570, 160, 350, 230),
+                layout_rect(570, 160, 350, 230),
             )?;
         }
         draw_text(
@@ -1443,7 +1553,7 @@ fn draw_theme_garden(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformRe
             1,
         );
     } else if let Some(media) = &screen.system_media {
-        draw_screen_media(canvas, media, Rect::new(630, 190, 290, 182))?;
+        draw_screen_media(canvas, media, layout_rect(630, 190, 290, 182))?;
     }
     draw_text(
         canvas,
@@ -1541,11 +1651,16 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
         .any(|component| component.kind == "textlist");
     if !has_theme_textlist {
         let selected = items.iter().position(|item| item.selected).unwrap_or(0);
+        let layout = active_layout();
+        let max_visible = (8 * 100 / u32::from(layout.scale_percent)).max(1) as i32;
+        let visible = ((layout.viewport_height as i32 - 92) / layout.row_height.max(1))
+            .clamp(1, max_visible)
+            .min(layout.visible_menu_items as i32) as usize;
         let start = selected
-            .saturating_sub(3)
-            .min(items.len().saturating_sub(8));
-        for (index, item) in items.iter().skip(start).take(8).enumerate() {
-            let y = 92 + index as i32 * 26;
+            .saturating_sub(visible / 2)
+            .min(items.len().saturating_sub(visible));
+        for (index, item) in items.iter().skip(start).take(visible).enumerate() {
+            let y = 92 + index as i32 * layout.row_height;
             let color = if item.selected {
                 screen.palette.highlight
             } else {
@@ -1562,7 +1677,7 @@ fn draw_catalog(canvas: &mut Canvas<Window>, screen: &Screen) {
             };
             draw_text_in_bounds(
                 canvas,
-                Rect::new(48 + index as i32 * 230, 600, 210, 32),
+                layout_rect(48 + index as i32 * 230, 600, 210, 32),
                 &item.label,
                 color,
                 16,
@@ -1601,7 +1716,7 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
     let Some(settings) = &screen.settings else {
         return;
     };
-    let panel = Rect::new(40, 48, 944, 632);
+    let panel = layout_rect(40, 48, 944, 632);
     canvas.set_draw_color(rgb(screen.palette.surface));
     let _ = canvas.fill_rect(panel);
     canvas.set_draw_color(rgb(screen.palette.accent));
@@ -1612,6 +1727,7 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
         settings_ui::Surface::Form => "EDIT SETTINGS",
     };
     draw_text(canvas, 72, 126, surface, screen.palette.muted, 1);
+    let layout = active_layout();
     let mut y = 164;
     for section in &settings.sections {
         let selected = settings
@@ -1620,7 +1736,7 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
             .is_some_and(|id| id == section.id);
         if selected {
             canvas.set_draw_color(rgb(screen.palette.accent));
-            let _ = canvas.fill_rect(Rect::new(64, y - 5, 896, 30));
+            let _ = canvas.fill_rect(layout_rect(64, y - 5, 896, 30));
         }
         let color = if selected {
             screen.palette.highlight
@@ -1628,9 +1744,9 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
             screen.palette.accent
         };
         draw_text(canvas, 72, y, &user_label(&section.label_key), color, 2);
-        y += 30;
+        y += layout.row_height + layout.spacing / 2;
         for control in &section.controls {
-            if y + 28 > 648 {
+            if y + layout.row_height > 648 {
                 return;
             }
             let selected = settings
@@ -1639,7 +1755,7 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
                 .is_some_and(|id| id == control.setting_id);
             if selected {
                 canvas.set_draw_color(rgb(screen.palette.accent));
-                let _ = canvas.fill_rect(Rect::new(64, y - 5, 896, 30));
+                let _ = canvas.fill_rect(layout_rect(64, y - 5, 896, 30));
             }
             let color = if selected {
                 screen.palette.highlight
@@ -1648,9 +1764,9 @@ fn draw_settings(canvas: &mut Canvas<Window>, screen: &Screen) {
             };
             draw_text(canvas, 88, y, &user_label(&control.label_key), color, 1);
             draw_text(canvas, 560, y, &setting_value(&control.value), color, 1);
-            y += 34;
+            y += layout.row_height + layout.spacing / 2;
         }
-        y += 12;
+        y += layout.spacing;
     }
 }
 
@@ -1726,7 +1842,7 @@ fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
     let Some(wifi) = &screen.wifi else {
         return;
     };
-    let panel = Rect::new(40, 48, 944, 632);
+    let panel = layout_rect(40, 48, 944, 632);
     canvas.set_draw_color(rgb(screen.palette.surface));
     let _ = canvas.fill_rect(panel);
     canvas.set_draw_color(rgb(screen.palette.accent));
@@ -1801,11 +1917,17 @@ fn draw_wifi_networks(
     if wifi.networks.is_empty() {
         draw_text(canvas, 88, 188, "No networks found", screen.palette.text, 2);
     } else {
-        for (index, network) in wifi.networks.iter().take(8).enumerate() {
-            let y = 170 + index as i32 * 48;
+        let layout = active_layout();
+        let max_visible = (8 * 100 / u32::from(layout.scale_percent)).max(1) as i32;
+        let visible = ((layout.viewport_height as i32 - 170)
+            / (layout.row_height + layout.spacing).max(1))
+        .clamp(1, max_visible)
+        .min(layout.visible_menu_items as i32) as usize;
+        for (index, network) in wifi.networks.iter().take(visible).enumerate() {
+            let y = 170 + index as i32 * (layout.row_height + layout.spacing);
             if network.selected {
                 canvas.set_draw_color(rgb(screen.palette.accent));
-                let _ = canvas.fill_rect(Rect::new(64, y - 6, 896, 40));
+                let _ = canvas.fill_rect(layout_rect(64, y - 6, 896, 40));
             }
             let color = if network.selected {
                 screen.palette.highlight
@@ -1895,7 +2017,7 @@ mod tests {
 fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
     let scraper = &screen.scraper;
     canvas.set_draw_color(rgb(screen.palette.background));
-    let _ = canvas.fill_rect(Rect::new(32, 72, 960, 610));
+    let _ = canvas.fill_rect(layout_rect(32, 72, 960, 610));
     draw_text(canvas, 64, 104, &screen.title, screen.palette.highlight, 3);
     draw_text(
         canvas,
@@ -1918,9 +2040,9 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
     );
     if let Some(progress) = scraper.progress_percent {
         canvas.set_draw_color(rgb(screen.palette.muted));
-        let _ = canvas.fill_rect(Rect::new(64, 214, 896, 18));
+        let _ = canvas.fill_rect(layout_rect(64, 214, 896, 18));
         canvas.set_draw_color(rgb(screen.palette.highlight));
-        let _ = canvas.fill_rect(Rect::new(64, 214, 896 * u32::from(progress) / 100, 18));
+        let _ = canvas.fill_rect(layout_rect(64, 214, 896 * u32::from(progress) / 100, 18));
         draw_text(
             canvas,
             64,
@@ -1964,16 +2086,22 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
             2,
         );
     }
+    let layout = active_layout();
+    let visible_rows = ((layout.viewport_height as i32 - 366)
+        / (layout.row_height + layout.spacing).max(1))
+    .max(1)
+    .min(layout.visible_menu_items as i32) as usize;
     for (index, row) in scraper
         .rows
         .iter()
         .enumerate()
         .take(scraper.configured_slots as usize)
+        .take(visible_rows)
     {
         draw_text(
             canvas,
             64,
-            366 + index as i32 * 48,
+            366 + index as i32 * (layout.row_height + layout.spacing),
             &format!(
                 "{}  {}  {}",
                 row.title,
@@ -1987,7 +2115,7 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
             draw_text(
                 canvas,
                 96,
-                394 + index as i32 * 48,
+                394 + index as i32 * (layout.row_height + layout.spacing),
                 transition,
                 screen.palette.muted,
                 1,
@@ -1998,12 +2126,38 @@ fn draw_scraper(canvas: &mut Canvas<Window>, screen: &Screen) {
         draw_text(
             canvas,
             96,
-            420 + index as i32 * 30,
+            420 + index as i32 * (layout.row_height + layout.spacing),
             candidate,
             screen.palette.text,
             2,
         );
     }
+}
+
+fn layout_rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
+    reflow_rect(Rect::new(x, y, width, height))
+}
+
+fn reflow_point(x: i32, y: i32) -> (i32, i32) {
+    let layout = active_layout();
+    (
+        x * layout.viewport_width as i32 / 1024,
+        y * layout.viewport_height as i32 / 768,
+    )
+}
+
+fn reflow_rect(bounds: Rect) -> Rect {
+    let layout = active_layout();
+    let scale_x = |value: i32| value * layout.viewport_width as i32 / 1024;
+    let scale_y = |value: i32| value * layout.viewport_height as i32 / 768;
+    let x = scale_x(bounds.x());
+    let y = scale_y(bounds.y());
+    Rect::new(
+        x,
+        y,
+        (scale_x(bounds.x() + bounds.width() as i32) - x).max(1) as u32,
+        (scale_y(bounds.y() + bounds.height() as i32) - y).max(1) as u32,
+    )
 }
 
 fn format_debug<T: std::fmt::Debug>(value: &T) -> String {
@@ -2032,15 +2186,9 @@ fn ttf_context() -> Option<&'static sdl2::ttf::Sdl2TtfContext> {
 }
 
 fn draw_text(canvas: &mut Canvas<Window>, x: i32, y: i32, text: &str, color: [u8; 4], scale: i32) {
-    let (width, height) = canvas.logical_size();
     draw_text_in_bounds(
         canvas,
-        Rect::new(
-            x,
-            y,
-            (width as i32 - x).max(1) as u32,
-            (height as i32 - y).max(1) as u32,
-        ),
+        layout_rect(x, y, (1024 - x).max(1) as u32, (768 - y).max(1) as u32),
         text,
         color,
         (scale.max(1) * 8) as u16,
@@ -2057,6 +2205,7 @@ fn draw_text_in_bounds(
     let Some(ttf) = ttf_context() else {
         return;
     };
+    let point_size = active_layout().text_point(i32::from(point_size));
     let Ok(rwops) =
         sdl2::rwops::RWops::from_bytes(include_bytes!("../assets/fonts/Lato-Regular.ttf"))
     else {
@@ -2113,12 +2262,26 @@ fn draw_text_in_bounds(
 }
 
 fn draw_controller_badge(canvas: &mut Canvas<Window>, x: i32, y: i32, color: [u8; 4], label: &str) {
+    let size = active_layout().icon_size;
     canvas.set_draw_color(rgb(color));
-    let _ = canvas.fill_rect(Rect::new(x + 2, y + 2, 24, 24));
+    let _ = canvas.fill_rect(layout_rect(x + 2, y + 2, size, size));
     canvas.set_draw_color(rgb([0, 0, 0, 255]));
-    let _ = canvas.fill_rect(Rect::new(x + 7, y + 7, 14, 14));
+    let inset = size / 5;
+    let _ = canvas.fill_rect(layout_rect(
+        x + inset as i32,
+        y + inset as i32,
+        size - inset * 2,
+        size - inset * 2,
+    ));
     canvas.set_draw_color(rgb(color));
-    let _ = canvas.draw_line((x + 8, y + 14), (x + 20, y + 14));
-    let _ = canvas.draw_line((x + 14, y + 8), (x + 14, y + 20));
-    draw_text(canvas, x + 32, y + 4, label, color, 1);
+    let mid = size as i32 / 2;
+    let _ = canvas.draw_line(
+        reflow_point(x + inset as i32 + 1, y + mid),
+        reflow_point(x + size as i32 - inset as i32 - 1, y + mid),
+    );
+    let _ = canvas.draw_line(
+        reflow_point(x + mid, y + inset as i32 + 1),
+        reflow_point(x + mid, y + size as i32 - inset as i32 - 1),
+    );
+    draw_text(canvas, x + size as i32 + 8, y + 4, label, color, 1);
 }

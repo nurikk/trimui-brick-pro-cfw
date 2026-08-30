@@ -5,7 +5,7 @@
   "preferences": {
     "artworkMode": "large",
     "metadataVisibility": "full",
-    "fontScale": "standard",
+    "uiSize": "automatic",
     "colorScheme": "ink"
   }
 }

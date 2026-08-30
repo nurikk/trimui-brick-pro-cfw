@@ -313,12 +313,26 @@ pub enum MetadataVisibility {
     Hidden,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum FontScale {
-    Small,
-    Standard,
+pub enum UiSize {
+    Automatic,
+    Compact,
+    Comfortable,
     Large,
+    ExtraLarge,
+}
+
+impl UiSize {
+    pub const fn preset_scale_percent(self) -> Option<u16> {
+        match self {
+            Self::Automatic => None,
+            Self::Compact => Some(90),
+            Self::Comfortable => Some(110),
+            Self::Large => Some(125),
+            Self::ExtraLarge => Some(140),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -334,7 +348,7 @@ pub enum ColorScheme {
 pub struct UiPreferences {
     pub artwork_mode: ArtworkMode,
     pub metadata_visibility: MetadataVisibility,
-    pub font_scale: FontScale,
+    pub ui_size: UiSize,
     pub color_scheme: ColorScheme,
 }
 
@@ -343,7 +357,7 @@ impl Default for UiPreferences {
         Self {
             artwork_mode: ArtworkMode::Large,
             metadata_visibility: MetadataVisibility::Full,
-            font_scale: FontScale::Standard,
+            ui_size: UiSize::Automatic,
             color_scheme: ColorScheme::Ink,
         }
     }
@@ -354,7 +368,7 @@ impl Default for UiPreferences {
 pub enum PreferenceChange {
     ArtworkMode(ArtworkMode),
     MetadataVisibility(MetadataVisibility),
-    FontScale(FontScale),
+    UiSize(UiSize),
     ColorScheme(ColorScheme),
 }
 
@@ -588,6 +602,7 @@ pub struct UiState {
     pub selected_system: Option<SystemId>,
     pub search_query: String,
     pub preferences: UiPreferences,
+    pub preview_ui_size: Option<UiSize>,
     pub layout: LayoutContract,
     pub view: ViewContract,
     pub affordances: PlatformAffordances,
@@ -620,6 +635,7 @@ impl UiState {
             selected_system: None,
             search_query: String::new(),
             preferences: UiPreferences::default(),
+            preview_ui_size: None,
             layout: LayoutContract::default(),
             view: ViewContract::default(),
             affordances: PlatformAffordances::default(),
@@ -824,6 +840,10 @@ pub enum Action {
     ToggleFavorite { game_id: GameId },
     SetResumeEntries { entries: Vec<ResumeProjection> },
     SetPreference(PreferenceChange),
+    PreviewUiSize(UiSize),
+    ConfirmUiSizePreview,
+    CancelUiSizePreview,
+    TimeoutUiSizePreview,
     SetAffordances(PlatformAffordances),
     SetCapabilities(PlatformCapabilities),
     SetGroupJump(GroupJumpState),
@@ -944,6 +964,16 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
         }
         Action::ToggleFavorite { game_id } => toggle_favorite(&mut next, game_id),
         Action::SetPreference(change) => set_preference(&mut next, change),
+        Action::PreviewUiSize(value) => next.preview_ui_size = Some(value),
+        Action::ConfirmUiSizePreview => {
+            if let Some(value) = next.preview_ui_size.take() {
+                next.preferences.ui_size = value;
+                next.feedback = UiFeedback::PreferenceChanged;
+            }
+        }
+        Action::CancelUiSizePreview | Action::TimeoutUiSizePreview => {
+            next.preview_ui_size = None;
+        }
         Action::SetAffordances(affordances) => next.affordances = affordances,
         Action::SetResumeEntries { entries } => {
             next.resume_entries = entries;
@@ -1086,7 +1116,7 @@ fn set_preference(state: &mut UiState, change: PreferenceChange) {
         PreferenceChange::MetadataVisibility(value) => {
             state.preferences.metadata_visibility = value
         }
-        PreferenceChange::FontScale(value) => state.preferences.font_scale = value,
+        PreferenceChange::UiSize(value) => state.preferences.ui_size = value,
         PreferenceChange::ColorScheme(value) => state.preferences.color_scheme = value,
     }
     state.feedback = UiFeedback::PreferenceChanged;
@@ -1745,5 +1775,36 @@ pub struct GeneratedPlatformCapabilities {
 impl PlatformCapabilitiesPort for GeneratedPlatformCapabilities {
     fn capabilities(&self) -> &PlatformCapabilities {
         &self.value
+    }
+}
+
+#[cfg(test)]
+mod density_preview_tests {
+    use super::{reduce, Action, UiSize, UiState};
+
+    #[test]
+    fn ui_size_preview_confirm_cancel_and_timeout() {
+        let state = UiState::generated();
+        assert_eq!(state.preferences.ui_size, UiSize::Automatic);
+        assert_eq!(
+            serde_json::to_string(&UiSize::ExtraLarge).unwrap(),
+            "\"extra-large\""
+        );
+        let preview = reduce(&state, Action::PreviewUiSize(UiSize::Large));
+        assert_eq!(preview.preview_ui_size, Some(UiSize::Large));
+        assert_eq!(preview.preferences.ui_size, UiSize::Automatic);
+        let confirmed = reduce(&preview, Action::ConfirmUiSizePreview);
+        assert_eq!(confirmed.preferences.ui_size, UiSize::Large);
+        assert_eq!(confirmed.preview_ui_size, None);
+        let cancelled = reduce(
+            &reduce(&confirmed, Action::PreviewUiSize(UiSize::Compact)),
+            Action::CancelUiSizePreview,
+        );
+        assert_eq!(cancelled.preferences.ui_size, UiSize::Large);
+        let timed_out = reduce(
+            &reduce(&cancelled, Action::PreviewUiSize(UiSize::ExtraLarge)),
+            Action::TimeoutUiSizePreview,
+        );
+        assert_eq!(timed_out.preferences.ui_size, UiSize::Large);
     }
 }

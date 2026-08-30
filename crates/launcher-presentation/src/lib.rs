@@ -1,6 +1,6 @@
 use launcher_theme::{scene as theme_scene, Reason as ThemeReason, ValidatedTheme};
 use serde::Serialize;
-use ui_model::{AssetKind, GeneratedAssetRef, Route, UiState};
+use ui_model::{AssetKind, GeneratedAssetRef, Route, UiSize, UiState};
 
 pub const SCHEMA: &str = "launcher-presentation/v1";
 
@@ -189,12 +189,130 @@ pub struct SaveSyncView {
     pub actions: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LayoutBox {
+    pub id: String,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LayoutGeometry {
+    pub viewport_width: u32,
+    pub viewport_height: u32,
+    pub boxes: Vec<LayoutBox>,
+    pub focused_action: Option<LayoutBox>,
+    pub visible_menu_items: usize,
+}
+
+impl LayoutGeometry {
+    pub fn box_by_id(&self, id: &str) -> Option<&LayoutBox> {
+        self.boxes.iter().find(|layout_box| layout_box.id == id)
+    }
+}
+
+pub fn layout_geometry(
+    screen: &Screen,
+    viewport_width: u32,
+    viewport_height: u32,
+    automatic_scale_percent: u16,
+) -> LayoutGeometry {
+    let reflow = |id: &str, x: u32, y: u32, width: u32, height: u32| LayoutBox {
+        id: id.into(),
+        x: x.saturating_mul(viewport_width) / 1024,
+        y: y.saturating_mul(viewport_height) / 768,
+        width: (x + width).saturating_mul(viewport_width) / 1024
+            - x.saturating_mul(viewport_width) / 1024,
+        height: (y + height).saturating_mul(viewport_height) / 768
+            - y.saturating_mul(viewport_height) / 768,
+    };
+    let mut boxes = screen
+        .regions
+        .iter()
+        .map(|region| {
+            reflow(
+                &region.id,
+                region.x.into(),
+                region.y.into(),
+                region.width.into(),
+                region.height.into(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let scale = screen
+        .ui_size
+        .preset_scale_percent()
+        .unwrap_or(automatic_scale_percent);
+    let row_height = (26 * u32::from(scale) / 100).max(18);
+    let row_step = row_height + (12 * u32::from(scale) / 100).max(6);
+    let menu = reflow("route-content", 32, 72, 960, 576);
+    let items = if screen.focus == "game-list" {
+        &screen.game_rows
+    } else {
+        &screen.menu
+    };
+    let physical_row_step = row_step.saturating_mul(viewport_height) / 768;
+    let visible_menu_items = (menu.height / physical_row_step.max(1)).max(1) as usize;
+    let focused_action = items
+        .iter()
+        .position(|item| item.selected && item.enabled)
+        .map(|index| {
+            let start = index
+                .saturating_sub(visible_menu_items / 2)
+                .min(items.len().saturating_sub(visible_menu_items));
+            reflow(
+                "focused-action",
+                32,
+                72 + (index.saturating_sub(start) as u32) * row_step,
+                960,
+                row_height,
+            )
+        });
+    boxes.push(menu);
+    match screen.route.as_str() {
+        "games" | "games-no-metadata" | "favorites" | "recent" | "search" => {
+            boxes.push(reflow("library-list", 0, 0, 400, 768));
+            boxes.push(reflow("game-details", 400, 0, 624, 768));
+        }
+        "settings" | "theme-garden" | "save-vault" | "save-sync" | "portmaster"
+        | "controller-routes" | "game-switcher" | "recovery" => {
+            boxes.push(reflow("surface", 40, 48, 944, 632));
+        }
+        route if route.starts_with("wifi-") => {
+            boxes.push(reflow("wifi-surface", 40, 48, 944, 632));
+        }
+        route if route.starts_with("scraper-") => {
+            boxes.push(reflow("scraper-surface", 32, 72, 960, 610));
+        }
+        _ => {}
+    }
+    if screen.route == "wifi-password-entry" {
+        boxes.push(reflow("keyboard", 64, 300, 896, 320));
+    }
+    if screen.modal.is_some() {
+        boxes.push(reflow("modal", 160, 108, 704, 552));
+    }
+    if let Some(focused_action) = &focused_action {
+        boxes.push(focused_action.clone());
+    }
+    LayoutGeometry {
+        viewport_width,
+        viewport_height,
+        boxes,
+        focused_action,
+        visible_menu_items,
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Screen {
     pub schema: &'static str,
     pub identity: &'static str,
     pub route: String,
+    pub ui_size: UiSize,
     pub focus: String,
     pub title: String,
     pub selected_label: String,
@@ -354,6 +472,7 @@ pub fn build_with_recent(
         schema: SCHEMA,
         identity: ui_model::ARTBOOK_IDENTITY,
         route: route_name(&state.route),
+        ui_size: state.preview_ui_size.unwrap_or(state.preferences.ui_size),
         focus: focus_name(&state.focus),
         title: title(&state.route),
         selected_label: state

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process};
+use std::{fs, path::{Path, PathBuf}, process};
 
 use launcher_presentation::{build_with_sync, SaveSyncCandidateView, SaveSyncView};
 use launcher_theme::safe_artbook;
@@ -108,6 +108,37 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         ),
         ("settings", reduce(&base, Action::Navigate(Route::Settings))),
         (
+            "game-switcher",
+            reduce(&base, Action::Navigate(Route::GameSwitcher)),
+        ),
+        ("theme-garden", base.clone()),
+        ("save-vault", base.clone()),
+        ("save-sync", base.clone()),
+        (
+            "keyboard",
+            reduce(
+                &reduce(
+                    &base,
+                    Action::Navigate(Route::Wifi(ui_model::WifiRoute::PasswordEntry)),
+                ),
+                Action::Wifi(WifiAction::RequestMaskedPasswordKeyboard {
+                    ssid: "Fixture Network".into(),
+                }),
+            ),
+        ),
+        ("portmaster", base.clone()),
+        ("controller-help", base.clone()),
+        (
+            "overlay",
+            reduce(
+                &base,
+                Action::ShowModal(ui_model::ModalState::Info {
+                    title: "Overlay".into(),
+                    message: "Focused action remains visible".into(),
+                }),
+            ),
+        ),
+        (
             "recovery",
             reduce(
                 &base,
@@ -147,7 +178,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     for pass in 0..2 {
         let mut platform = HostPlatform::new(&profile, &device_profile, Backend::Dummy)?;
         for (name, state) in &states {
-            let screen = build_with_sync(
+            let mut screen = build_with_sync(
                 state,
                 &theme,
                 (*name == "recovery").then_some(launcher_theme::Reason::MissingTheme),
@@ -157,7 +188,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &[],
                 Some(&save_sync),
             );
+            set_surface_route(&mut screen, name);
             assert_contract(&screen, name)?;
+            if screen.ui_size != ui_model::UiSize::Automatic {
+                return Err("presentation did not carry the selected UI size".into());
+            }
             if *name == "scraper-progress-2"
                 && (screen.scraper.progress_percent != Some(0)
                     || screen.scraper.configured_slots != 2
@@ -235,7 +270,119 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("splash or fallback visual is indistinguishable from home".into());
     }
+    run_layout_matrix(
+        &root,
+        &profile,
+        &theme,
+        &settings,
+        &wifi_snapshot,
+        &save_sync,
+        &states,
+    )?;
     println!("evidence={}", root.display());
+    Ok(())
+}
+
+fn run_layout_matrix(
+    root: &Path,
+    profile: &Path,
+    theme: &launcher_theme::ValidatedTheme,
+    settings: &settings_ui::Scene,
+    wifi: &wifi_settings_controller::Snapshot,
+    save_sync: &SaveSyncView,
+    states: &[(&str, UiState)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        (
+            "fallback",
+            PathBuf::from("config/platform/tg4040/compatibility.json"),
+            (1024, 768),
+        ),
+        (
+            "dense-4",
+            PathBuf::from("fixtures/platform/ui-density-1024-4/compatibility.json"),
+            (1024, 768),
+        ),
+        (
+            "wide-7",
+            PathBuf::from("fixtures/platform/ui-density-1024-7/compatibility.json"),
+            (1024, 768),
+        ),
+        (
+            "small-3-5",
+            PathBuf::from("fixtures/platform/ui-density-640-3-5/compatibility.json"),
+            (640, 480),
+        ),
+        (
+            "active-mm",
+            PathBuf::from("fixtures/platform/ui-density-active-mm/compatibility.json"),
+            (1024, 768),
+        ),
+    ];
+    let sizes = [
+        ui_model::UiSize::Automatic,
+        ui_model::UiSize::Compact,
+        ui_model::UiSize::Comfortable,
+        ui_model::UiSize::Large,
+        ui_model::UiSize::ExtraLarge,
+    ];
+    for pass in 0..2 {
+        for (profile_name, device_profile, dimensions) in &profiles {
+            let mut platform = HostPlatform::new(profile, device_profile, Backend::Dummy)?;
+            let automatic_scale_percent = platform.automatic_scale_percent();
+            for size in sizes {
+                for (route_name, state) in states {
+                    let mut sized = state.clone();
+                    sized.preferences.ui_size = size;
+                    sized.preview_ui_size = None;
+                    let mut screen = launcher_presentation::build_with_sync(
+                        &sized,
+                        theme,
+                        None,
+                        Some(settings),
+                        Some(wifi),
+                        &launcher_presentation::IndexView::default(),
+                        &[],
+                        Some(save_sync),
+                    );
+                    set_surface_route(&mut screen, route_name);
+                    assert_layout_contract(
+                        &screen,
+                        *dimensions,
+                        automatic_scale_percent,
+                        route_name,
+                        size,
+                    )?;
+                    let stem = format!("layout-{profile_name}-{size:?}-{route_name}-{pass}");
+                    let png = root.join(format!("{stem}.png"));
+                    platform.present(&screen)?;
+                    platform.capture_png(&png)?;
+                    let reader = png::Decoder::new(fs::File::open(&png)?).read_info()?;
+                    if reader.info().width != dimensions.0 || reader.info().height != dimensions.1 {
+                        return Err(format!("{stem}: PNG dimensions are not {dimensions:?}").into());
+                    }
+                    let semantic = serde_json::to_vec(&screen)?;
+                    let semantic_path = root.join(format!("{stem}.json"));
+                    fs::write(&semantic_path, semantic)?;
+                    if pass == 1 {
+                        let prior = root.join(format!(
+                            "layout-{profile_name}-{size:?}-{route_name}-0.json"
+                        ));
+                        if fs::read(prior)? != fs::read(&semantic_path)? {
+                            return Err(
+                                format!("{stem}: semantic output was not deterministic").into()
+                            );
+                        }
+                        let prior_png =
+                            root.join(format!("layout-{profile_name}-{size:?}-{route_name}-0.png"));
+                        if fs::read(prior_png)? != fs::read(&png)? {
+                            return Err(format!("{stem}: PNG output was not deterministic").into());
+                        }
+                    }
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -250,6 +397,65 @@ fn assert_contract(
         return Err(format!("presentation contract is incomplete for {name}").into());
     }
     Ok(())
+}
+
+fn assert_layout_contract(
+    screen: &launcher_presentation::Screen,
+    dimensions: (u32, u32),
+    automatic_scale_percent: u16,
+    route_name: &str,
+    size: ui_model::UiSize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (width, height) = dimensions;
+    let geometry =
+        launcher_presentation::layout_geometry(screen, width, height, automatic_scale_percent);
+    for layout_box in &geometry.boxes {
+        if layout_box.x + layout_box.width > width
+            || layout_box.y + layout_box.height > height
+            || (dimensions == (640, 480) && (layout_box.width == 0 || layout_box.height == 0))
+        {
+            return Err(format!(
+                "{route_name}/{size:?}: {} is outside usable {dimensions:?}",
+                layout_box.id
+            )
+            .into());
+        }
+    }
+    if screen.ui_size != size {
+        return Err(format!("{route_name}/{size:?}: UI size was not carried").into());
+    }
+    let items = if screen.focus == "game-list" {
+        &screen.game_rows
+    } else {
+        &screen.menu
+    };
+    if screen.splash != "nova8-splash"
+        && !items.is_empty()
+        && (!items.iter().any(|item| item.selected && item.enabled)
+            || geometry
+                .focused_action
+                .as_ref()
+                .is_none_or(|layout_box| layout_box.width == 0 || layout_box.height == 0))
+    {
+        return Err(format!(
+            "{route_name}/{size:?}: focused action is not visible (focus={}, label={:?}, items={})",
+            screen.focus,
+            screen.selected_label,
+            items.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn set_surface_route(screen: &mut launcher_presentation::Screen, name: &str) {
+    screen.route = match name {
+        "theme-garden" | "save-vault" | "save-sync" | "portmaster" | "controller-help" => {
+            name.into()
+        }
+        "keyboard" => "wifi-password-entry".into(),
+        _ => screen.route.clone(),
+    };
 }
 
 fn controller_press(state: &UiState, button: UiButton) -> UiState {

@@ -791,8 +791,9 @@ pub fn normalize_theme_png(
             ))
         }
     };
-    let divisor = ((source_width + max_width - 1) / max_width)
-        .max((source_height + max_height - 1) / max_height)
+    let divisor = source_width
+        .div_ceil(max_width)
+        .max(source_height.div_ceil(max_height))
         .max(1);
     let width = (source_width / divisor).max(1);
     let height = (source_height / divisor).max(1);

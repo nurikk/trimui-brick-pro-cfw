@@ -1099,7 +1099,7 @@ fn run_session<P: Platform>(
     for change in [
         ui_model::PreferenceChange::ArtworkMode(preferences.artwork_mode),
         ui_model::PreferenceChange::MetadataVisibility(preferences.metadata_visibility),
-        ui_model::PreferenceChange::FontScale(preferences.font_scale),
+        ui_model::PreferenceChange::UiSize(preferences.ui_size),
         ui_model::PreferenceChange::ColorScheme(preferences.color_scheme),
     ] {
         presentation.ui = ui_model::reduce(&presentation.ui, UiAction::SetPreference(change));
@@ -2203,6 +2203,44 @@ fn synthetic_progress(slots: u8, completed: u16) -> ui_model::ScraperProgress {
         },
         rows,
     }
+}
+
+fn sync_settings_ui_size(
+    state: &mut PresentationState,
+    action: input_profile::Action,
+) -> Result<()> {
+    let scene = state
+        .settings
+        .scene()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let pending = scene
+        .pending
+        .changes
+        .iter()
+        .find(|change| change.setting_id == "core.display.ui-size")
+        .and_then(|change| match &change.value {
+            settings_ui::SemanticValue::EnumSingle(value) => Some(value.as_str()),
+            _ => None,
+        });
+    if let Some(value) = pending {
+        let value = match value {
+            "automatic" => ui_model::UiSize::Automatic,
+            "compact" => ui_model::UiSize::Compact,
+            "comfortable" => ui_model::UiSize::Comfortable,
+            "large" => ui_model::UiSize::Large,
+            "extra-large" => ui_model::UiSize::ExtraLarge,
+            _ => return Ok(()),
+        };
+        state.ui = ui_model::reduce(&state.ui, UiAction::PreviewUiSize(value));
+    } else if action == input_profile::Action::Start {
+        state.ui = ui_model::reduce(&state.ui, UiAction::ConfirmUiSizePreview);
+    } else if matches!(
+        action,
+        input_profile::Action::Secondary | input_profile::Action::Home
+    ) {
+        state.ui = ui_model::reduce(&state.ui, UiAction::CancelUiSizePreview);
+    }
+    Ok(())
 }
 
 fn sync_scraper_persistence(state: &mut AppState) {
@@ -3538,6 +3576,9 @@ fn handle_semantic_action<P: Platform>(
     {
         state.route = Route::Library;
     }
+    state.persisted.preferences = state.presentation.ui.preferences.clone();
+    launcher_state::save(&evidence.root.join("data"), &state.persisted)
+        .map_err(|error| anyhow!(error.to_string()))?;
     if matches!(
         action,
         input_profile::Action::JumpNextGroup | input_profile::Action::JumpPreviousGroup
@@ -4321,6 +4362,7 @@ fn handle_presentation_action(
                 .settings
                 .press(button)
                 .map_err(|error| anyhow!(error.to_string()))?;
+            sync_settings_ui_size(state, action)?;
             if action == input_profile::Action::Secondary
                 && surface == settings_ui::Surface::SectionList
             {

@@ -3,7 +3,7 @@
   "identity": "Artbook",
   "route": "home",
   "menu": { "fullScreen": true, "controllerFirst": true, "selected": "systems", "enabled": true },
-  "preferences": { "artworkMode": "large", "metadataVisibility": "full", "fontScale": "standard", "colorScheme": "ink" },
+  "preferences": { "artworkMode": "large", "metadataVisibility": "full", "uiSize": "automatic", "colorScheme": "ink" },
   "layout": { "aspectRatio": "four-by-three", "logicalWidth": 320, "logicalHeight": 240 },
   "affordances": {
     "clock": { "visible": true, "value": "12:00" },

@@ -1,0 +1,11 @@
+{
+  "deviceId": "ui-density-active-mm",
+  "display": {
+    "expected": { "format": "rgba8888", "height": 768, "strideBytes": 4096, "width": 1024 },
+    "orientation": "landscape",
+    "themeAspect": "4:3",
+    "physicalPanel": { "activeWidthMm": 81.28, "activeHeightMm": 60.96 }
+  },
+  "schemaVersion": "1.0.0",
+  "targetSku": "UI-DENSITY-ACTIVE-MM"
+}

@@ -466,10 +466,197 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
         Settings { section: _, pending: Some(change), .. } => vec![format!("{}: {} → {}", change.name, change.old, change.new), "A: Apply".into(), "B: Cancel".into()],
         Settings { section, validation: Some(reason), .. } => vec![format!("{:?}", section), format!("Validation: {reason}"), "Committed value retained".into()],
         Settings { section, .. } => vec![format!("{:?} settings", section), "Selected control: enabled".into(), "Current value · help · pending badge".into()],
-        Wifi { view } => vec![format!("Wi-Fi: {:?}", view), "HomeNet · WPA2 · saved · 82%".into(), "Guest · open · 61%".into()],
-        Theme { stage } => vec!["Theme Garden".into(), format!("Stage: {:?}", stage), "Safe Art Book fallback available".into()],
-        Scraper { stage } => vec!["Scraper".into(), format!("Stage: {:?}", stage), "Nebula Notes · provider fallback".into()],
-        Diagnostics { page } => vec!["Diagnostics".into(), format!("Check: {:?}", page), "Storage · battery · updater".into()],
+        Wifi { view } => match view {
+            WifiJourneyView::Scan => vec![
+                "Wi-Fi".into(),
+                "3 SSIDs · deduplicated scan results".into(),
+                "Home Synthetic · WPA2 · SAVED · signal 91%".into(),
+                "Known Synthetic · WPA3 · SAVED · signal 38%".into(),
+                "Guest Synthetic · OPEN · NOT SAVED · signal 70%".into(),
+                "Actions: Select network · Rescan · Add hidden".into(),
+            ],
+            WifiJourneyView::OpenConfirmation => vec![
+                "Guest Synthetic · OPEN".into(),
+                "Warning: open network has no password".into(),
+                "Action: Confirm connect".into(),
+                "Action: Back".into(),
+            ],
+            WifiJourneyView::Password => vec![
+                "Home Synthetic · WPA2".into(),
+                "Network key · masked".into(),
+                "Action: Connect".into(),
+                "Action: Cancel".into(),
+            ],
+            WifiJourneyView::Hidden => vec![
+                "Hidden network · SSID redacted".into(),
+                "Security: WPA2 or WPA3".into(),
+                "Action: Enter network name".into(),
+            ],
+            WifiJourneyView::ManualSsid => vec![
+                "Manual SSID · bounded text input".into(),
+                "Network name · required".into(),
+                "Action: Continue · Cancel".into(),
+            ],
+            WifiJourneyView::Saved => vec![
+                "Known Synthetic · WPA3 · SAVED".into(),
+                "Reconnect automatically · enabled".into(),
+                "Actions: Reconnect · Forget".into(),
+            ],
+            WifiJourneyView::ForgetConfirmation => vec![
+                "Forget Known Synthetic?".into(),
+                "Saved credentials will be removed".into(),
+                "Action: Confirm Forget · Cancel".into(),
+            ],
+            WifiJourneyView::Forgotten => vec![
+                "Known Synthetic · NOT SAVED".into(),
+                "Network remains in scan results".into(),
+                "Action: Rescan · Select network".into(),
+            ],
+            WifiJourneyView::Progress => vec![
+                "Connecting to Home Synthetic · WPA2".into(),
+                "Phase: authentication → address".into(),
+                "Action: Cancel".into(),
+            ],
+            WifiJourneyView::RetryError => vec![
+                "Home Synthetic · connection failed".into(),
+                "Reason: authentication timeout".into(),
+                "Action: Retry · Back to scan".into(),
+            ],
+        },
+        Theme { stage } => match stage {
+            ThemeJourneyStage::Catalog => vec![
+                "Theme Garden · curated local catalog".into(),
+                "Artbook · v1.0.0 · ACTIVE".into(),
+                "High Contrast · v1.1.0 · UPDATE AVAILABLE".into(),
+                "Minimal Grid · v1.0.0 · AVAILABLE".into(),
+                "3 packages · screenshots available".into(),
+                "Actions: Preview · Install · Update".into(),
+            ],
+            ThemeJourneyStage::Preview => vec![
+                "High Contrast · v1.1.0".into(),
+                "Preview screenshot · TG4040 compatible".into(),
+                "Status: update available".into(),
+                "Actions: Apply · Back".into(),
+            ],
+            ThemeJourneyStage::Install => vec![
+                "Installing Minimal Grid · v1.0.0".into(),
+                "Package verified · screenshot cached".into(),
+                "Result: installed · Apply available".into(),
+            ],
+            ThemeJourneyStage::Update => vec![
+                "Updating High Contrast · v1.0.0 → v1.1.0".into(),
+                "Package verified · preserving active theme".into(),
+                "Result: update ready to apply".into(),
+            ],
+            ThemeJourneyStage::Remove => vec![
+                "Remove High Contrast · v1.1.0?".into(),
+                "Active Artbook remains usable".into(),
+                "Actions: Remove · Keep".into(),
+            ],
+            ThemeJourneyStage::Fallback => vec![
+                "Invalid theme rejected".into(),
+                "Fallback active: Safe Art Book".into(),
+                "Reason: theme validation failed".into(),
+                "Route back: Theme Garden · B".into(),
+            ],
+        },
+        Scraper { stage } => match stage {
+            ScraperJourneyStage::Settings => vec![
+                "Scraper providers · fixture-primary / fixture-secondary".into(),
+                "Parallel workers: 2".into(),
+                "Action: Start scrape".into(),
+            ],
+            ScraperJourneyStage::Game => vec![
+                "Nebula Notes · NES".into(),
+                "Providers: fixture-primary → fixture-secondary".into(),
+                "Actions: Scrape game · Queue".into(),
+            ],
+            ScraperJourneyStage::Queue => vec![
+                "Bulk queue · 4 titles · QUEUED".into(),
+                "Nebula Notes · queued".into(),
+                "Mirror Museum · queued".into(),
+                "Orbit Garden · queued".into(),
+                "Signal Workshop · queued".into(),
+                "Action: Start queue".into(),
+            ],
+            ScraperJourneyStage::Progress => vec![
+                "Bulk scrape · RUNNING · 1/4 · 2 slots".into(),
+                "Nebula Notes · fixture-secondary · falling back".into(),
+                "Mirror Museum · fixture-tertiary · searching".into(),
+                "Fallback: fixture-primary not found → fixture-secondary".into(),
+                "Actions: Pause · Results".into(),
+            ],
+            ScraperJourneyStage::Paused => vec![
+                "Bulk scrape · PAUSED · 1/4".into(),
+                "Reason: network gate".into(),
+                "Nebula Notes · fallback pending".into(),
+                "Action: Resume".into(),
+            ],
+            ScraperJourneyStage::Ambiguity => vec![
+                "Nebula Notes · ambiguous result".into(),
+                "Candidate: Nebula Notes (US)".into(),
+                "Candidate: Nebula Notes (EU)".into(),
+                "Action: Choose match".into(),
+            ],
+            ScraperJourneyStage::Success => vec![
+                "Bulk scrape · COMPLETED 4/4".into(),
+                "Found 2 · Fallback 1 · Not found 1".into(),
+                "Nebula Notes · SUCCEEDED".into(),
+                "Mirror Museum · SUCCEEDED".into(),
+                "Orbit Garden · FALLBACK".into(),
+                "Signal Workshop · NOT FOUND".into(),
+                "Actions: Inspect results · Start again".into(),
+            ],
+            ScraperJourneyStage::Failure => vec![
+                "Scrape failed · fixture-primary".into(),
+                "Reason: provider unavailable".into(),
+                "Nebula Notes · retry available".into(),
+                "Action: Retry".into(),
+            ],
+        },
+        Diagnostics { page } => match page {
+            DiagnosticPage::Root => vec![
+                "Diagnostics · hardware checks".into(),
+                "Firmware · synthetic-firmware-1.0 · available".into(),
+                "RAM · 384 MiB free / 512 MiB".into(),
+                "Battery · 78% · not charging".into(),
+                "Temperature · 38 C".into(),
+                "Storage · 32 GB free / 64 GB".into(),
+                "Slots · active A · previous B".into(),
+                "Core · mainline v0.1.0".into(),
+                "Last crash · crash-001 · watchdog-timeout".into(),
+                "Support bundle · Export sanitized bundle".into(),
+            ],
+            DiagnosticPage::SafeMode => vec![
+                "Safe Mode · confirmation and policy".into(),
+                "Network · DISABLED".into(),
+                "Third-party themes · DISABLED".into(),
+                "Background indexing · DISABLED".into(),
+                "Automatic game launch · DISABLED".into(),
+                "Theme · built-in · Input/display · conservative".into(),
+                "Action: Confirm Safe Mode · Back".into(),
+            ],
+            DiagnosticPage::Updater => vec![
+                "Updater · available".into(),
+                "Synthetic firmware · v1.1.0".into(),
+                "Action: Install update".into(),
+            ],
+            DiagnosticPage::Rollback => vec![
+                "Rollback · slot B available".into(),
+                "Previous core · mainline v0.1.0".into(),
+                "Action: Restore previous".into(),
+            ],
+            DiagnosticPage::StorageFull => vec![
+                "Storage full · saves protected".into(),
+                "Recovery: remove cache only".into(),
+                "Action: Review storage".into(),
+            ],
+            DiagnosticPage::LowBattery => vec![
+                "Low battery · autosave complete".into(),
+                "Sleep now or cancel".into(),
+                "Action: Sleep · Cancel".into(),
+            ],
+        },
         Session { content, marker, restored } => vec![format!("{:?}", content), if *restored { format!("Restored interaction marker: {marker}") } else { format!("Interaction marker: {marker}") }, "D-pad: interact · B: autosave and exit".into()],
         GameSwitcher { page, content, marker } => vec!["Game Switcher".into(), format!("{:?} · checkpoint {marker}", content), format!("{:?}", page)],
         Portmaster { page: PortmasterPage::Catalog } => vec!["PortMaster catalog".into(), "Orbit Garden · not installed".into(), "Signal Workshop · not installed".into()],
@@ -2222,6 +2409,63 @@ mod tests {
         assert_eq!(canonical_route_id(&journey), Some("home-systems"));
         assert!(reduce_product_state(&mut journey, Button::Primary));
         assert_eq!(canonical_route_id(&journey), Some("home-game-list"));
+    }
+
+    #[test]
+    fn mandatory_product_surfaces_render_stage_specific_evidence() {
+        let cases: Vec<(ProductJourneyState, &[&str])> = vec![
+            (
+                ProductJourneyState::Wifi {
+                    view: WifiJourneyView::Scan,
+                },
+                &["Home Synthetic", "WPA2", "SAVED", "signal 91%"],
+            ),
+            (
+                ProductJourneyState::Theme {
+                    stage: ThemeJourneyStage::Catalog,
+                },
+                &["High Contrast", "v1.1.0", "UPDATE AVAILABLE", "Minimal Grid"],
+            ),
+            (
+                ProductJourneyState::Scraper {
+                    stage: ScraperJourneyStage::Queue,
+                },
+                &["Nebula Notes", "Mirror Museum", "Orbit Garden", "Signal Workshop"],
+            ),
+            (
+                ProductJourneyState::Diagnostics {
+                    page: DiagnosticPage::Root,
+                },
+                &["Firmware", "RAM", "Last crash", "Support bundle"],
+            ),
+            (
+                ProductJourneyState::Diagnostics {
+                    page: DiagnosticPage::SafeMode,
+                },
+                &["Network · DISABLED", "Third-party themes · DISABLED", "Background indexing · DISABLED", "Automatic game launch · DISABLED"],
+            ),
+        ];
+        for (state, required) in cases {
+            let labels = product_surface_rows(&state)
+                .into_iter()
+                .map(|row| row.label)
+                .collect::<Vec<_>>();
+            for text in required {
+                assert!(labels.iter().any(|label| label.contains(text)), "missing {text} in {labels:?}");
+            }
+        }
+
+        let queue = product_surface_rows(&ProductJourneyState::Scraper {
+            stage: ScraperJourneyStage::Queue,
+        });
+        let success = product_surface_rows(&ProductJourneyState::Scraper {
+            stage: ScraperJourneyStage::Success,
+        });
+        let queue_labels = queue.iter().map(|row| &row.label).collect::<Vec<_>>();
+        let success_labels = success.iter().map(|row| &row.label).collect::<Vec<_>>();
+        assert_ne!(queue_labels, success_labels);
+        assert!(success.iter().any(|row| row.label.contains("Found 2")));
+        assert!(success.iter().any(|row| row.label.contains("NOT FOUND")));
     }
 
     #[test]

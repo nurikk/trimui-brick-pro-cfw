@@ -440,8 +440,8 @@ def main():
     smoke_routes = [] if args.smoke_only else SMOKE_ROUTES
     target_routes = SMOKE_ROUTES if args.smoke_only else route_ids
     args.out.mkdir(parents=True)
-    first = one_pass(args.out / "run-1", target_routes, args.backend, args.display, smoke_routes)
     if args.smoke_only:
+        first = one_pass(args.out / "run-1", target_routes, args.backend, args.display, smoke_routes)
         result = {
             "schema": "controller-route-smoke/v1",
             "expectedIds": target_routes,

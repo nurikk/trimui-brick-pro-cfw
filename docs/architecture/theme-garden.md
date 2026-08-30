@@ -10,8 +10,11 @@ The `launcher-theme::ThemesCatalog` adapter accepts the project
 `screenshot`). IDs, three-part versions, HTTPS/GitHub locators, and local
 `fixture:<id>` locators are bounded and validated. `DirectCatalogTransport`
 performs bounded HTTPS GETs with curl (no shell and no downloaded-content
-execution); GitHub repository locators resolve to the repository's `main`
-branch raw files. A remote selection fetches `theme.json` and each declared
+execution). It rejects non-public literal, resolved, and connected addresses,
+pins each validated DNS result to prevent rebinding, disables proxies and curl
+configuration, and independently validates at most five redirects. GitHub
+repository locators resolve to the repository's `main` branch raw files. A
+remote selection fetches `theme.json` and each declared
 PNG, validates them through `launcher-theme`, and a local selection resolves a
 caller-provided fixture root through the same loader. `CatalogTransport`
 remains available for deterministic tests and alternate callers. Unknown fields, duplicate

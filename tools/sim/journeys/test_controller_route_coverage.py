@@ -63,6 +63,23 @@ class ControllerCoverageTests(unittest.TestCase):
         self.assertEqual(starts.call_count, 2)
         self.assertEqual(cleanups.call_count, 2)
 
+
+
+    def test_full_cli_uses_exactly_two_passes(self):
+        route_ids = ["route-a"]
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "coverage"
+            with mock.patch.object(
+                coverage, "load_graph", return_value={"routes": [{"id": route_ids[0]}]}
+            ), mock.patch.object(
+                coverage, "full_coverage", return_value={"passed": True}
+            ) as full_coverage, mock.patch.object(coverage, "one_pass") as one_pass, mock.patch(
+                "sys.argv", ["controller-route-coverage.py", "--out", str(out)]
+            ):
+                coverage.main()
+            full_coverage.assert_called_once_with(out, route_ids, "dummy", None)
+            one_pass.assert_not_called()
+
     def test_routes_share_one_pass_without_per_route_restart(self):
         starts = mock.Mock(return_value="container")
         cleanups = mock.Mock(return_value=[])

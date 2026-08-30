@@ -1,5 +1,5 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use device_profile::DeviceProfile;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
 pub const SCHEMA: &str = "https://example.invalid/trimui-display-profile-v1.schema.json";
@@ -389,17 +389,10 @@ impl Catalog {
 
 fn logical_output(device: &DeviceProfile) -> LogicalOutput {
     let (width, height) = device.logical_size();
-    LogicalOutput {
-        width,
-        height,
-    }
+    LogicalOutput { width, height }
 }
 
-fn validate_target(
-    device: &DeviceProfile,
-    target_sku: &str,
-    output: &LogicalOutput,
-) -> Result<()> {
+fn validate_target(device: &DeviceProfile, target_sku: &str, output: &LogicalOutput) -> Result<()> {
     if target_sku != device.target_sku() || output != &logical_output(device) {
         return Err(ContractError::new(
             "catalog target does not match the selected device profile",

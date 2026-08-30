@@ -164,7 +164,8 @@ fn schema_check() -> Result<(), String> {
             }
             let device = device_profile::DeviceProfile::from_json(BRICK_PRO_DEVICE)
                 .map_err(|error| format!("Brick Pro device profile: {error}"))?;
-            let typed_result = parse::<Catalog>(bytes).and_then(|catalog| catalog.validate(&device));
+            let typed_result =
+                parse::<Catalog>(bytes).and_then(|catalog| catalog.validate(&device));
             if typed_result.is_ok() {
                 return Err(format!("typed semantic negative accepted: {name}"));
             }

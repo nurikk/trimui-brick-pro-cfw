@@ -1575,7 +1575,14 @@ fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
         return;
     }
     draw_text(canvas, 64, 112, &screen.title, screen.palette.highlight, 3);
-    draw_text(canvas, 64, 158, &screen.selected_label, screen.palette.text, 2);
+    draw_text(
+        canvas,
+        64,
+        158,
+        &screen.selected_label,
+        screen.palette.text,
+        2,
+    );
     draw_text(canvas, 64, 208, &screen.focus, screen.palette.muted, 1);
     let media_bounds = match screen.route.as_str() {
         "games-details" | "games-favorite-toggle" => Some(Rect::new(650, 225, 300, 400)),
@@ -1585,9 +1592,10 @@ fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
     if let Some(bounds) = media_bounds {
         let media = if screen.route.starts_with("games-") {
             screen.selected_game.as_ref().and_then(|game| {
-                screen.game_media.iter().find(|media| {
-                    media.content_id == game.id && media.kind == "box-art"
-                })
+                screen
+                    .game_media
+                    .iter()
+                    .find(|media| media.content_id == game.id && media.kind == "box-art")
             })
         } else {
             screen.system_media.as_ref()
@@ -1610,7 +1618,11 @@ fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
             72,
             y,
             &item.label,
-            if item.selected { screen.palette.highlight } else { screen.palette.text },
+            if item.selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.text
+            },
             2,
         );
     }
@@ -1619,7 +1631,10 @@ fn draw_route_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
 fn draw_keyboard_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
     draw_text(canvas, 64, 70, &screen.title, screen.palette.highlight, 3);
     draw_text(canvas, 64, 112, &screen.focus, screen.palette.muted, 1);
-    let value = screen.menu.get(1).map_or("Editable value: |", |item| item.label.as_str());
+    let value = screen
+        .menu
+        .get(1)
+        .map_or("Editable value: |", |item| item.label.as_str());
     let field = Rect::new(64, 150, 896, 58);
     canvas.set_draw_color(rgb(screen.palette.surface));
     let _ = canvas.fill_rect(field);
@@ -1637,15 +1652,30 @@ fn draw_keyboard_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
                 let _ = canvas.fill_rect(bounds);
                 canvas.set_draw_color(rgb(screen.palette.accent));
                 let _ = canvas.draw_rect(bounds);
-                draw_text(canvas, bounds.x() + 24, bounds.y() + 18, label, screen.palette.text, 1);
+                draw_text(
+                    canvas,
+                    bounds.x() + 24,
+                    bounds.y() + 18,
+                    label,
+                    screen.palette.text,
+                    1,
+                );
             }
             continue;
         }
-        let offset = match row { 0 => 72, 1 => 112, _ => 192 };
+        let offset = match row {
+            0 => 72,
+            1 => 112,
+            _ => 192,
+        };
         for (column, key) in keys.chars().enumerate() {
             let selected = row == 0 && column == 0;
             let bounds = Rect::new(offset + column as i32 * 88, y, 68, 54);
-            canvas.set_draw_color(rgb(if selected { screen.palette.highlight } else { screen.palette.surface }));
+            canvas.set_draw_color(rgb(if selected {
+                screen.palette.highlight
+            } else {
+                screen.palette.surface
+            }));
             let _ = canvas.fill_rect(bounds);
             canvas.set_draw_color(rgb(screen.palette.accent));
             let _ = canvas.draw_rect(bounds);
@@ -1654,7 +1684,11 @@ fn draw_keyboard_surface(canvas: &mut Canvas<Window>, screen: &Screen) {
                 bounds.x() + 24,
                 bounds.y() + 15,
                 &key.to_string(),
-                if selected { screen.palette.background } else { screen.palette.text },
+                if selected {
+                    screen.palette.background
+                } else {
+                    screen.palette.text
+                },
                 2,
             );
         }

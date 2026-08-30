@@ -400,6 +400,7 @@ impl Platform for HostPlatform {
                     draw_art_book_next(&mut self.canvas, screen)?;
                 }
                 "settings" => draw_settings(&mut self.canvas, screen),
+                _ if is_product_surface(screen) => draw_route_surface(&mut self.canvas, screen),
                 route if route.starts_with("wifi-") => draw_wifi(&mut self.canvas, screen),
                 route if route.starts_with("scraper-") => draw_scraper(&mut self.canvas, screen),
                 "game-switcher" | "recovery" => {
@@ -454,6 +455,8 @@ impl Platform for HostPlatform {
                 draw_theme_garden(&mut self.canvas, screen)?;
             } else if screen.route == "settings" {
                 draw_settings(&mut self.canvas, screen);
+            } else if is_product_surface(screen) {
+                draw_route_surface(&mut self.canvas, screen);
             } else if screen.route.starts_with("wifi-") {
                 draw_wifi(&mut self.canvas, screen);
             } else if screen.route.starts_with("scraper-") {
@@ -1341,6 +1344,13 @@ fn parse_hex_color(value: &str) -> Option<[u8; 4]> {
         u8::from_str_radix(&value[5..7], 16).ok()?,
         255,
     ])
+}
+
+fn is_product_surface(screen: &Screen) -> bool {
+    screen
+        .menu
+        .first()
+        .is_some_and(|item| item.id.starts_with("product-"))
 }
 
 fn is_auxiliary_route(route: &str) -> bool {

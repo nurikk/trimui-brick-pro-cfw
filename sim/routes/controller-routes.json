@@ -84,8 +84,6 @@
         "down",
         "down",
         "down",
-        "down",
-        "down",
         "primary"
       ]
     },
@@ -103,7 +101,7 @@
       "from": "settings-root",
       "buttons": [
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -113,7 +111,7 @@
       "buttons": [
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -124,7 +122,7 @@
         "down",
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -136,7 +134,7 @@
         "down",
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -149,7 +147,7 @@
         "down",
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -163,7 +161,7 @@
         "down",
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -178,7 +176,7 @@
         "down",
         "down",
         "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -195,8 +193,7 @@
       "label": "Inline descriptor validation failure retaining the editor and prior committed value.",
       "from": "settings-input",
       "buttons": [
-        "primary",
-        "start"
+        "primary"
       ]
     },
     {
@@ -214,10 +211,7 @@
       "buttons": [
         "down",
         "down",
-        "primary",
-        "down",
-        "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -234,9 +228,7 @@
       "from": "wifi-scan",
       "buttons": [
         "down",
-        "down",
-        "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -252,8 +244,7 @@
       "label": "Selected known/saved network with reconnect and Forget actions.",
       "from": "wifi-scan",
       "buttons": [
-        "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -261,10 +252,6 @@
       "label": "Confirmation naming the saved network and the destructive Forget action.",
       "from": "wifi-saved-network",
       "buttons": [
-        "down",
-        "down",
-        "down",
-        "down",
         "primary"
       ]
     },
@@ -281,7 +268,7 @@
       "label": "Visible authentication/address progress after confirming credentials.",
       "from": "wifi-secure-password",
       "buttons": [
-        "start"
+        "primary"
       ]
     },
     {
@@ -338,8 +325,7 @@
       "label": "Invalid-theme recovery showing Safe Art Book fallback and route back to Theme Garden.",
       "from": "theme-garden-preview",
       "buttons": [
-        "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -416,10 +402,6 @@
         "down",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "primary",
         "primary"
       ]
     },
@@ -474,8 +456,7 @@
         "down",
         "down",
         "down",
-        "down",
-        "primary"
+        "down"
       ]
     },
     {
@@ -483,7 +464,6 @@
       "label": "Real power-off confirmation with A=orderly shutdown and B=cancel.",
       "from": "diagnostics",
       "buttons": [
-        "down",
         "down",
         "down",
         "down",
@@ -503,16 +483,23 @@
     {
       "id": "game-switcher-exit",
       "label": "Return-to-library result showing session closed and checkpoint available.",
-      "from": "game-switcher-autosave",
+      "from": "platform-nebula-launch",
       "buttons": [
+        "right",
         "secondary"
       ]
     },
     {
       "id": "game-switcher-list",
       "label": "Game Switcher list with the authored checkpoint selected.",
-      "from": "game-switcher-exit",
+      "from": "fresh-home",
       "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
         "primary"
       ]
     },
@@ -537,7 +524,6 @@
       "label": "Nebula Notes NES session frame 0 with stable nes LaunchRequest identity.",
       "from": "home-game-list",
       "buttons": [
-        "down",
         "primary"
       ]
     },
@@ -548,8 +534,8 @@
       "buttons": [
         "right",
         "select",
-        "secondary",
-        "down",
+        "primary",
+        "menu",
         "down",
         "down",
         "down",
@@ -557,14 +543,19 @@
         "down",
         "down",
         "primary",
+        "primary",
+        "primary",
         "primary"
       ]
     },
     {
       "id": "platform-mirror-launch",
       "label": "Mirror Museum PS1 session frame 0 with stable ps1 LaunchRequest identity.",
-      "from": "home-game-list",
+      "from": "fresh-home",
       "buttons": [
+        "primary",
+        "down",
+        "down",
         "primary"
       ]
     },
@@ -575,8 +566,8 @@
       "buttons": [
         "right",
         "select",
-        "secondary",
-        "down",
+        "primary",
+        "menu",
         "down",
         "down",
         "down",
@@ -584,14 +575,22 @@
         "down",
         "down",
         "primary",
+        "primary",
+        "primary",
         "primary"
       ]
     },
     {
       "id": "portmaster-catalog",
       "label": "Local signed PortMaster catalog showing Orbit Garden and Signal Workshop install state.",
-      "from": "home-systems",
+      "from": "fresh-home",
       "buttons": [
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
         "down",
         "primary"
       ]

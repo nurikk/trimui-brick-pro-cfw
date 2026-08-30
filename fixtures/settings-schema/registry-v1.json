@@ -24,6 +24,21 @@
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {
+      "id": "core.display.ui-size", "namespace": "core", "section": "display", "group": "screen", "order": 40,
+      "labelKey": "settings.display.uiSize.label", "descriptionKey": "settings.display.uiSize.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "automatic"}, "current": {"kind": "enum-single", "value": "automatic"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "automatic", "labelKey": "settings.display.uiSize.automatic"},
+        {"value": "compact", "labelKey": "settings.display.uiSize.compact"},
+        {"value": "comfortable", "labelKey": "settings.display.uiSize.comfortable"},
+        {"value": "large", "labelKey": "settings.display.uiSize.large"},
+        {"value": "extra-large", "labelKey": "settings.display.uiSize.extraLarge"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "user", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
       "id": "core.display.gamma", "namespace": "core", "section": "display", "group": "screen", "order": 20,
       "labelKey": "settings.display.gamma.label", "descriptionKey": "settings.display.gamma.description", "kind": "decimal",
       "default": {"kind": "decimal", "value": 1.0}, "current": {"kind": "decimal", "value": 1.2}, "pending": null,

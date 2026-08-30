@@ -84,6 +84,30 @@ fn run() -> Result<(), String> {
             return Err(format!("missing projected control kind: {kind:?}"));
         }
     }
+    let ui_size = control(&initial, "core.display.ui-size")?;
+    if ui_size.kind != FieldKind::EnumSingle {
+        return Err("UI size did not project as an enum".into());
+    }
+    let ui_size_options: Vec<_> = ui_size
+        .constraints
+        .as_ref()
+        .ok_or("UI size options missing")?
+        .options
+        .iter()
+        .map(|option| option.value.as_str())
+        .collect();
+    if ui_size_options
+        != [
+            "automatic",
+            "compact",
+            "comfortable",
+            "large",
+            "extra-large",
+        ]
+    {
+        return Err("UI size options are not the five named values".into());
+    }
+
     let synthetic = control(&initial, "core.system.synthetic-label")?;
     if synthetic.kind != FieldKind::Text
         || synthetic.label_key != "settings.synthetic.label"

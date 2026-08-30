@@ -1,0 +1,11 @@
+{
+  "deviceId": "ui-density-640-3-5",
+  "display": {
+    "expected": { "format": "rgba8888", "height": 480, "strideBytes": 2560, "width": 640 },
+    "orientation": "landscape",
+    "themeAspect": "4:3",
+    "physicalPanel": { "diagonalInches": 3.5 }
+  },
+  "schemaVersion": "1.0.0",
+  "targetSku": "UI-DENSITY-640-3-5"
+}

@@ -90,18 +90,18 @@ impl ThemeAspect {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-struct PhysicalPanel {
+pub struct PhysicalPanel {
     #[serde(rename = "activeWidthMm")]
-    active_width_mm: Option<f32>,
+    pub active_width_mm: Option<f32>,
     #[serde(rename = "activeHeightMm")]
-    active_height_mm: Option<f32>,
+    pub active_height_mm: Option<f32>,
     #[serde(rename = "diagonalInches")]
-    diagonal_inches: Option<f32>,
+    pub diagonal_inches: Option<f32>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeviceProfile {
     device_id: String,
     target_sku: String,
@@ -110,7 +110,10 @@ pub struct DeviceProfile {
     theme_aspect: &'static str,
     framebuffer_format: String,
     framebuffer_stride_bytes: u32,
+    physical_panel: Option<PhysicalPanel>,
 }
+
+impl Eq for DeviceProfile {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VirtualViewport {
@@ -181,7 +184,8 @@ impl DeviceProfile {
             ));
         }
         if let Some(panel) = display.physical_panel {
-            if panel.active_width_mm.is_some() != panel.active_height_mm.is_some()
+            if (panel.active_width_mm.is_some() != panel.active_height_mm.is_some()
+                || panel.active_width_mm.is_none() && panel.diagonal_inches.is_none())
                 || [
                     panel.active_width_mm,
                     panel.active_height_mm,
@@ -204,6 +208,7 @@ impl DeviceProfile {
             theme_aspect: display.theme_aspect.as_str(),
             framebuffer_format: display.expected.format,
             framebuffer_stride_bytes: display.expected.stride_bytes,
+            physical_panel: display.physical_panel,
         })
     }
 
@@ -235,6 +240,30 @@ impl DeviceProfile {
     pub const fn framebuffer_stride_bytes(&self) -> u32 {
         self.framebuffer_stride_bytes
     }
+
+    pub const fn physical_panel(&self) -> Option<PhysicalPanel> {
+        self.physical_panel
+    }
+
+    pub fn automatic_scale_percent(&self) -> u16 {
+        let Some(panel) = self.physical_panel else {
+            return 120;
+        };
+        let ppi = if let (Some(width_mm), Some(height_mm)) =
+            (panel.active_width_mm, panel.active_height_mm)
+        {
+            let width_inches = f64::from(width_mm) / 25.4;
+            let height_inches = f64::from(height_mm) / 25.4;
+            f64::from(self.logical_width).hypot(f64::from(self.logical_height))
+                / width_inches.hypot(height_inches)
+        } else if let Some(diagonal_inches) = panel.diagonal_inches {
+            f64::from(self.logical_width).hypot(f64::from(self.logical_height))
+                / f64::from(diagonal_inches)
+        } else {
+            return 120;
+        };
+        ((ppi / 160.0 * 100.0).clamp(100.0, 150.0) / 5.0).round() as u16 * 5
+    }
 }
 
 fn valid_device_id(value: &str, label: &str) -> Result<(), DeviceProfileError> {
@@ -253,6 +282,85 @@ fn valid_device_id(value: &str, label: &str) -> Result<(), DeviceProfileError> {
 #[cfg(test)]
 mod tests {
     use super::DeviceProfile;
+
+    #[test]
+    fn automatic_scale_uses_physical_density() {
+        for (width, height, diagonal, expected) in [
+            (1024, 768, 4.0, 150),
+            (1024, 768, 7.0, 115),
+            (640, 480, 3.5, 145),
+        ] {
+            let json = format!(
+                r#"{{"schemaVersion":"1.0.0","deviceId":"density-test","targetSku":"DENSITY","display":{{"expected":{{"format":"rgba8888","height":{height},"strideBytes":{stride},"width":{width}}},"orientation":"landscape","themeAspect":"4:3","physicalPanel":{{"diagonalInches":{diagonal}}}}}}}"#,
+                stride = width * 4
+            );
+            let profile = DeviceProfile::from_json(json.as_bytes()).unwrap();
+            assert_eq!(profile.automatic_scale_percent(), expected);
+        }
+    }
+
+    #[test]
+    fn automatic_scale_falls_back_and_accepts_active_dimensions() {
+        let missing = DeviceProfile::from_json(include_bytes!(
+            "../../../config/platform/tg4040/compatibility.json"
+        ))
+        .unwrap();
+        assert_eq!(missing.automatic_scale_percent(), 120);
+
+        let json = br#"{"schemaVersion":"1.0.0","deviceId":"density-mm","targetSku":"DENSITY","display":{"expected":{"format":"rgba8888","height":768,"strideBytes":4096,"width":1024},"orientation":"landscape","themeAspect":"4:3","physicalPanel":{"activeWidthMm":81.28,"activeHeightMm":60.96}}}"#;
+        let profile = DeviceProfile::from_json(json).unwrap();
+        assert_eq!(profile.automatic_scale_percent(), 150);
+        assert!(profile.physical_panel().is_some());
+    }
+
+    #[test]
+    fn density_fixture_profiles_cover_diagonal_and_active_dimensions() {
+        for (source, expected) in [
+            (
+                include_bytes!("../../../fixtures/platform/ui-density-1024-4/compatibility.json")
+                    .as_slice(),
+                150,
+            ),
+            (
+                include_bytes!("../../../fixtures/platform/ui-density-1024-7/compatibility.json")
+                    .as_slice(),
+                115,
+            ),
+            (
+                include_bytes!("../../../fixtures/platform/ui-density-640-3-5/compatibility.json")
+                    .as_slice(),
+                145,
+            ),
+            (
+                include_bytes!(
+                    "../../../fixtures/platform/ui-density-active-mm/compatibility.json"
+                )
+                .as_slice(),
+                150,
+            ),
+        ] {
+            let profile = DeviceProfile::from_json(source).unwrap();
+            assert_eq!(profile.automatic_scale_percent(), expected);
+            assert!(profile.physical_panel().is_some());
+        }
+    }
+
+    #[test]
+    fn seven_inch_active_dimensions_match_diagonal_density() {
+        let profile = DeviceProfile::from_json(
+            br#"{
+                "deviceId":"ui-density-active-mm-7",
+                "display":{
+                    "expected":{"format":"rgba8888","height":768,"strideBytes":4096,"width":1024},
+                    "orientation":"landscape","themeAspect":"4:3",
+                    "physicalPanel":{"activeWidthMm":142.24,"activeHeightMm":106.68}
+                },
+                "schemaVersion":"1.0.0","targetSku":"UI-DENSITY-ACTIVE-MM-7"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(profile.automatic_scale_percent(), 115);
+    }
 
     #[test]
     fn brick_pro_profile_remains_tg4040_four_three() {

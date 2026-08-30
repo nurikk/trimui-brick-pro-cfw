@@ -10,11 +10,11 @@
     "identity": { "const": "Artbook" },
     "preferences": {
       "type": "object", "additionalProperties": false,
-      "required": ["artworkMode", "metadataVisibility", "fontScale", "colorScheme"],
+      "required": ["artworkMode", "metadataVisibility", "uiSize", "colorScheme"],
       "properties": {
         "artworkMode": { "enum": ["large", "compact", "off"] },
         "metadataVisibility": { "enum": ["full", "compact", "hidden"] },
-        "fontScale": { "enum": ["small", "standard", "large"] },
+        "uiSize": { "enum": ["automatic", "compact", "comfortable", "large", "extra-large"] },
         "colorScheme": { "enum": ["ink", "paper", "high-contrast"] }
       }
     },

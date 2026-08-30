@@ -1,7 +1,7 @@
 use ui_model::{
-    reduce, Action, AmbiguousChoice, FontScale, GameId, MenuCommand, ModalState,
-    PlatformCapabilities, PreferenceChange, Route, ScraperAction, SsidEntryMode, UiState,
-    WifiAction, WifiRoute, WifiStatus, MAX_INPUT_CHARS,
+    reduce, Action, AmbiguousChoice, GameId, MenuCommand, ModalState, PlatformCapabilities,
+    PreferenceChange, Route, ScraperAction, SsidEntryMode, UiSize, UiState, WifiAction, WifiRoute,
+    WifiStatus, MAX_INPUT_CHARS,
 };
 
 const FIXTURES: &[(&str, &str)] = &[
@@ -132,16 +132,16 @@ fn check_journey() {
     let state = reduce(
         &state,
         Action::SetSearchQuery {
-            query: "Puzzle".into(),
+            query: "Nebula".into(),
         },
     );
     assert_eq!(state.route, Route::Search);
     assert_eq!(state.menu.entries.len(), 1);
     let state = reduce(
         &state,
-        Action::SetPreference(PreferenceChange::FontScale(FontScale::Large)),
+        Action::SetPreference(PreferenceChange::UiSize(UiSize::Large)),
     );
-    assert_eq!(state.preferences.font_scale, FontScale::Large);
+    assert_eq!(state.preferences.ui_size, UiSize::Large);
 
     let state = reduce(
         &state,

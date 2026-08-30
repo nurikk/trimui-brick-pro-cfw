@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import collections
+import hashlib
 import json
 import os
 import pathlib
+import shutil
 import struct
 import subprocess
+import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -43,6 +46,13 @@ RUN_SPECIFIC_KEYS = {
     "screenshotFilename",
     "screenshot",
     "output",
+}
+
+REQUIRED_INSPECTIONS = {
+    "games-search-keyboard": "Editable query:",
+    "settings-display": "Current value:",
+    "games-details": "Rating:",
+    "theme-garden-preview": "Live 4:3 preview",
 }
 
 
@@ -186,6 +196,194 @@ def png_dimensions(path):
     return struct.unpack(">II", header[16:24])
 
 
+
+def sha256_file(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def decoded_frame_hash(path, at_seconds=None):
+    command = ["ffmpeg", "-v", "error"]
+    if at_seconds is not None:
+        command.extend(["-ss", str(at_seconds)])
+    command.extend(["-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
+    try:
+        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=CONTROL_TIMEOUT)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(f"cannot decode inspected frame: {path}") from error
+    if len(result.stdout) != 1024 * 768 * 4:
+        raise RuntimeError(f"decoded frame is not 1024x768 RGBA: {path}")
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def recording_path(recording, relative):
+    if not isinstance(relative, str) or pathlib.PurePosixPath(relative).is_absolute():
+        raise RuntimeError(f"recording artifact path is not bundle-relative: {relative!r}")
+    path = (recording / relative).resolve()
+    try:
+        path.relative_to(recording.resolve())
+    except ValueError as error:
+        raise RuntimeError(f"recording artifact escapes bundle: {relative}") from error
+    return path
+
+
+def copy_log(run_dir, recording, root):
+    source = run_dir / "logs/launcher.jsonl"
+    try:
+        records = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"invalid chronological launcher log: {source}") from error
+    sequence = -1
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("sequence"), int) or not isinstance(record.get("atMs"), int):
+            raise RuntimeError(f"launcher log lacks chronology: {source}")
+        if record["sequence"] <= sequence or record["atMs"] < 0:
+            raise RuntimeError(f"launcher log is not chronological: {source}")
+        sequence = record["sequence"]
+    relative = f"logs/{root}/launcher.jsonl"
+    destination = recording_path(recording, relative)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    return relative
+
+
+def encode_video(recording, pngs):
+    video = recording / "action-recording.mp4"
+    with tempfile.NamedTemporaryFile("w", dir=recording, suffix=".ffconcat", delete=False, encoding="utf-8") as stream:
+        listing = pathlib.Path(stream.name)
+        for png in pngs:
+            if "'" in str(png):
+                raise RuntimeError(f"unsupported quote in recording path: {png}")
+            stream.write(f"file '{png.resolve()}'\nduration 1\n")
+        stream.write(f"file '{pngs[-1].resolve()}'\n")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing, "-r", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", video],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("cannot encode continuous H.264/yuv420p action recording") from error
+    finally:
+        listing.unlink(missing_ok=True)
+    try:
+        probe = json.loads(subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,pix_fmt,width,height", "-of", "json", video],
+            check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=CONTROL_TIMEOUT,
+        ).stdout)
+        stream = probe["streams"][0]
+        subprocess.run(["ffmpeg", "-v", "error", "-i", video, "-f", "null", "-"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+    except (OSError, KeyError, IndexError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("cannot decode continuous action recording") from error
+    if stream != {"codec_name": "h264", "pix_fmt": "yuv420p", "width": 1024, "height": 768}:
+        raise RuntimeError(f"action recording has wrong stream format: {stream}")
+    return {
+        "path": video.name,
+        "sha256": sha256_file(video),
+        "codec": "h264",
+        "pixelFormat": "yuv420p",
+        "dimensions": {"width": 1024, "height": 768},
+        "inspectedFrames": [
+            {"position": position, "atSeconds": second, "decodedFrameSha256": decoded_frame_hash(video, second)}
+            for position, second in (("first", 0), ("middle", len(pngs) // 2), ("last", len(pngs) - 1))
+        ],
+    }
+
+
+def validate_action_manifest(recording, manifest, expected):
+    checkpoints = manifest.get("checkpoints")
+    if manifest.get("schema") != "trimui-action-recording/v1" or not isinstance(checkpoints, list) or len(checkpoints) != len(expected):
+        raise RuntimeError("action manifest checkpoint count is invalid")
+    timestamp = -1
+    for checkpoint, (root, ordinal, route_id) in zip(checkpoints, expected):
+        if checkpoint.get("freshRoot") != root or checkpoint.get("ordinal") != ordinal or checkpoint.get("routeId") != route_id:
+            raise RuntimeError(f"action manifest route identity mismatch: {checkpoint}")
+        if not isinstance(checkpoint.get("recordedAtMs"), int) or checkpoint["recordedAtMs"] <= timestamp:
+            raise RuntimeError("action manifest timestamps are not strictly chronological")
+        timestamp = checkpoint["recordedAtMs"]
+        artifact = checkpoint.get("artifact", {})
+        png, state = recording_path(recording, artifact.get("png")), recording_path(recording, artifact.get("state"))
+        if checkpoint.get("dimensions") != {"width": 1024, "height": 768} or not png.is_file() or not state.is_file() or png_dimensions(png) != (1024, 768):
+            raise RuntimeError(f"action manifest artifact is missing or malformed: {artifact}")
+        if sha256_file(png) != checkpoint.get("pngSha256") or decoded_frame_hash(png) != checkpoint.get("inspectedFrameSha256"):
+            raise RuntimeError(f"action manifest artifact hash mismatch: {artifact}")
+        screen = json_file(state).get("presentation")
+        if not isinstance(screen, dict) or not isinstance(screen.get("menu"), list):
+            raise RuntimeError(f"action manifest semantic pair is invalid: {artifact}")
+    return len(checkpoints)
+
+
+def write_action_recording(out, route_ids, first, second):
+    recording = out / "recording"
+    recording.mkdir()
+    expected, checkpoints, pngs = [], [], []
+    start_ms = time.time_ns() // 1_000_000
+    for run_number, result in enumerate((first, second), 1):
+        root = f"run-{run_number}"
+        copy_log(out / root, recording, root)
+        for checkpoint in result["checkpoints"]:
+            ordinal, route_id = checkpoint["ordinal"], checkpoint["routeId"]
+            expected.append((root, ordinal, route_id))
+            stem = f"{ordinal:02d}-{route_id}"
+            png_relative, state_relative = f"screenshots/{root}/{stem}.png", f"screenshots/{root}/{stem}.json"
+            source_png, source_state = out / root / checkpoint["png"], out / root / checkpoint["state"]
+            png, state = recording_path(recording, png_relative), recording_path(recording, state_relative)
+            png.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_png, png)
+            shutil.copyfile(source_state, state)
+            pngs.append(png)
+            checkpoints.append({
+                "freshRoot": root,
+                "ordinal": ordinal,
+                "routeId": route_id,
+                "recordedAtMs": start_ms + len(checkpoints),
+                "artifact": {"png": png_relative, "state": state_relative},
+                "dimensions": {"width": 1024, "height": 768},
+                "pngSha256": sha256_file(png),
+                "inspectedFrameSha256": decoded_frame_hash(png),
+            })
+    video = encode_video(recording, pngs)
+    route_inspections = {}
+    for route_id, expected_label in REQUIRED_INSPECTIONS.items():
+        checkpoint = next((item for item in checkpoints if item["freshRoot"] == "run-1" and item["routeId"] == route_id), None)
+        if checkpoint is None:
+            raise RuntimeError(f"required inspected route is absent: {route_id}")
+        screen = json_file(recording_path(recording, checkpoint["artifact"]["state"])).get("presentation", {})
+        if not any(expected_label in str(item.get("label")) for item in screen.get("menu", []) if isinstance(item, dict)):
+            raise RuntimeError(f"required inspected surface is absent: {route_id}")
+        route_inspections[route_id] = {
+            "png": checkpoint["artifact"]["png"],
+            "state": checkpoint["artifact"]["state"],
+            "expectedLabel": expected_label,
+            "decodedFrameSha256": checkpoint["inspectedFrameSha256"],
+        }
+    evidence = {}
+    for name, route_id in {
+        "package": "portmaster-install",
+        "session": "platform-nebula-restored",
+        "protectedData": "portmaster-uninstall-protected-data",
+    }.items():
+        pairs = [
+            item["artifact"]
+            for item in checkpoints
+            if item["routeId"] == route_id and item["ordinal"] > len(SMOKE_ROUTES)
+        ]
+        if len(pairs) != 2:
+            raise RuntimeError(f"required {name} evidence is absent: {route_id}")
+        evidence[name] = {"routeId": route_id, "artifacts": pairs}
+    manifest = {
+        "schema": "trimui-action-recording/v1",
+        "checkpointCount": len(checkpoints),
+        "routeCount": len(route_ids),
+        "checkpoints": checkpoints,
+        "logs": [f"logs/run-{number}/launcher.jsonl" for number in (1, 2)],
+        "evidence": evidence,
+        "inspections": {"routes": route_inspections, "video": video},
+    }
+    manifest_path = recording / "action-manifest.json"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    validate_action_manifest(recording, manifest, expected)
+    return manifest_path, len(checkpoints)
+
+
 def start(run_dir, backend, display):
     command = [
         SIM,
@@ -297,7 +495,7 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
     route_paths = paths()
     container = None
     shutdown_requested = False
-    visits, screenshots, screenshot_states = [], {}, {}
+    visits, screenshots, screenshot_states, checkpoints = [], {}, {}, []
     pass_deadline = time.monotonic() + PASS_TIMEOUT
     failure = None
     cleanup_errors = []
@@ -349,6 +547,7 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
             labels = [item.get("label") for item in screen["menu"] if isinstance(item, dict)]
             if route_id in labels or any("Controller route navigator" in str(label) for label in labels):
                 raise RuntimeError(f"{route_id} rendered route metadata instead of product rows")
+            checkpoints.append({"ordinal": ordinal, "routeId": route_id, "png": artifact["png"], "state": artifact["state"]})
             if record:
                 screenshots[route_id] = artifact["png"]
                 screenshot_states[route_id] = normalize(screen)
@@ -397,6 +596,7 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
         "eventVisits": event_visits(run_dir),
         "screenshots": screenshots,
         "screenshotStates": screenshot_states,
+        "checkpoints": checkpoints,
         "semantic": {
             "visitedIds": visits,
             "eventVisits": event_visits(run_dir),
@@ -417,6 +617,7 @@ def full_coverage(out, route_ids, backend, display):
         "semanticRun2": second["semantic"],
         "simulatorStarts": 2,
         "cleanups": 2,
+        "passes": [first, second],
         "passed": first["semantic"] == second["semantic"] and first["passed"] and second["passed"],
     }
 
@@ -453,6 +654,8 @@ def main():
         }
     else:
         result = full_coverage(args.out, route_ids, args.backend, args.display)
+        manifest_path, checkpoint_count = write_action_recording(args.out, route_ids, *result.pop("passes"))
+        result["actionRecording"] = {"manifest": manifest_path.relative_to(args.out).as_posix(), "checkpointCount": checkpoint_count}
     (args.out / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not result["passed"]:
         raise SystemExit("controller route coverage failed")

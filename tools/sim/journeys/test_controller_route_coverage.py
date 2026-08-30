@@ -72,8 +72,10 @@ class ControllerCoverageTests(unittest.TestCase):
             with mock.patch.object(
                 coverage, "load_graph", return_value={"routes": [{"id": route_ids[0]}]}
             ), mock.patch.object(
-                coverage, "full_coverage", return_value={"passed": True}
-            ) as full_coverage, mock.patch.object(coverage, "one_pass") as one_pass, mock.patch(
+                coverage, "full_coverage", return_value={"passed": True, "passes": [mock.sentinel.first, mock.sentinel.second]}
+            ) as full_coverage, mock.patch.object(
+                coverage, "write_action_recording", return_value=(out / "recording/action-manifest.json", 138)
+            ), mock.patch.object(coverage, "one_pass") as one_pass, mock.patch(
                 "sys.argv", ["controller-route-coverage.py", "--out", str(out)]
             ):
                 coverage.main()
@@ -126,6 +128,31 @@ class ControllerCoverageTests(unittest.TestCase):
         changed = dict(second)
         changed["screenshots"] = {"home-systems": {"png": "run-2/other.png", "route": "games"}}
         self.assertNotEqual(coverage.normalize(first), coverage.normalize(changed))
+
+
+    def test_manifest_validator_requires_real_bundle_relative_pair(self):
+        with tempfile.TemporaryDirectory() as temp:
+            recording = Path(temp)
+            png = recording / "screenshots/run-1/01-home-systems.png"
+            state = recording / "screenshots/run-1/01-home-systems.json"
+            png.parent.mkdir(parents=True)
+            png.write_bytes(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR" + (1024).to_bytes(4, "big") + (768).to_bytes(4, "big"))
+            state.write_text('{"presentation":{"menu":[]}}', encoding="utf-8")
+            manifest = {
+                "schema": "trimui-action-recording/v1",
+                "checkpoints": [{
+                    "freshRoot": "run-1", "ordinal": 1, "routeId": "home-systems", "recordedAtMs": 1,
+                    "artifact": {"png": "screenshots/run-1/01-home-systems.png", "state": "screenshots/run-1/01-home-systems.json"},
+                    "dimensions": {"width": 1024, "height": 768},
+                    "pngSha256": coverage.sha256_file(png), "inspectedFrameSha256": "decoded",
+                }],
+            }
+            with mock.patch.object(coverage, "decoded_frame_hash", return_value="decoded"):
+                self.assertEqual(coverage.validate_action_manifest(recording, manifest, [("run-1", 1, "home-systems")]), 1)
+            png.unlink()
+            with mock.patch.object(coverage, "decoded_frame_hash", return_value="decoded"):
+                with self.assertRaisesRegex(RuntimeError, "missing or malformed"):
+                    coverage.validate_action_manifest(recording, manifest, [("run-1", 1, "home-systems")])
 
     def test_smoke_failure_prevents_exhaustive_routes(self):
         calls = []

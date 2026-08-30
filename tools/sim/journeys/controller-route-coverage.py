@@ -41,6 +41,7 @@ RUN_SPECIFIC_KEYS = {
     "artifact",
     "screenshotPath",
     "screenshotFilename",
+    "screenshot",
     "output",
 }
 

@@ -521,6 +521,7 @@
       "label": "Nebula Notes NES session frame 0 with stable nes LaunchRequest identity.",
       "from": "home-game-list",
       "buttons": [
+        "right",
         "primary"
       ]
     },

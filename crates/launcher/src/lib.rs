@@ -446,6 +446,31 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         screen.menu = product_surface_rows(&state.journey);
         screen.title = screen.menu.first().map_or_else(|| "PRODUCT".into(), |row| row.label.clone());
         screen.selected_label = screen.menu.iter().find(|row| row.selected).map_or_else(|| "Ready".into(), |row| row.label.clone());
+        match &state.journey {
+            ProductJourneyState::Games { surface: GameSurface::Details | GameSurface::Favorite } => {
+                screen.selected_game = launcher_presentation::catalog_game_details(
+                    "nebula-nes",
+                    "Nebula Notes",
+                    "nes",
+                );
+                screen.game_media = launcher_presentation::media_for_content("nebula-nes");
+                screen.focus = "Launch action selected".into();
+            }
+            ProductJourneyState::Games { surface: GameSurface::SearchKeyboard } => {
+                screen.focus = "Keyboard focus: Q · text cursor after Nebula".into();
+            }
+            ProductJourneyState::Wifi { view: WifiJourneyView::Password } => {
+                screen.focus = "Keyboard focus: Q · masked cursor at 12".into();
+            }
+            ProductJourneyState::Wifi { view: WifiJourneyView::ManualSsid } => {
+                screen.focus = "Keyboard focus: Q · text cursor after Home-Lab".into();
+            }
+            ProductJourneyState::Theme { stage: ThemeJourneyStage::Preview } => {
+                screen.system_media = launcher_presentation::media_for_system("portmaster");
+                screen.focus = "Preview canvas · Apply selected".into();
+            }
+            _ => {}
+        }
     }
     Ok(screen)
 }
@@ -457,15 +482,15 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
         Systems { selected } => ["Game library", "Nebula Notes (NES)", "Mirror Museum (PS1)", "PortMaster"].into_iter().enumerate().map(|(index, row)| format!("{}{}", if index == *selected as usize { "> " } else { "  " }, row)).collect(),
         LongList { group, at_boundary } => vec![format!("Alphabet group: {}", char::from(b'A' + *group)), "1,402 games indexed".into(), if *at_boundary { "First/last group boundary".into() } else { "L1/R1: change group".into() }],
         Games { surface: GameSurface::List } => vec!["Nebula Notes".into(), "Mirror Museum".into(), "Artwork · rating · release date".into()],
-        Games { surface: GameSurface::Details } => vec!["Nebula Notes".into(), "Rating: 4.5 · 1990".into(), "A: Launch · Select: favourite".into()],
+        Games { surface: GameSurface::Details } => vec!["Nebula Notes".into(), "Chart a quiet starship through forgotten constellations.".into(), "Rating: 92% · Release date: 1994-04-12".into(), "[A] Launch game · Select: favourite".into()],
         Games { surface: GameSurface::Favorite } => vec!["Nebula Notes".into(), "Favourite: ON".into(), "Saved to favorites".into()],
         Games { surface: GameSurface::Favorites } => vec!["Favorites".into(), "Nebula Notes".into(), "Select: remove favourite".into()],
-        Games { surface: GameSurface::SearchKeyboard } => vec!["Search games".into(), "Query: Nebula".into(), "Start: search · B: cancel".into()],
+        Games { surface: GameSurface::SearchKeyboard } => vec!["Search games".into(), "Editable query: Nebula|".into(), "[Q] W E R T Y U I O P".into(), " A  S D F G H J K L".into(), " Z  X C V B N M  Space  Backspace".into(), "Start: search · B: Cancel".into()],
         Games { surface: GameSurface::SearchResults } => vec!["Results for Nebula".into(), "Nebula Notes".into(), "1 match".into()],
         Settings { section: SettingsSection::Root, .. } => ["Display", "Input", "Audio", "Power", "Library", "Scraper", "Theme", "System"].into_iter().map(str::to_owned).collect(),
         Settings { section: _, pending: Some(change), .. } => vec![format!("{}: {} → {}", change.name, change.old, change.new), "A: Apply".into(), "B: Cancel".into()],
         Settings { section, validation: Some(reason), .. } => vec![format!("{:?}", section), format!("Validation: {reason}"), "Committed value retained".into()],
-        Settings { section, .. } => vec![format!("{:?} settings", section), "Selected control: enabled".into(), "Current value · help · pending badge".into()],
+        Settings { section, .. } => settings_form_rows(*section),
         Wifi { view } => match view {
             WifiJourneyView::Scan => vec![
                 "Wi-Fi".into(),
@@ -483,7 +508,10 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             ],
             WifiJourneyView::Password => vec![
                 "Home Synthetic · WPA2".into(),
-                "Network key · masked".into(),
+                "Network key: ••••••••••••| (12 characters)".into(),
+                "[Q] W E R T Y U I O P".into(),
+                " A  S D F G H J K L".into(),
+                " Z  X C V B N M  Space  Backspace".into(),
                 "Action: Connect".into(),
                 "Action: Cancel".into(),
             ],
@@ -493,8 +521,11 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
                 "Action: Enter network name".into(),
             ],
             WifiJourneyView::ManualSsid => vec![
-                "Manual SSID · bounded text input".into(),
-                "Network name · required".into(),
+                "Manual SSID · bounded text input (1–32 bytes)".into(),
+                "Network name: Home-Lab|".into(),
+                "[Q] W E R T Y U I O P".into(),
+                " A  S D F G H J K L".into(),
+                " Z  X C V B N M  Space  Backspace".into(),
                 "Action: Continue · Cancel".into(),
             ],
             WifiJourneyView::Saved => vec![
@@ -534,7 +565,7 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             ],
             ThemeJourneyStage::Preview => vec![
                 "High Contrast · v1.1.0".into(),
-                "Preview screenshot · TG4040 compatible".into(),
+                "Live 4:3 preview canvas · generated library artwork".into(),
                 "Status: update available".into(),
                 "Actions: Apply · Back".into(),
             ],
@@ -665,6 +696,28 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
         ShutdownConfirm => vec!["Power off".into(), "A: orderly shutdown".into(), "B: cancel".into()],
     };
     rows.into_iter().enumerate().map(|(index, label)| launcher_presentation::ScreenItem { id: format!("product-{index}"), label, selected: index == 0, enabled: true }).collect()
+}
+
+fn settings_form_rows(section: SettingsSection) -> Vec<String> {
+    let (title, control, value, help, apply, badge) = match section {
+        SettingsSection::Display => ("Display settings", "Scaling mode", "Aspect", "Preserve the source aspect ratio without cropping.", "Apply mode: immediate after validation", "Pending changes: 0"),
+        SettingsSection::Input => ("Input settings", "Controller profile", "TG4040 default", "Maps Menu, face buttons, shoulders, and directional controls.", "Apply mode: restart launcher", "Badge: RESTART LAUNCHER · Pending changes: 0"),
+        SettingsSection::Audio => ("Audio settings", "Master volume", "72%", "Sets launcher and game-session output volume.", "Apply mode: immediate", "Pending changes: 0"),
+        SettingsSection::Power => ("Power settings", "Idle sleep timeout", "10 minutes", "Autosave the active session before bounded sleep.", "Apply mode: immediate", "Pending changes: 0"),
+        SettingsSection::Library => ("Library settings", "Show hidden games", "Off", "Include entries marked hidden in generated catalog views.", "Apply mode: rescan library", "Badge: RESCAN REQUIRED · Pending changes: 0"),
+        SettingsSection::Scraper => ("Scraper settings", "Parallel workers", "2", "Limits concurrent metadata requests for the active provider.", "Apply mode: next scrape", "Pending changes: 0"),
+        SettingsSection::Theme => ("Theme settings", "Active theme", "Art Book Next", "Choose a validated 4:3 launcher theme from Theme Garden.", "Apply mode: restart launcher", "Badge: RESTART LAUNCHER · Pending changes: 0"),
+        SettingsSection::System => ("System settings", "Wi-Fi", "Enabled · disconnected", "Scan, connect, or forget generated simulator networks.", "Apply mode: external operation", "Pending changes: 0"),
+        SettingsSection::Root => unreachable!("settings root has a section list"),
+    };
+    vec![
+        title.into(),
+        format!("> {control}"),
+        format!("Current value: {value}"),
+        format!("Help: {help}"),
+        apply.into(),
+        badge.into(),
+    ]
 }
 
 fn sync_view(status: save_sync::SyncStatus) -> launcher_presentation::SaveSyncView {
@@ -2504,6 +2557,52 @@ mod tests {
         assert_ne!(queue_labels, success_labels);
         assert!(success.iter().any(|row| row.label.contains("Found 2")));
         assert!(success.iter().any(|row| row.label.contains("NOT FOUND")));
+    }
+
+    #[test]
+    fn controller_reached_forms_expose_concrete_visual_content() {
+        let (mut state, catalog, _broker_root) =
+            test_state(Route::Library, ui_model::Route::Home);
+
+        for button in [Button::Primary, Button::Primary, Button::Right] {
+            reduce_product_state(&mut state.journey, button);
+        }
+        let details = screen_for_state(&state, &catalog).expect("game details screen");
+        assert_eq!(details.route, "games-details");
+        assert_eq!(details.selected_game.as_ref().map(|game| game.id.as_str()), Some("nebula-nes"));
+        assert!(details.game_media.iter().any(|media| {
+            media.content_id == "nebula-nes" && media.kind == "box-art"
+        }));
+        assert!(details.menu.iter().any(|row| row.label.contains("forgotten constellations")));
+        assert!(details.menu.iter().any(|row| row.label.contains("Release date")));
+
+        state.journey = ProductJourneyState::default();
+        for button in [Button::Down, Button::Down, Button::Down, Button::Primary] {
+            reduce_product_state(&mut state.journey, button);
+        }
+        let search = screen_for_state(&state, &catalog).expect("search keyboard screen");
+        assert_eq!(search.route, "games-search-keyboard");
+        assert!(search.focus.contains("Keyboard focus: Q"));
+        assert!(search.menu.iter().any(|row| row.label.contains("Nebula|")));
+        assert!(search.menu.iter().any(|row| row.label.contains("Backspace")));
+
+        state.journey = ProductJourneyState::Settings {
+            section: SettingsSection::Library,
+            pending: None,
+            validation: None,
+        };
+        let settings = screen_for_state(&state, &catalog).expect("settings form screen");
+        for required in ["Current value: Off", "Help:", "Apply mode: rescan library", "RESCAN REQUIRED"] {
+            assert!(settings.menu.iter().any(|row| row.label.contains(required)), "missing {required}");
+        }
+
+        state.journey = ProductJourneyState::Theme {
+            stage: ThemeJourneyStage::Preview,
+        };
+        let preview = screen_for_state(&state, &catalog).expect("theme preview screen");
+        assert_eq!(preview.route, "theme-garden-preview");
+        assert!(preview.system_media.is_some());
+        assert!(preview.focus.contains("Preview canvas"));
     }
 
     #[test]

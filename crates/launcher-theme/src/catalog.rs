@@ -1,4 +1,9 @@
-use std::process::{Command, Stdio};
+use std::{
+    collections::BTreeSet,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs},
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -15,48 +20,202 @@ pub trait CatalogTransport {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DirectCatalogTransport;
 
+const MAX_REDIRECTS: usize = 5;
+const MAX_RESOLVED_ADDRESSES: usize = 16;
+const REQUEST_DEADLINE: Duration = Duration::from_secs(30);
+const CURL_METADATA_MARKER: &str = "\nbrickpro-curl-metadata:";
+
+#[derive(Debug)]
+struct CurlResponse {
+    body: Vec<u8>,
+    status: u16,
+    redirect: String,
+    remote_ip: IpAddr,
+}
+
 impl CatalogTransport for DirectCatalogTransport {
     fn fetch(&self, locator: &str, max_bytes: usize) -> Result<Vec<u8>, ThemeError> {
-        if !safe_locator(locator) || locator.starts_with("fixture:") {
-            return Err(ThemeError::new(
-                Reason::InvalidPath,
-                "catalog URL is not safe",
-            ));
-        }
-        let output = Command::new("curl")
-            .args([
-                "--fail",
-                "--silent",
-                "--show-error",
-                "--location",
-                "--proto",
-                "=https",
-                "--tlsv1.2",
-                "--connect-timeout",
-                "10",
-                "--max-time",
-                "30",
-                "--max-filesize",
-                &max_bytes.to_string(),
-                locator,
-            ])
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|error| ThemeError::new(Reason::Io, format!("curl unavailable: {error}")))?;
-        if !output.status.success() {
-            return Err(ThemeError::new(
-                Reason::Io,
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
-        if output.stdout.len() > max_bytes {
-            return Err(ThemeError::new(
-                Reason::BudgetAsset,
-                "download exceeds configured byte budget",
-            ));
-        }
-        Ok(output.stdout)
+        fetch_https(locator, max_bytes, resolve_host, run_curl)
     }
+}
+
+fn fetch_https<R, F>(
+    locator: &str,
+    max_bytes: usize,
+    resolve: R,
+    mut request: F,
+) -> Result<Vec<u8>, ThemeError>
+where
+    R: Fn(&str) -> Result<Vec<IpAddr>, ThemeError>,
+    F: FnMut(&str, &str, &[IpAddr], usize, u64) -> Result<CurlResponse, ThemeError>,
+{
+    let deadline = Instant::now() + REQUEST_DEADLINE;
+    let mut locator = locator.to_string();
+    let mut transferred = 0usize;
+
+    for redirects in 0..=MAX_REDIRECTS {
+        let host = https_host(&locator).ok_or_else(unsafe_url_error)?;
+        let addresses = resolve(host)?;
+        if addresses.is_empty()
+            || addresses.len() > MAX_RESOLVED_ADDRESSES
+            || addresses.iter().any(|address| unsafe_ip(*address))
+        {
+            return Err(unsafe_url_error());
+        }
+        let remaining_bytes = max_bytes
+            .checked_sub(transferred)
+            .ok_or_else(download_budget_error)?;
+        let remaining_time = deadline
+            .checked_duration_since(Instant::now())
+            .ok_or_else(|| ThemeError::new(Reason::Io, "catalog request timed out"))?;
+        let response = request(
+            &locator,
+            host,
+            &addresses,
+            remaining_bytes,
+            remaining_time.as_secs().max(1),
+        )?;
+        if unsafe_ip(response.remote_ip) || !addresses.contains(&response.remote_ip) {
+            return Err(unsafe_url_error());
+        }
+        transferred = transferred
+            .checked_add(response.body.len())
+            .filter(|total| *total <= max_bytes)
+            .ok_or_else(download_budget_error)?;
+
+        if (200..300).contains(&response.status) {
+            return Ok(response.body);
+        }
+        if (300..400).contains(&response.status) && !response.redirect.is_empty() {
+            if redirects == MAX_REDIRECTS {
+                return Err(ThemeError::new(
+                    Reason::InvalidPath,
+                    "catalog redirect limit exceeded",
+                ));
+            }
+            if https_host(&response.redirect).is_none() {
+                return Err(unsafe_url_error());
+            }
+            locator = response.redirect;
+            continue;
+        }
+        return Err(ThemeError::new(
+            Reason::Io,
+            format!("catalog request returned HTTP {}", response.status),
+        ));
+    }
+    unreachable!("redirect loop returns at its configured bound")
+}
+
+fn resolve_host(host: &str) -> Result<Vec<IpAddr>, ThemeError> {
+    if let Ok(address) = host.parse() {
+        return Ok(vec![address]);
+    }
+    let addresses = (host, 443)
+        .to_socket_addrs()
+        .map_err(|error| ThemeError::new(Reason::Io, format!("catalog DNS failed: {error}")))?
+        .map(|address| address.ip())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    Ok(addresses)
+}
+
+fn run_curl(
+    locator: &str,
+    host: &str,
+    addresses: &[IpAddr],
+    max_bytes: usize,
+    max_seconds: u64,
+) -> Result<CurlResponse, ThemeError> {
+    let mut command = Command::new("curl");
+    command.args([
+        "--disable",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--tlsv1.2",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        &max_seconds.to_string(),
+        "--max-filesize",
+        &max_bytes.to_string(),
+        "--max-redirs",
+        "0",
+        "--noproxy",
+        "*",
+        "--write-out",
+        &format!("{CURL_METADATA_MARKER}%{{http_code}}\\n%{{redirect_url}}\\n%{{remote_ip}}"),
+    ]);
+    if host.parse::<IpAddr>().is_err() {
+        let pinned = addresses
+            .iter()
+            .map(|address| match address {
+                IpAddr::V4(address) => address.to_string(),
+                IpAddr::V6(address) => format!("[{address}]"),
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        command.args(["--resolve", &format!("{host}:443:{pinned}")]);
+    }
+    let output = command
+        .arg(locator)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| ThemeError::new(Reason::Io, format!("curl unavailable: {error}")))?;
+    if !output.status.success() {
+        return Err(ThemeError::new(
+            Reason::Io,
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
+    }
+    parse_curl_response(output.stdout, max_bytes)
+}
+
+fn parse_curl_response(mut output: Vec<u8>, max_bytes: usize) -> Result<CurlResponse, ThemeError> {
+    let marker = CURL_METADATA_MARKER.as_bytes();
+    let marker_start = output
+        .windows(marker.len())
+        .rposition(|window| window == marker)
+        .ok_or_else(|| ThemeError::new(Reason::Io, "curl response metadata missing"))?;
+    let metadata = String::from_utf8(output.split_off(marker_start + marker.len()))
+        .map_err(|_| ThemeError::new(Reason::Io, "curl response metadata is malformed"))?;
+    output.truncate(marker_start);
+    if output.len() > max_bytes {
+        return Err(download_budget_error());
+    }
+    let mut lines = metadata.lines();
+    let status = lines
+        .next()
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| ThemeError::new(Reason::Io, "curl HTTP status is malformed"))?;
+    let redirect = lines.next().unwrap_or_default().to_string();
+    let remote_ip = lines
+        .next()
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| ThemeError::new(Reason::Io, "curl connected address is malformed"))?;
+    Ok(CurlResponse {
+        body: output,
+        status,
+        redirect,
+        remote_ip,
+    })
+}
+
+fn unsafe_url_error() -> ThemeError {
+    ThemeError::new(Reason::InvalidPath, "catalog URL is not safe")
+}
+
+fn download_budget_error() -> ThemeError {
+    ThemeError::new(
+        Reason::BudgetAsset,
+        "download exceeds configured byte budget",
+    )
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -359,17 +518,244 @@ fn safe_locator(value: &str) -> bool {
     if let Some(id) = value.strip_prefix("fixture:") {
         return identifier(id);
     }
-    if !value.starts_with("https://") || !value.is_ascii() || value.contains(['\\', '@', '?', '#'])
+    https_host(value).is_some()
+}
+
+fn https_host(value: &str) -> Option<&str> {
+    if value.len() > 2048
+        || !value.starts_with("https://")
+        || !value.is_ascii()
+        || value
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte.is_ascii_whitespace())
+        || value.contains(['\\', '@', '?', '#'])
     {
-        return false;
+        return None;
     }
     let authority = value[8..].split('/').next().unwrap_or_default();
-    !authority.is_empty()
-        && authority.len() <= 253
-        && authority.split('.').all(|part| {
+    let host = if let Some(authority) = authority.strip_prefix('[') {
+        authority.strip_suffix(']')?
+    } else {
+        if authority.contains(':') {
+            return None;
+        }
+        authority
+    };
+    if host.is_empty() || host.len() > 253 || host.eq_ignore_ascii_case("localhost") {
+        return None;
+    }
+    if let Ok(address) = host.parse::<IpAddr>() {
+        return (!unsafe_ip(address)).then_some(host);
+    }
+    host.split('.')
+        .all(|part| {
             !part.is_empty()
+                && part.len() <= 63
+                && !part.starts_with('-')
+                && !part.ends_with('-')
                 && part
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
         })
+        .then_some(host)
+}
+
+fn unsafe_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            let [first, second, third, _] = address.octets();
+            address.is_private()
+                || address.is_loopback()
+                || address.is_link_local()
+                || address.is_unspecified()
+                || address.is_multicast()
+                || address == Ipv4Addr::BROADCAST
+                || first == 0
+                || (first == 100 && (64..=127).contains(&second))
+                || (first == 192 && second == 0 && third == 0)
+                || (first == 192 && second == 0 && third == 2)
+                || (first == 192 && second == 88 && third == 99)
+                || (first == 198 && (second == 18 || second == 19))
+                || (first == 198 && second == 51 && third == 100)
+                || (first == 203 && second == 0 && third == 113)
+                || first >= 224
+        }
+        IpAddr::V6(address) => {
+            let segments = address.segments();
+            address.is_loopback()
+                || address.is_unspecified()
+                || address.is_multicast()
+                || address.is_unique_local()
+                || address.is_unicast_link_local()
+                || address == Ipv6Addr::LOCALHOST
+                || segments[0] & 0xe000 != 0x2000
+                || segments[..2] == [0x2001, 0x0db8]
+        }
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use std::{cell::Cell, net::IpAddr};
+
+    use super::*;
+
+    fn ip(value: &str) -> IpAddr {
+        match value.parse() {
+            Ok(address) => address,
+            Err(error) => panic!("invalid test address {value}: {error}"),
+        }
+    }
+
+    fn response(status: u16, redirect: &str, remote_ip: &str) -> CurlResponse {
+        CurlResponse {
+            body: b"theme".to_vec(),
+            status,
+            redirect: redirect.to_string(),
+            remote_ip: ip(remote_ip),
+        }
+    }
+
+    #[test]
+    fn unsafe_literal_addresses_reject_before_resolution_or_connection() {
+        for locator in [
+            "https://127.0.0.1/theme.json",
+            "https://10.0.0.1/theme.json",
+            "https://169.254.169.254/theme.json",
+            "https://192.168.1.1/theme.json",
+            "https://[::1]/theme.json",
+            "https://[fc00::1]/theme.json",
+            "https://[fe80::1]/theme.json",
+            "https://[::ffff:127.0.0.1]/theme.json",
+        ] {
+            let error = fetch_https(
+                locator,
+                32,
+                |_| -> Result<Vec<IpAddr>, ThemeError> { panic!("must not resolve") },
+                |_, _, _, _, _| -> Result<CurlResponse, ThemeError> { panic!("must not connect") },
+            )
+            .unwrap_err();
+            assert_eq!(error.reason, Reason::InvalidPath, "{locator}");
+        }
+    }
+
+    #[test]
+    fn unsafe_only_and_mixed_dns_reject_before_connection() {
+        for addresses in [vec![ip("127.0.0.1")], vec![ip("8.8.8.8"), ip("10.0.0.1")]] {
+            let connected = Cell::new(false);
+            let error = fetch_https(
+                "https://themes.example/theme.json",
+                32,
+                |_| Ok(addresses.clone()),
+                |_, _, _, _, _| {
+                    connected.set(true);
+                    Ok(response(200, "", "8.8.8.8"))
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.reason, Reason::InvalidPath);
+            assert!(!connected.get());
+        }
+    }
+
+    #[test]
+    fn connected_address_must_be_public_and_pinned_by_resolution() {
+        for remote_ip in ["127.0.0.1", "1.1.1.1"] {
+            let error = fetch_https(
+                "https://themes.example/theme.json",
+                32,
+                |_| Ok(vec![ip("8.8.8.8")]),
+                |_, _, _, _, _| Ok(response(200, "", remote_ip)),
+            )
+            .unwrap_err();
+            assert_eq!(error.reason, Reason::InvalidPath);
+        }
+    }
+
+    #[test]
+    fn every_redirect_is_revalidated_and_redirects_are_bounded() {
+        let requests = Cell::new(0);
+        let error = fetch_https(
+            "https://themes.example/theme.json",
+            64,
+            |_| Ok(vec![ip("8.8.8.8")]),
+            |_, _, _, _, _| {
+                requests.set(requests.get() + 1);
+                Ok(response(302, "https://127.0.0.1/private", "8.8.8.8"))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.reason, Reason::InvalidPath);
+        assert_eq!(requests.get(), 1);
+
+        requests.set(0);
+        let resolutions = Cell::new(0);
+        let error = fetch_https(
+            "https://themes.example/theme.json",
+            64,
+            |host| {
+                resolutions.set(resolutions.get() + 1);
+                Ok(vec![if host == "themes.example" {
+                    ip("8.8.8.8")
+                } else {
+                    ip("10.0.0.1")
+                }])
+            },
+            |_, _, _, _, _| {
+                requests.set(requests.get() + 1);
+                Ok(response(
+                    302,
+                    "https://private.example/theme.json",
+                    "8.8.8.8",
+                ))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.reason, Reason::InvalidPath);
+        assert_eq!(resolutions.get(), 2);
+        assert_eq!(requests.get(), 1);
+
+        requests.set(0);
+        let error = fetch_https(
+            "https://themes.example/0",
+            64,
+            |_| Ok(vec![ip("8.8.8.8")]),
+            |_, _, _, _, _| {
+                let next = requests.get() + 1;
+                requests.set(next);
+                Ok(response(
+                    302,
+                    &format!("https://redirect{next}.example/{next}"),
+                    "8.8.8.8",
+                ))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.reason, Reason::InvalidPath);
+        assert_eq!(requests.get(), MAX_REDIRECTS + 1);
+    }
+
+    #[test]
+    fn supported_github_and_batocera_https_flows_remain_valid() -> Result<(), ThemeError> {
+        for locator in [
+            "https://github.com/project/theme",
+            "https://raw.githubusercontent.com/project/theme/main/theme.json",
+            "https://batocera.org/upgrades/themes/Theme.jpg",
+        ] {
+            assert!(safe_locator(locator), "{locator}");
+        }
+        let body = fetch_https(
+            "https://github.com/project/theme",
+            32,
+            |_| Ok(vec![ip("8.8.8.8")]),
+            |locator, host, addresses, _, _| {
+                assert_eq!(locator, "https://github.com/project/theme");
+                assert_eq!(host, "github.com");
+                assert_eq!(addresses, [ip("8.8.8.8")]);
+                Ok(response(200, "", "8.8.8.8"))
+            },
+        )?;
+        assert_eq!(body, b"theme");
+        Ok(())
+    }
 }

@@ -608,6 +608,19 @@
       "label": "Real Orbit Garden session; D-pad interaction changes marker, B exits/autosaves, relaunch restores marker.",
       "from": "portmaster-install",
       "buttons": [
+        "primary",
+        "right",
+        "secondary",
+        "menu",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary",
+        "primary",
+        "primary",
         "primary"
       ]
     },
@@ -617,6 +630,18 @@
       "from": "portmaster-catalog",
       "buttons": [
         "down",
+        "right",
+        "secondary",
+        "menu",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "down",
+        "primary",
+        "primary",
+        "primary",
         "primary"
       ]
     },

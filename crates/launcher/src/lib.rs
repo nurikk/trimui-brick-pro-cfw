@@ -2125,6 +2125,31 @@ mod tests {
         (state, catalog, broker_root)
     }
 
+    fn press_controller_button(
+        state: &mut AppState,
+        catalog: &UiCatalog,
+        launch_catalog: &LaunchCatalog,
+        evidence: &Evidence,
+        log: &mut EventLog,
+        platform: &mut TestPlatform,
+        button: Button,
+    ) {
+        handle_button(
+            platform,
+            evidence,
+            log,
+            catalog,
+            launch_catalog,
+            state,
+            ButtonEvent {
+                at_ms: 1,
+                button,
+                action: ButtonAction::Press,
+            },
+            "tg4040",
+        )
+        .expect("controller input");
+    }
 
     #[test]
     fn product_routes_are_distinct_and_controller_reachable() {
@@ -2153,6 +2178,175 @@ mod tests {
         assert_eq!(canonical_route_id(&journey), Some("game-switcher-autosave"));
     }
 
+    #[test]
+    fn portmaster_demos_interact_exit_and_restore_through_controller_input() {
+        for content in [DemoContent::Orbit, DemoContent::Signal] {
+            let (mut state, catalog, broker_root) =
+                test_state(Route::Library, ui_model::Route::Home);
+            state.journey = ProductJourneyState::Portmaster {
+                page: match content {
+                    DemoContent::Orbit => PortmasterPage::Install,
+                    DemoContent::Signal => PortmasterPage::Catalog,
+                    _ => unreachable!(),
+                },
+            };
+            let evidence_root = broker_root.join("evidence");
+            let evidence = Evidence::new(&evidence_root).expect("evidence");
+            let mut log = EventLog::new(&evidence.root, "test-run").expect("event log");
+            let launch_catalog =
+                launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
+            let mut platform = TestPlatform;
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                match content {
+                    DemoContent::Orbit => Button::Primary,
+                    DemoContent::Signal => Button::Down,
+                    _ => unreachable!(),
+                },
+            );
+            if matches!(content, DemoContent::Signal) {
+                press_controller_button(
+                    &mut state,
+                    &catalog,
+                    &launch_catalog,
+                    &evidence,
+                    &mut log,
+                    &mut platform,
+                    Button::Primary,
+                );
+            }
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                Button::Right,
+            );
+            assert!(matches!(
+                state.journey,
+                ProductJourneyState::Session { marker: 1, .. }
+            ));
+            let interaction_screen = screen_for_state(&state, &catalog).expect("interaction screen");
+            assert!(interaction_screen
+                .menu
+                .iter()
+                .any(|row| row.label == "Interaction marker: 1"));
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                Button::Secondary,
+            );
+            assert!(state.active_session.is_none());
+            assert!(state
+                .last_session
+                .as_ref()
+                .is_some_and(|result| result.resume_published));
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                Button::Menu,
+            );
+            for _ in 0..6 {
+                press_controller_button(
+                    &mut state,
+                    &catalog,
+                    &launch_catalog,
+                    &evidence,
+                    &mut log,
+                    &mut platform,
+                    Button::Down,
+                );
+            }
+            for _ in 0..4 {
+                press_controller_button(
+                    &mut state,
+                    &catalog,
+                    &launch_catalog,
+                    &evidence,
+                    &mut log,
+                    &mut platform,
+                    Button::Primary,
+                );
+            }
+            assert!(
+                matches!(
+                    state.journey,
+                    ProductJourneyState::Session {
+                        marker: 1,
+                        restored: true,
+                        ..
+                    }
+                ),
+                "{content:?} ended at {:?}",
+                state.journey
+            );
+            let screen = screen_for_state(&state, &catalog).expect("restored screen");
+            assert!(screen
+                .menu
+                .iter()
+                .any(|row| row.label == "Restored interaction marker: 1"));
+            drop(log);
+            let events = fs::read_to_string(evidence.root.join("logs/launcher.jsonl"))
+                .expect("controller event log");
+            assert!(events.contains("\"event\":\"session_checkpoint\""));
+            assert!(events.contains("\"marker\":1"));
+            drop(evidence);
+            drop(platform);
+            drop(state);
+            fs::remove_dir_all(broker_root).expect("test broker cleanup");
+        }
+    }
+
+    #[test]
+    fn portmaster_uninstall_preserves_orbit_data_and_signal_installation() {
+        let (mut state, catalog, broker_root) = test_state(Route::Library, ui_model::Route::Home);
+        state.journey = ProductJourneyState::Portmaster {
+            page: PortmasterPage::UninstallProtected,
+        };
+        apply_portmaster_route(&mut state, "portmaster-uninstall-protected-data")
+            .expect("uninstall route");
+        let orbit_state = state
+            .package_root
+            .join(".brickpro/package-state/orbit-garden.json");
+        let signal_state = state
+            .package_root
+            .join(".brickpro/package-state/signal-workshop.json");
+        let protected_save = state
+            .package_root
+            .join("data/saves/orbit-garden/protected.sav");
+        assert!(!orbit_state.exists());
+        assert!(signal_state.is_file());
+        assert_eq!(
+            fs::read(protected_save).expect("protected save"),
+            b"protected Orbit Garden save"
+        );
+        let screen = screen_for_state(&state, &catalog).expect("uninstall screen");
+        assert!(screen
+            .menu
+            .iter()
+            .any(|row| row.label == "Protected save retained"));
+        assert!(screen
+            .menu
+            .iter()
+            .any(|row| row.label == "Signal Workshop remains installed"));
+        drop(state);
+        fs::remove_dir_all(broker_root).expect("test broker cleanup");
+    }
 
     #[test]
     fn direct_games_actions_leave_session_surface() {
@@ -3306,7 +3500,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
         Diagnostics { page } => match button { Button::Down => Some(Diagnostics { page: next_diagnostic(*page) }), Button::Primary => Some(match page { DiagnosticPage::Root => Diagnostics { page: DiagnosticPage::SafeMode }, DiagnosticPage::LowBattery => ShutdownConfirm, _ => Diagnostics { page: *page } }), Button::Secondary => Some(Home { selected: HomeItem::Recovery }), _ => None },
         Session { content, marker, .. } => match button { Button::Up | Button::Down | Button::Left | Button::Right => { *marker = marker.saturating_add(1); return false; }, Button::Select => Some(GameSwitcher { page: SwitcherPage::Autosave, content: *content, marker: *marker }), Button::Secondary => Some(GameSwitcher { page: SwitcherPage::Exit, content: *content, marker: *marker }), _ => None },
         GameSwitcher { page, content, marker } => match button { Button::Primary => Some(match page { SwitcherPage::Autosave => GameSwitcher { page: SwitcherPage::Exit, content: *content, marker: *marker }, SwitcherPage::Exit => Home { selected: HomeItem::Switcher }, SwitcherPage::List => GameSwitcher { page: SwitcherPage::Resume, content: *content, marker: *marker }, SwitcherPage::Resume => GameSwitcher { page: SwitcherPage::Restoration, content: *content, marker: *marker }, SwitcherPage::Restoration => Session { content: *content, marker: *marker, restored: true } }), Button::Secondary => Some(Home { selected: HomeItem::Switcher }), _ => None },
-        Portmaster { page } => match button { Button::Primary => Some(match page { PortmasterPage::Catalog => Portmaster { page: PortmasterPage::Install }, PortmasterPage::Install => Session { content: DemoContent::Orbit, marker: 0, restored: false }, PortmasterPage::UninstallProtected => Home { selected: HomeItem::Portmaster } }), Button::Down if matches!(page, PortmasterPage::Catalog) => Some(Session { content: DemoContent::Signal, marker: 0, restored: false }), Button::Select if matches!(page, PortmasterPage::Catalog) => Some(Portmaster { page: PortmasterPage::UninstallProtected }), Button::Secondary => Some(Home { selected: HomeItem::Portmaster }), _ => None },
+        Portmaster { page } => match button { Button::Primary => Some(match page { PortmasterPage::Catalog => Portmaster { page: PortmasterPage::Install }, PortmasterPage::Install => Session { content: DemoContent::Orbit, marker: 0, restored: false }, PortmasterPage::UninstallProtected => Portmaster { page: PortmasterPage::UninstallProtected } }), Button::Down if matches!(page, PortmasterPage::Catalog) => Some(Session { content: DemoContent::Signal, marker: 0, restored: false }), Button::Select if matches!(page, PortmasterPage::Catalog) => Some(Portmaster { page: PortmasterPage::UninstallProtected }), Button::Secondary => Some(Home { selected: HomeItem::Portmaster }), _ => None },
         ShutdownConfirm => match button { Button::Secondary => Some(Home { selected: HomeItem::Recovery }), _ => None },
     };
     if let Some(next) = next { *state = next; true } else { false }

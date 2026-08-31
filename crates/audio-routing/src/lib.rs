@@ -10,6 +10,12 @@ use serde::{Deserialize, Serialize};
 pub const TARGET_SKU: &str = "TG4040";
 pub const DEFAULT_SAMPLE_RATE_HZ: u32 = 48_000;
 pub const STATE_SCHEMA: &str = "brickpro-audio-route/v1";
+pub const MIN_SAMPLE_RATE_HZ: u32 = 8_000;
+pub const MAX_SAMPLE_RATE_HZ: u32 = 192_000;
+
+pub const fn valid_sample_rate_hz(sample_rate_hz: u32) -> bool {
+    sample_rate_hz >= MIN_SAMPLE_RATE_HZ && sample_rate_hz <= MAX_SAMPLE_RATE_HZ
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -40,7 +46,7 @@ pub struct AlsaBuffer {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct RouteSnapshot {
     requested_sink: Sink,
     volumes: [u8; 2],
@@ -67,7 +73,7 @@ pub enum AudioDiagnostics {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct RouteManager {
     available: BTreeSet<Sink>,
     current_sink: Sink,
@@ -128,11 +134,16 @@ impl RouteManager {
         self.refresh_route()
     }
 
-    pub fn begin_stream(&mut self, sample_rate_hz: u32) {
-        self.sample_rate_hz = sample_rate_hz.max(1);
-        // The amp is live before the stream opens so its first samples are not clipped.
-        self.speaker_amp_enabled = self.current_sink == Sink::Speaker;
-        self.stream_active = true;
+    pub fn begin_stream(&mut self, sample_rate_hz: u32) -> bool {
+        if valid_sample_rate_hz(sample_rate_hz) {
+            self.sample_rate_hz = sample_rate_hz;
+            // The amp is live before the stream opens so its first samples are not clipped.
+            self.speaker_amp_enabled = self.current_sink == Sink::Speaker;
+            self.stream_active = true;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn end_stream(&mut self) {
@@ -204,6 +215,8 @@ impl RouteManager {
         self.refresh_route();
         if snapshot.stream_active {
             self.begin_stream(snapshot.sample_rate_hz);
+        } else {
+            self.end_stream();
         }
         true
     }
@@ -222,6 +235,28 @@ impl RouteManager {
         self.speaker_amp_enabled = self.stream_active && next == Sink::Speaker;
         changed
     }
+
+    fn valid(&self) -> bool {
+        valid_sample_rate_hz(self.sample_rate_hz)
+            && self.volumes.contains_key(&Sink::Speaker)
+            && self.volumes.contains_key(&Sink::Jack)
+            && self.volumes.values().all(|volume| *volume <= 100)
+            && self.available.contains(&Sink::Speaker)
+            && self.available.contains(&self.current_sink)
+            && self.speaker_amp_enabled
+                == (self.stream_active && self.current_sink == Sink::Speaker)
+            && self.session_snapshot.as_ref().is_none_or(|snapshot| {
+                valid_sample_rate_hz(snapshot.sample_rate_hz)
+                    && snapshot.volumes.iter().all(|volume| *volume <= 100)
+            })
+            && self
+                .system_suspend_snapshot
+                .as_ref()
+                .is_none_or(|snapshot| {
+                    valid_sample_rate_hz(snapshot.sample_rate_hz)
+                        && snapshot.volumes.iter().all(|volume| *volume <= 100)
+                })
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -232,23 +267,34 @@ struct StoredRoute {
 }
 
 pub fn load_route(path: &Path) -> Result<RouteManager, String> {
-    let bytes = fs::read(path).map_err(|_| "audio-state-unavailable".to_string())?;
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err("audio-state-missing".into());
+        }
+        Err(_) => return Err("audio-state-unavailable".into()),
+    };
     let stored: StoredRoute =
         serde_json::from_slice(&bytes).map_err(|_| "audio-state-invalid".to_string())?;
-    if stored.schema != STATE_SCHEMA
-        || stored.route.sample_rate_hz == 0
-        || !stored.route.volumes.contains_key(&Sink::Speaker)
-        || !stored.route.volumes.contains_key(&Sink::Jack)
-        || stored.route.volumes.values().any(|volume| *volume > 100)
-        || !stored.route.available.contains(&Sink::Speaker)
-        || !stored.route.available.contains(&stored.route.current_sink)
-    {
-        return Err("audio-state-invalid".into());
+    if stored.schema == STATE_SCHEMA && stored.route.valid() {
+        Ok(stored.route)
+    } else {
+        Err("audio-state-invalid".into())
     }
-    Ok(stored.route)
+}
+
+pub fn load_route_or_default(path: &Path) -> Result<RouteManager, String> {
+    match load_route(path) {
+        Err(error) if error == "audio-state-missing" => Ok(RouteManager::default()),
+        result => result,
+    }
 }
 
 pub fn save_route(path: &Path, route: &RouteManager) -> Result<(), String> {
+    route
+        .valid()
+        .then_some(())
+        .ok_or_else(|| "audio-state-invalid".to_string())?;
     let parent = path
         .parent()
         .ok_or_else(|| "audio-state-write-failed".to_string())?;

@@ -12,11 +12,12 @@ use sdl2::{
 };
 use serde::Deserialize;
 use sim_platform_contract::{
-    battery::BatteryHealth, AudioState, BatteryState, Button, ButtonAction, ButtonEvent,
-    DisplayState, HallCalibrationState, HardwareChanges, HardwareDomain, HardwareState, InputState,
-    LedState as PlatformLedState, Platform, PlatformCapabilities, PlatformError, PlatformIdentity,
-    PlatformResult, PlatformSnapshot, PlatformState, PowerState, RadioState, RadiosState,
-    RumbleState, Screen, StorageMode, SuspendResult, SuspendState, UsbRole, UsbState,
+    battery::BatteryHealth, tg4040::Tg4040State, AudioState, BatteryState, Button, ButtonAction,
+    ButtonEvent, DisplayState, HallCalibrationState, HardwareChanges, HardwareDomain,
+    HardwareState, InputState, LedState as PlatformLedState, Platform, PlatformCapabilities,
+    PlatformError, PlatformIdentity, PlatformResult, PlatformSnapshot, PlatformState, PowerState,
+    RadioState, RadiosState, RumbleState, Screen, StorageMode, SuspendResult, SuspendState,
+    UsbRole, UsbState,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -249,6 +250,7 @@ pub struct HostPlatform {
     initial_splash_pending: bool,
     automatic_scale_percent: u16,
     event_pump: EventPump,
+    tg4040: Option<Tg4040State>,
 }
 
 impl HostPlatform {
@@ -261,6 +263,9 @@ impl HostPlatform {
         let profile: Profile = serde_json::from_slice(&bytes).map_err(backend_error)?;
         let device =
             device_profile::DeviceProfile::from_path(device_profile_path).map_err(backend_error)?;
+        let tg4040 = device
+            .tg4040_capabilities()
+            .map(|_| Tg4040State::source_derived());
         let viewport = device.virtual_viewport();
         if profile.contract_version != "1.0.0" {
             return Err(PlatformError::Invalid {
@@ -401,6 +406,7 @@ impl HostPlatform {
             initial_splash_pending: true,
             automatic_scale_percent: device.automatic_scale_percent(),
             event_pump,
+            tg4040,
         })
     }
 
@@ -423,6 +429,23 @@ impl Platform for HostPlatform {
 
     fn capabilities(&self) -> PlatformCapabilities {
         PlatformCapabilities::all(sim_platform_contract::CapabilityStatus::Supported)
+    }
+
+    fn tg4040_state(&self) -> PlatformResult<Tg4040State> {
+        self.tg4040.clone().ok_or_else(|| {
+            PlatformError::unsupported(HardwareDomain::Leds, "read TG4040 capability state")
+        })
+    }
+
+    fn set_tg4040_state(&mut self, state: Tg4040State) -> PlatformResult<()> {
+        if self.tg4040.is_none() {
+            return Err(PlatformError::unsupported(
+                HardwareDomain::Leds,
+                "set TG4040 capability state",
+            ));
+        }
+        self.tg4040 = Some(state);
+        Ok(())
     }
 
     fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>> {

@@ -24,8 +24,17 @@ struct CompatibilityDocument {
     #[serde(default, rename = "hardwareRevision")]
     hardware_revision: Option<String>,
     display: CompatibilityDisplay,
+    #[serde(default)]
+    hardware: Option<CompatibilityHardware>,
     #[serde(flatten)]
     _other: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompatibilityHardware {
+    #[serde(rename = "capabilityProfile")]
+    capability_profile: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -103,6 +112,11 @@ pub struct PhysicalPanel {
     pub diagonal_inches: Option<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Tg4040CapabilityProfile {
+    SourceDerivedV111,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeviceProfile {
     device_id: String,
@@ -114,6 +128,7 @@ pub struct DeviceProfile {
     framebuffer_format: String,
     framebuffer_stride_bytes: u32,
     physical_panel: Option<PhysicalPanel>,
+    tg4040_capabilities: Option<Tg4040CapabilityProfile>,
 }
 
 impl Eq for DeviceProfile {}
@@ -150,6 +165,28 @@ impl DeviceProfile {
         {
             return Err(DeviceProfileError("targetSku is invalid".into()));
         }
+        let tg4040_capabilities = match document.hardware.as_ref() {
+            Some(hardware) if document.device_id == "tg4040" && document.target_sku == "TG4040" => {
+                if hardware.capability_profile != "tg4040-v1.1.1-source-derived" {
+                    return Err(DeviceProfileError(
+                        "unsupported TG4040 capability profile".into(),
+                    ));
+                }
+                Some(Tg4040CapabilityProfile::SourceDerivedV111)
+            }
+            Some(_) => {
+                return Err(DeviceProfileError(
+                    "hardware capabilities require TG4040".into(),
+                ))
+            }
+            None if document.device_id == "tg4040" || document.target_sku == "TG4040" => {
+                return Err(DeviceProfileError(
+                    "TG4040 capability profile is required".into(),
+                ));
+            }
+            None => None,
+        };
+
         let display = document.display;
         if display.expected.width == 0 {
             return Err(DeviceProfileError("display width must be positive".into()));
@@ -222,6 +259,7 @@ impl DeviceProfile {
             framebuffer_format: display.expected.format,
             framebuffer_stride_bytes: display.expected.stride_bytes,
             physical_panel: display.physical_panel,
+            tg4040_capabilities,
         })
     }
 
@@ -259,6 +297,10 @@ impl DeviceProfile {
 
     pub const fn physical_panel(&self) -> Option<PhysicalPanel> {
         self.physical_panel
+    }
+
+    pub const fn tg4040_capabilities(&self) -> Option<Tg4040CapabilityProfile> {
+        self.tg4040_capabilities
     }
 
     pub fn automatic_scale_percent(&self) -> u16 {

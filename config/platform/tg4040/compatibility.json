@@ -30,6 +30,9 @@
     ],
     "status": "synthetic-contract-only"
   },
+  "hardware": {
+    "capabilityProfile": "tg4040-v1.1.1-source-derived"
+  },
   "realDevice": {
     "activationEnabled": false,
     "approvedFingerprints": [],

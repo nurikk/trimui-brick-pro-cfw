@@ -66,42 +66,46 @@ pub fn plan(
         )
         .collect(),
         cwd: activation.package_root,
-        env: vec![
-            (
-                "PORTMASTER_RUNTIME_ROOT".to_string(),
-                activation.runtime_root.display().to_string(),
-            ),
-            (
-                "PORTMASTER_RUNTIME_VERSION".to_string(),
-                activation.runtime.runtime_version,
-            ),
-            (
-                "PORTMASTER_LIBRARY_PATH".to_string(),
-                library_root.display().to_string(),
-            ),
-            (
-                "LD_LIBRARY_PATH".to_string(),
-                library_root.display().to_string(),
-            ),
-            ("HOME".to_string(), writable_root.display().to_string()),
-            (
-                "XDG_DATA_HOME".to_string(),
-                writable_root.display().to_string(),
-            ),
-            (
-                "XDG_CONFIG_HOME".to_string(),
-                paths
-                    .state
-                    .parent()
-                    .unwrap_or(writable_root)
-                    .display()
-                    .to_string(),
-            ),
-            (
-                "PORTMASTER_IMPORTS".to_string(),
-                user_paths.imports.display().to_string(),
-            ),
-        ],
+        env: {
+            let mut env = super::input_environment(request, "portmaster")?;
+            env.extend([
+                (
+                    "PORTMASTER_RUNTIME_ROOT".to_string(),
+                    activation.runtime_root.display().to_string(),
+                ),
+                (
+                    "PORTMASTER_RUNTIME_VERSION".to_string(),
+                    activation.runtime.runtime_version,
+                ),
+                (
+                    "PORTMASTER_LIBRARY_PATH".to_string(),
+                    library_root.display().to_string(),
+                ),
+                (
+                    "LD_LIBRARY_PATH".to_string(),
+                    library_root.display().to_string(),
+                ),
+                ("HOME".to_string(), writable_root.display().to_string()),
+                (
+                    "XDG_DATA_HOME".to_string(),
+                    writable_root.display().to_string(),
+                ),
+                (
+                    "XDG_CONFIG_HOME".to_string(),
+                    paths
+                        .state
+                        .parent()
+                        .unwrap_or(writable_root)
+                        .display()
+                        .to_string(),
+                ),
+                (
+                    "PORTMASTER_IMPORTS".to_string(),
+                    user_paths.imports.display().to_string(),
+                ),
+            ]);
+            env
+        },
         adapter: "portmaster",
         confirms_usable_save: true,
         log_path: Some(user_paths.logs.join(format!("{}.log", request.request_id))),

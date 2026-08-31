@@ -302,11 +302,14 @@ fn build_catalog(catalog_path: &Path, state_root: &Path) -> Result {
 fn scan_roms(root: &Path, previous: &[Entry], cancelled: &AtomicBool) -> (Vec<Entry>, usize) {
     let mut files = Vec::new();
     let mut skipped = 0;
-    walk(root, root, &mut files, &mut skipped, cancelled);
+    walk(root, &mut files, &mut skipped, cancelled);
     files.sort();
     let playlist_members = files
         .iter()
-        .filter(|path| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("m3u")))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("m3u"))
+        })
         .filter_map(|path| playlist_members(root, path).ok())
         .flatten()
         .collect::<HashSet<_>>();
@@ -385,13 +388,7 @@ fn scan_roms(root: &Path, previous: &[Entry], cancelled: &AtomicBool) -> (Vec<En
     (entries, skipped)
 }
 
-fn walk(
-    root: &Path,
-    current: &Path,
-    files: &mut Vec<PathBuf>,
-    skipped: &mut usize,
-    cancelled: &AtomicBool,
-) {
+fn walk(current: &Path, files: &mut Vec<PathBuf>, skipped: &mut usize, cancelled: &AtomicBool) {
     if cancelled.load(AtomicOrdering::Acquire) {
         return;
     }
@@ -427,7 +424,7 @@ fn walk(
             continue;
         }
         if kind.is_dir() {
-            walk(root, &path, files, skipped, cancelled);
+            walk(&path, files, skipped, cancelled);
             continue;
         }
         if kind.is_file() && is_rom(&path) {
@@ -486,9 +483,12 @@ fn playlist_members(root: &Path, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         .map(|line| {
             let relative = Path::new(line);
             if relative.is_absolute()
-                || relative
-                    .components()
-                    .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+                || relative.components().any(|component| {
+                    matches!(
+                        component,
+                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                    )
+                })
             {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,

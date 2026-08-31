@@ -42,7 +42,7 @@ pub fn plan(
             paths.state.display().to_string(),
         ],
         cwd: fixture_root.to_path_buf(),
-        env: Vec::new(),
+        env: super::input_environment(request, "standalone")?,
         adapter: "standalone",
         confirms_usable_save: true,
         log_path: None,

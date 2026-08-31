@@ -31,6 +31,13 @@ ctl() {
     shift
     "$ROOT/scripts/simctl" --socket "$run/control.sock" "$@"
 }
+start_session() {
+    run=$1
+    ctl "$run" button --button menu --action press >/dev/null
+    ctl "$run" button --button primary --action press >/dev/null
+    ctl "$run" button --button down --action press >/dev/null
+    ctl "$run" button --button primary --action press >/dev/null
+}
 state_file() {
     ctl "$1" state | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["result"]))'
 }
@@ -65,6 +72,18 @@ assert lifecycle["armedDeadline"]["durationMinutes"] == 5
 assert lifecycle["armedDeadline"]["monotonicDeadlineMs"] > state["clock"]["monotonicMs"]
 assert lifecycle["armedDeadline"]["bootTimeDeadlineMs"] > state["clock"]["wallClockMs"]
 assert state["hardware"]["suspend"] == {"state": "suspended", "result": "success"}
+platform = state["platformState"]
+assert platform["audio"]["enabled"] is False and platform["audio"]["active"] is False
+assert platform["input"]["pressed"] == []
+assert platform["rumble"]["active"] is False
+assert platform["usb"]["role"] == "None"
+assert platform["leds"]["on"] is False
+assert platform["radios"]["wifi"]["enabled"] is False
+assert [event["event"] for event in lifecycle["journal"]][-10:] == [
+    "checkpoint-complete", "alarm-cleared", "deadline-armed", "quiesce-audio",
+    "quiesce-input", "quiesce-rumble", "quiesce-usb", "quiesce-leds",
+    "quiesce-radios", "suspend-complete",
+]
 assert [event["event"] for event in lifecycle["journal"]][-1] == "suspend-complete"
 PY
 }
@@ -72,15 +91,26 @@ PY
 # Manual wake at 4:59 clears the first deadline and restores the checkpoint.
 MANUAL=$WORK/manual-459
 start "$MANUAL"
+start_session "$MANUAL"
 ctl "$MANUAL" lifecycle suspend --timeout 5 >/dev/null
 ctl "$MANUAL" clock advance --milliseconds 298856 >/dev/null
 state_file "$MANUAL" >"$MANUAL/at-459.json"
 assert_suspended "$MANUAL/at-459.json"
-ctl "$MANUAL" lifecycle resume --timeout 5 --source user >"$MANUAL/manual-wake.json"
+ctl "$MANUAL" lifecycle resume --timeout 5 --source user >/dev/null
+state_file "$MANUAL" >"$MANUAL/manual-wake.json"
 python3 - "$MANUAL/manual-wake.json" <<'PY'
 import json, sys
-result = json.load(open(sys.argv[1]))["result"]
-assert result["phase"] == "awake"
+state = json.load(open(sys.argv[1]))
+lifecycle = state["lifecycle"]
+assert lifecycle["phase"] == "awake"
+assert [event["event"] for event in lifecycle["journal"]][-9:] == [
+    "resumed-by-user", "resume-active", "restore-radios", "restore-leds",
+    "restore-usb", "restore-rumble", "restore-input", "restore-audio",
+    "resume-complete",
+]
+platform = state["platformState"]
+assert platform["input"]["pressed"] == []
+assert platform["audio"]["enabled"] is True
 PY
 ctl "$MANUAL" lifecycle suspend --timeout 5 >/dev/null
 state_file "$MANUAL" >"$MANUAL/fresh-suspend.json"
@@ -204,6 +234,7 @@ done
 # Low battery requests typed orderly shutdown; external power changes remain typed observations.
 POWER=$WORK/power-events
 start "$POWER"
+start_session "$POWER"
 ctl "$POWER" hardware set battery.externalPower=true >/dev/null
 ctl "$POWER" hardware set battery.externalPower=false >/dev/null
 ctl "$POWER" hardware set battery.percent=5 >"$POWER/low-battery.json"
@@ -213,6 +244,11 @@ state = json.load(open(sys.argv[1]))["result"]
 assert state["hardware"]["externalPower"] is False
 assert state["lifecycle"]["shutdownRequest"]["reason"] == "low-battery"
 assert state["lifecycle"]["phase"] == "orderly-shutdown"
+root = sys.argv[1].removesuffix("low-battery.json")
+pointer = json.load(open(root + "data/resume/current.json"))
+assert pointer["generation"] >= 1
+record = json.load(open(root + f"data/resume/generations/generation-{pointer['generation']}/record.json"))
+assert record["reason"] == "low-battery"
 PY
 
 # Shutdown retry is bounded and succeeds only after the fault is cleared.

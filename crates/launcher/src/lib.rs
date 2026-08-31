@@ -146,6 +146,7 @@ struct AppState {
     lifecycle: LifecycleController,
     power: PowerPolicyController,
     journey: ProductJourneyState,
+    controller_routes: bool,
     resume_content: Option<DemoContent>,
     resume_marker: u32,
     package_root: PathBuf,
@@ -160,10 +161,6 @@ enum ProductJourneyState {
     },
     Systems {
         selected: SystemItem,
-    },
-    LongList {
-        group: u8,
-        at_boundary: bool,
     },
     Games {
         surface: GameSurface,
@@ -190,6 +187,12 @@ enum ProductJourneyState {
         marker: u32,
         restored: bool,
     },
+    QuickMenu {
+        selected: QuickMenuItem,
+        content: DemoContent,
+        marker: u32,
+        preview: &'static str,
+    },
     GameSwitcher {
         page: SwitcherPage,
         content: DemoContent,
@@ -212,13 +215,9 @@ impl Default for ProductJourneyState {
 #[derive(Clone, Copy, Debug)]
 enum HomeItem {
     Systems,
-    LongList,
     Favorites,
-    Search,
+    Recent,
     Settings,
-    Recovery,
-    Switcher,
-    Portmaster,
 }
 #[derive(Clone, Copy, Debug)]
 enum SystemItem {
@@ -233,6 +232,7 @@ enum GameSurface {
     Details,
     Favorite,
     Favorites,
+    Recent,
     SearchKeyboard,
     SearchResults,
 }
@@ -304,6 +304,16 @@ enum DemoContent {
     Mirror,
 }
 #[derive(Clone, Copy, Debug)]
+enum QuickMenuItem {
+    Continue,
+    SaveSlot,
+    LoadSlot,
+    Restart,
+    RetroArch,
+    Exit,
+}
+
+#[derive(Clone, Copy, Debug)]
 enum SwitcherPage {
     Autosave,
     Exit,
@@ -323,7 +333,6 @@ fn canonical_route_id(state: &ProductJourneyState) -> Option<&'static str> {
     match state {
         Home { .. } => None,
         Systems { .. } => Some("home-systems"),
-        LongList { .. } => Some("games-long-list"),
         Games {
             surface: GameSurface::List,
         } => Some("home-game-list"),
@@ -336,6 +345,9 @@ fn canonical_route_id(state: &ProductJourneyState) -> Option<&'static str> {
         Games {
             surface: GameSurface::Favorites,
         } => Some("games-favorites"),
+        Games {
+            surface: GameSurface::Recent,
+        } => Some("games-recent"),
         Games {
             surface: GameSurface::SearchKeyboard,
         } => Some("games-search-keyboard"),
@@ -437,6 +449,7 @@ fn canonical_route_id(state: &ProductJourneyState) -> Option<&'static str> {
             (DemoContent::Mirror, false) => "platform-mirror-launch",
             (DemoContent::Mirror, true) => "platform-mirror-restored",
         }),
+        QuickMenu { .. } => Some("game-quick-menu"),
         GameSwitcher { page, .. } => Some(match page {
             SwitcherPage::Autosave => "game-switcher-autosave",
             SwitcherPage::Exit => "game-switcher-exit",
@@ -756,30 +769,21 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
 fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentation::ScreenItem> {
     use ProductJourneyState::*;
     let rows: Vec<String> = match state {
-        Home { selected } => [
-            "Systems",
-            "Long list",
-            "Favorites",
-            "Search",
-            "Settings",
-            "Recovery",
-            "Game Switcher",
-            "PortMaster",
-        ]
-        .into_iter()
-        .enumerate()
-        .map(|(index, row)| {
-            format!(
-                "{}{}",
-                if index == *selected as usize {
-                    "> "
-                } else {
-                    "  "
-                },
-                row
-            )
-        })
-        .collect(),
+        Home { selected } => ["Systems", "Favorites", "Recent", "System menu"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, row)| {
+                format!(
+                    "{}{}",
+                    if index == *selected as usize {
+                        "> "
+                    } else {
+                        "  "
+                    },
+                    row
+                )
+            })
+            .collect(),
         Systems { selected } => [
             "Game library",
             "Nebula Notes (NES)",
@@ -800,15 +804,6 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             )
         })
         .collect(),
-        LongList { group, at_boundary } => vec![
-            format!("Alphabet group: {}", char::from(b'A' + *group)),
-            "1,402 games indexed".into(),
-            if *at_boundary {
-                "First/last group boundary".into()
-            } else {
-                "L1/R1: change group".into()
-            },
-        ],
         Games {
             surface: GameSurface::List,
         } => vec![
@@ -839,6 +834,13 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             "Select: remove favourite".into(),
         ],
         Games {
+            surface: GameSurface::Recent,
+        } => vec![
+            "Recent games".into(),
+            "Mirror Museum".into(),
+            "A: launch · B: back".into(),
+        ],
+        Games {
             surface: GameSurface::SearchKeyboard,
         } => vec![
             "Search games".into(),
@@ -859,7 +861,12 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             section: SettingsSection::Root,
             ..
         } => [
-            "Display", "Input", "Audio", "Power", "Library", "Scraper", "Theme", "System",
+            "Library & gameplay",
+            "Display",
+            "Input",
+            "Audio",
+            "Power",
+            "Advanced features",
         ]
         .into_iter()
         .map(str::to_owned)
@@ -1091,8 +1098,34 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             } else {
                 format!("Interaction marker: {marker}")
             },
-            "D-pad: interact · B: autosave and exit".into(),
+            "D-pad: interact · Menu: quick menu · B: autosave and exit".into(),
         ],
+        QuickMenu {
+            selected,
+            content,
+            marker,
+            preview,
+        } => [
+            format!("Quick menu · {:?}", content),
+            "Continue".into(),
+            "Save slot 1".into(),
+            "Load slot 1".into(),
+            "Restart game".into(),
+            "RetroArch menu".into(),
+            "Exit game".into(),
+            format!("Slot preview: {preview} · checkpoint {marker}"),
+            "D-pad: choose · A: select · B: continue".into(),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            if index == *selected as usize + 1 {
+                format!("> {row}")
+            } else {
+                format!("  {row}")
+            }
+        })
+        .collect(),
         GameSwitcher {
             page,
             content,
@@ -1710,6 +1743,7 @@ fn run_session<P: Platform>(
         lifecycle: load_lifecycle(&evidence.root),
         power: PowerPolicyController::new().map_err(anyhow::Error::msg)?,
         journey: ProductJourneyState::default(),
+        controller_routes: keep_alive,
         resume_content: None,
         resume_marker: 0,
         package_root: state_root.join("portmaster-packages"),
@@ -2959,6 +2993,7 @@ mod tests {
             lifecycle: LifecycleController::new(),
             power: PowerPolicyController::new().expect("validated power policy fixture"),
             journey: ProductJourneyState::default(),
+            controller_routes: true,
             resume_content: None,
             resume_marker: 0,
             package_root: broker_root.join("packages"),
@@ -3043,13 +3078,10 @@ mod tests {
             .iter()
             .find(|route| route["id"] == "diagnostics")
             .expect("diagnostics route");
-        assert_eq!(
-            favorites["buttons"],
-            serde_json::json!(["down", "down", "primary"])
-        );
+        assert_eq!(favorites["buttons"], serde_json::json!(["down", "primary"]));
         assert_eq!(
             diagnostics["buttons"],
-            serde_json::json!(["down", "down", "down", "down", "down", "primary"])
+            serde_json::json!(["down", "down", "down", "primary", "start"])
         );
     }
 
@@ -3058,7 +3090,7 @@ mod tests {
         let mut journey = ProductJourneyState::default();
         assert!(!reduce_product_state(&mut journey, Button::Down));
         assert!(reduce_product_state(&mut journey, Button::Primary));
-        assert_eq!(canonical_route_id(&journey), Some("games-long-list"));
+        assert_eq!(canonical_route_id(&journey), Some("games-favorites"));
 
         journey = ProductJourneyState::default();
         assert!(reduce_product_state(&mut journey, Button::Primary));
@@ -3169,7 +3201,7 @@ mod tests {
             .any(|row| row.label.contains("Release date")));
 
         state.journey = ProductJourneyState::default();
-        for button in [Button::Down, Button::Down, Button::Down, Button::Primary] {
+        for button in [Button::Primary, Button::Primary, Button::Select] {
             reduce_product_state(&mut state.journey, button);
         }
         let search = screen_for_state(&state, &catalog).expect("search keyboard screen");
@@ -3228,6 +3260,43 @@ mod tests {
         ));
         assert!(reduce_product_state(&mut journey, Button::Select));
         assert_eq!(canonical_route_id(&journey), Some("game-switcher-autosave"));
+    }
+
+    #[test]
+    fn quick_menu_exposes_controller_actions_without_shortcuts() {
+        let mut journey = ProductJourneyState::default();
+        for button in [Button::Primary, Button::Down, Button::Primary, Button::Menu] {
+            reduce_product_state(&mut journey, button);
+        }
+        assert_eq!(canonical_route_id(&journey), Some("game-quick-menu"));
+        let labels = product_surface_rows(&journey)
+            .into_iter()
+            .map(|row| row.label)
+            .collect::<Vec<_>>();
+        for label in [
+            "Continue",
+            "Save slot 1",
+            "Load slot 1",
+            "Restart game",
+            "RetroArch menu",
+            "Exit game",
+        ] {
+            assert!(
+                labels.iter().any(|row| row.contains(label)),
+                "missing {label}"
+            );
+        }
+        reduce_product_state(&mut journey, Button::Down);
+        reduce_product_state(&mut journey, Button::Primary);
+        assert!(product_surface_rows(&journey)
+            .iter()
+            .any(|row| row.label.contains("saved just now")));
+        reduce_product_state(&mut journey, Button::Down);
+        reduce_product_state(&mut journey, Button::Primary);
+        assert!(matches!(
+            journey,
+            ProductJourneyState::Session { restored: true, .. }
+        ));
     }
 
     #[test]
@@ -3298,6 +3367,29 @@ mod tests {
                 &evidence,
                 &mut log,
                 &mut platform,
+                Button::Menu,
+            );
+            assert!(matches!(
+                state.journey,
+                ProductJourneyState::QuickMenu { .. }
+            ));
+            assert!(state.active_session.is_some());
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                Button::Secondary,
+            );
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
                 Button::Secondary,
             );
             assert!(state.active_session.is_none());
@@ -3314,7 +3406,7 @@ mod tests {
                 &mut platform,
                 Button::Menu,
             );
-            for _ in 0..6 {
+            for _ in 0..3 {
                 press_controller_button(
                     &mut state,
                     &catalog,
@@ -3325,7 +3417,13 @@ mod tests {
                     Button::Down,
                 );
             }
-            for _ in 0..4 {
+            for button in [
+                Button::Primary,
+                Button::Select,
+                Button::Primary,
+                Button::Primary,
+                Button::Primary,
+            ] {
                 press_controller_button(
                     &mut state,
                     &catalog,
@@ -3333,7 +3431,7 @@ mod tests {
                     &evidence,
                     &mut log,
                     &mut platform,
-                    Button::Primary,
+                    button,
                 );
             }
             assert!(
@@ -4245,120 +4343,138 @@ fn handle_semantic_action<P: Platform>(
         return Ok(());
     }
 
-    if let Some(button) = raw_button {
-        let before = canonical_route_id(&state.journey);
-        if button == Button::Secondary && before == Some("shutdown-confirm") {
-            state.shutdown_pressed = false;
-        }
-        let exiting_session = match (&state.journey, button) {
-            (
-                ProductJourneyState::Session {
-                    content, marker, ..
-                },
-                Button::Secondary | Button::Menu,
-            )
-            | (
-                ProductJourneyState::GameSwitcher {
-                    page: SwitcherPage::Autosave | SwitcherPage::Exit,
-                    content,
-                    marker,
-                },
-                Button::Menu,
-            ) if state.active_session.is_some() => Some((*content, *marker)),
-            _ => None,
-        };
-        let changed = reduce_product_state(&mut state.journey, button);
-        if changed {
-            if matches!(
-                state.journey,
-                ProductJourneyState::GameSwitcher {
-                    page: SwitcherPage::List,
-                    ..
-                }
-            ) {
-                if let Some(content) = state.resume_content {
-                    state.journey = ProductJourneyState::GameSwitcher {
-                        page: SwitcherPage::List,
+    if state.controller_routes {
+        if let Some(button) = raw_button {
+            let before = canonical_route_id(&state.journey);
+            if button == Button::Secondary && before == Some("shutdown-confirm") {
+                state.shutdown_pressed = false;
+            }
+            let exiting_session = match (&state.journey, button) {
+                (
+                    ProductJourneyState::Session {
+                        content, marker, ..
+                    },
+                    Button::Secondary,
+                )
+                | (
+                    ProductJourneyState::GameSwitcher {
+                        page: SwitcherPage::Autosave | SwitcherPage::Exit,
                         content,
-                        marker: state.resume_marker,
-                    };
+                        marker,
+                    },
+                    Button::Menu,
+                )
+                | (
+                    ProductJourneyState::QuickMenu {
+                        selected: QuickMenuItem::Exit,
+                        content,
+                        marker,
+                        ..
+                    },
+                    Button::Primary,
+                )
+                | (
+                    ProductJourneyState::QuickMenu {
+                        content, marker, ..
+                    },
+                    Button::Menu,
+                ) if state.active_session.is_some() => Some((*content, *marker)),
+                _ => None,
+            };
+            let changed = reduce_product_state(&mut state.journey, button);
+            if changed {
+                if matches!(
+                    state.journey,
+                    ProductJourneyState::GameSwitcher {
+                        page: SwitcherPage::List,
+                        ..
+                    }
+                ) {
+                    if let Some(content) = state.resume_content {
+                        state.journey = ProductJourneyState::GameSwitcher {
+                            page: SwitcherPage::List,
+                            content,
+                            marker: state.resume_marker,
+                        };
+                    }
                 }
-            }
-            match canonical_route_id(&state.journey) {
-                Some("portmaster-install") | Some("portmaster-uninstall-protected-data") => {
-                    apply_portmaster_route(
+                match canonical_route_id(&state.journey) {
+                    Some("portmaster-install") | Some("portmaster-uninstall-protected-data") => {
+                        apply_portmaster_route(
+                            state,
+                            canonical_route_id(&state.journey).expect("route checked"),
+                        )?
+                    }
+                    _ => {}
+                }
+                if canonical_route_id(&state.journey) == Some("diagnostics-safe-mode") {
+                    state.power.safe_mode_reset();
+                    state.route = Route::Library;
+                }
+                if matches!(state.journey, ProductJourneyState::Session { .. })
+                    && state.active_session.is_none()
+                    && before != canonical_route_id(&state.journey)
+                {
+                    launch_product_session(
                         state,
-                        canonical_route_id(&state.journey).expect("route checked"),
-                    )?
-                }
-                _ => {}
-            }
-            if canonical_route_id(&state.journey) == Some("diagnostics-safe-mode") {
-                state.power.safe_mode_reset();
-                state.route = Route::Library;
-            }
-            if matches!(state.journey, ProductJourneyState::Session { .. })
-                && before != canonical_route_id(&state.journey)
-            {
-                launch_product_session(
-                    state,
-                    catalog,
-                    launch_catalog,
-                    evidence,
-                    matches!(
-                        state.journey,
-                        ProductJourneyState::Session { restored: true, .. }
-                    ),
-                )?;
-                write_session(&evidence.root, SessionState::Started)?;
-            }
-            if let Some((content, marker)) = exiting_session {
-                state.resume_content = Some(content);
-                state.resume_marker = marker;
-                state
-                    .broker
-                    .checkpoint(CheckpointReason::NormalExit, CommitFault::None)
-                    .map_err(|error| anyhow!(error.to_string()))?;
-                let result = state
-                    .broker
-                    .complete(0, 0)
-                    .map_err(|error| anyhow!(error.to_string()))?;
-                state.active_session = None;
-                state.power.game_exit();
-                state.last_session = Some(result);
-                log.emit(
-                    "session_checkpoint",
-                    at_ms,
-                    json_map([
-                        ("contentId", json!(format!("{:?}", content))),
-                        ("marker", json!(marker)),
-                    ]),
-                )?;
-                refresh_resume_projection(state, catalog, launch_catalog)
-                    .map_err(anyhow::Error::msg)?;
-            }
-            let after = canonical_route_id(&state.journey);
-            if before != after {
-                if let Some(route_id) = after {
-                    log.emit(
-                        "controller_route_visit",
-                        at_ms,
-                        json_map([("routeId", json!(route_id))]),
+                        catalog,
+                        launch_catalog,
+                        evidence,
+                        matches!(
+                            state.journey,
+                            ProductJourneyState::Session { restored: true, .. }
+                        ),
                     )?;
+                    write_session(&evidence.root, SessionState::Started)?;
+                }
+                if let Some((content, marker)) = exiting_session {
+                    state.resume_content = Some(content);
+                    state.resume_marker = marker;
+                    state
+                        .broker
+                        .checkpoint(CheckpointReason::NormalExit, CommitFault::None)
+                        .map_err(|error| anyhow!(error.to_string()))?;
+                    let result = state
+                        .broker
+                        .complete(0, 0)
+                        .map_err(|error| anyhow!(error.to_string()))?;
+                    state.active_session = None;
+                    state.power.game_exit();
+                    state.last_session = Some(result);
+                    log.emit(
+                        "session_checkpoint",
+                        at_ms,
+                        json_map([
+                            ("contentId", json!(format!("{:?}", content))),
+                            ("marker", json!(marker)),
+                        ]),
+                    )?;
+                    refresh_resume_projection(state, catalog, launch_catalog)
+                        .map_err(anyhow::Error::msg)?;
+                }
+                let after = canonical_route_id(&state.journey);
+                if before != after {
+                    if let Some(route_id) = after {
+                        log.emit(
+                            "controller_route_visit",
+                            at_ms,
+                            json_map([("routeId", json!(route_id))]),
+                        )?;
+                    }
                 }
             }
+            let screen = screen_for_state(state, catalog)?;
+            present(platform, &screen)?;
+            log.emit(
+                "input_to_frame",
+                at_ms,
+                json_map([
+                    ("latencyUs", json!(0)),
+                    ("sessionStep", json!(state.session_step)),
+                ]),
+            )?;
+            return Ok(());
         }
-        let screen = screen_for_state(state, catalog)?;
-        present(platform, &screen)?;
-        log.emit(
-            "input_to_frame",
-            at_ms,
-            json_map([
-                ("latencyUs", json!(0)),
-                ("sessionStep", json!(state.session_step)),
-            ]),
-        )?;
-        return Ok(());
     }
 
     let selection_before = state.selected_content_id.clone();
@@ -4640,36 +4756,40 @@ fn apply_portmaster_route(state: &mut AppState, route_id: &str) -> Result<()> {
 fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool {
     use ProductJourneyState::*;
     if button == Button::Menu {
-        *state = Home {
-            selected: HomeItem::Systems,
-        };
+        if let Session {
+            content, marker, ..
+        } = state
+        {
+            *state = QuickMenu {
+                selected: QuickMenuItem::Continue,
+                content: *content,
+                marker: *marker,
+                preview: "slot 1 · no save yet",
+            };
+        } else {
+            *state = Home {
+                selected: HomeItem::Systems,
+            };
+        }
         return true;
     }
     let next = match state {
         Home { selected } => match button {
             Button::Down => {
                 *selected = match selected {
-                    HomeItem::Systems => HomeItem::LongList,
-                    HomeItem::LongList => HomeItem::Favorites,
-                    HomeItem::Favorites => HomeItem::Search,
-                    HomeItem::Search => HomeItem::Settings,
-                    HomeItem::Settings => HomeItem::Recovery,
-                    HomeItem::Recovery => HomeItem::Switcher,
-                    HomeItem::Switcher => HomeItem::Portmaster,
-                    HomeItem::Portmaster => HomeItem::Systems,
+                    HomeItem::Systems => HomeItem::Favorites,
+                    HomeItem::Favorites => HomeItem::Recent,
+                    HomeItem::Recent => HomeItem::Settings,
+                    HomeItem::Settings => HomeItem::Systems,
                 };
                 return false;
             }
             Button::Up => {
                 *selected = match selected {
-                    HomeItem::Systems => HomeItem::Portmaster,
-                    HomeItem::LongList => HomeItem::Systems,
-                    HomeItem::Favorites => HomeItem::LongList,
-                    HomeItem::Search => HomeItem::Favorites,
-                    HomeItem::Settings => HomeItem::Search,
-                    HomeItem::Recovery => HomeItem::Settings,
-                    HomeItem::Switcher => HomeItem::Recovery,
-                    HomeItem::Portmaster => HomeItem::Switcher,
+                    HomeItem::Systems => HomeItem::Settings,
+                    HomeItem::Favorites => HomeItem::Systems,
+                    HomeItem::Recent => HomeItem::Favorites,
+                    HomeItem::Settings => HomeItem::Recent,
                 };
                 return false;
             }
@@ -4677,31 +4797,16 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 HomeItem::Systems => Systems {
                     selected: SystemItem::Library,
                 },
-                HomeItem::LongList => LongList {
-                    group: 0,
-                    at_boundary: true,
-                },
                 HomeItem::Favorites => Games {
                     surface: GameSurface::Favorites,
                 },
-                HomeItem::Search => Games {
-                    surface: GameSurface::SearchKeyboard,
+                HomeItem::Recent => Games {
+                    surface: GameSurface::Recent,
                 },
                 HomeItem::Settings => Settings {
                     section: SettingsSection::Root,
                     pending: None,
                     validation: None,
-                },
-                HomeItem::Recovery => Diagnostics {
-                    page: DiagnosticPage::Root,
-                },
-                HomeItem::Switcher => GameSwitcher {
-                    page: SwitcherPage::List,
-                    content: DemoContent::Nebula,
-                    marker: 0,
-                },
-                HomeItem::Portmaster => Portmaster {
-                    page: PortmasterPage::Catalog,
                 },
             }),
             _ => None,
@@ -4745,25 +4850,6 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
             }),
             Button::Secondary => Some(Home {
                 selected: HomeItem::Systems,
-            }),
-            _ => None,
-        },
-        LongList { group, at_boundary } => match button {
-            Button::R1 => {
-                *group = (*group + 1).min(25);
-                *at_boundary = *group == 25;
-                return false;
-            }
-            Button::L1 => {
-                *group = group.saturating_sub(1);
-                *at_boundary = *group == 0;
-                return false;
-            }
-            Button::Primary => Some(Games {
-                surface: GameSurface::List,
-            }),
-            Button::Secondary => Some(Home {
-                selected: HomeItem::LongList,
             }),
             _ => None,
         },
@@ -4817,13 +4903,24 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
             _ => None,
         },
         Games {
+            surface: GameSurface::Recent,
+        } => match button {
+            Button::Primary => Some(Games {
+                surface: GameSurface::Details,
+            }),
+            Button::Secondary => Some(Home {
+                selected: HomeItem::Recent,
+            }),
+            _ => None,
+        },
+        Games {
             surface: GameSurface::SearchKeyboard,
         } => match button {
             Button::Start => Some(Games {
                 surface: GameSurface::SearchResults,
             }),
             Button::Secondary => Some(Home {
-                selected: HomeItem::Search,
+                selected: HomeItem::Systems,
             }),
             _ => None,
         },
@@ -4831,7 +4928,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
             surface: GameSurface::SearchResults,
         } => match button {
             Button::Secondary => Some(Home {
-                selected: HomeItem::Search,
+                selected: HomeItem::Systems,
             }),
             _ => None,
         },
@@ -4848,6 +4945,14 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 section: SettingsSection::Display,
                 pending: None,
                 validation: None,
+            }),
+            Button::Select => Some(GameSwitcher {
+                page: SwitcherPage::List,
+                content: DemoContent::Nebula,
+                marker: 0,
+            }),
+            Button::Start => Some(Diagnostics {
+                page: DiagnosticPage::Root,
             }),
             Button::Secondary => Some(Home {
                 selected: HomeItem::Settings,
@@ -5030,7 +5135,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 _ => Diagnostics { page: *page },
             }),
             Button::Secondary => Some(Home {
-                selected: HomeItem::Recovery,
+                selected: HomeItem::Settings,
             }),
             _ => None,
         },
@@ -5053,6 +5158,73 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
             }),
             _ => None,
         },
+        QuickMenu {
+            selected,
+            content,
+            marker,
+            preview: _,
+        } => match button {
+            Button::Down => {
+                *selected = match selected {
+                    QuickMenuItem::Continue => QuickMenuItem::SaveSlot,
+                    QuickMenuItem::SaveSlot => QuickMenuItem::LoadSlot,
+                    QuickMenuItem::LoadSlot => QuickMenuItem::Restart,
+                    QuickMenuItem::Restart => QuickMenuItem::RetroArch,
+                    QuickMenuItem::RetroArch => QuickMenuItem::Exit,
+                    QuickMenuItem::Exit => QuickMenuItem::Continue,
+                };
+                return false;
+            }
+            Button::Up => {
+                *selected = match selected {
+                    QuickMenuItem::Continue => QuickMenuItem::Exit,
+                    QuickMenuItem::SaveSlot => QuickMenuItem::Continue,
+                    QuickMenuItem::LoadSlot => QuickMenuItem::SaveSlot,
+                    QuickMenuItem::Restart => QuickMenuItem::LoadSlot,
+                    QuickMenuItem::RetroArch => QuickMenuItem::Restart,
+                    QuickMenuItem::Exit => QuickMenuItem::RetroArch,
+                };
+                return false;
+            }
+            Button::Primary => Some(match selected {
+                QuickMenuItem::Continue => Session {
+                    content: *content,
+                    marker: *marker,
+                    restored: false,
+                },
+                QuickMenuItem::SaveSlot => QuickMenu {
+                    selected: *selected,
+                    content: *content,
+                    marker: *marker,
+                    preview: "slot 1 · saved just now",
+                },
+                QuickMenuItem::LoadSlot => Session {
+                    content: *content,
+                    marker: *marker,
+                    restored: true,
+                },
+                QuickMenuItem::Restart => Session {
+                    content: *content,
+                    marker: 0,
+                    restored: false,
+                },
+                QuickMenuItem::RetroArch => QuickMenu {
+                    selected: *selected,
+                    content: *content,
+                    marker: *marker,
+                    preview: "RetroArch menu opened",
+                },
+                QuickMenuItem::Exit => Home {
+                    selected: HomeItem::Systems,
+                },
+            }),
+            Button::Secondary => Some(Session {
+                content: *content,
+                marker: *marker,
+                restored: false,
+            }),
+            _ => None,
+        },
         GameSwitcher {
             page,
             content,
@@ -5065,7 +5237,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                     marker: *marker,
                 },
                 SwitcherPage::Exit => Home {
-                    selected: HomeItem::Switcher,
+                    selected: HomeItem::Systems,
                 },
                 SwitcherPage::List => GameSwitcher {
                     page: SwitcherPage::Resume,
@@ -5084,7 +5256,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 },
             }),
             Button::Secondary => Some(Home {
-                selected: HomeItem::Switcher,
+                selected: HomeItem::Systems,
             }),
             _ => None,
         },
@@ -5111,13 +5283,13 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 page: PortmasterPage::UninstallProtected,
             }),
             Button::Secondary => Some(Home {
-                selected: HomeItem::Portmaster,
+                selected: HomeItem::Systems,
             }),
             _ => None,
         },
         ShutdownConfirm => match button {
             Button::Secondary => Some(Home {
-                selected: HomeItem::Recovery,
+                selected: HomeItem::Settings,
             }),
             _ => None,
         },

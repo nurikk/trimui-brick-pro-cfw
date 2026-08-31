@@ -32,6 +32,8 @@ const JOURNEYS: &[&str] = &[
     "standalone-undeclared",
     "portmaster",
     "portmaster-success",
+    "portmaster-missing-data",
+    "portmaster-missing-library",
     "portmaster-rejection",
     "portmaster-mismatch",
     "portmaster-symlink",
@@ -378,7 +380,9 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         | "portmaster-rejection"
         | "portmaster-mismatch"
         | "portmaster-symlink"
-        | "portmaster-nonzero" => "portmaster.synthetic.json",
+        | "portmaster-nonzero"
+        | "portmaster-missing-data"
+        | "portmaster-missing-library" => "portmaster.synthetic.json",
         "portmaster-success" => "portmaster-success.synthetic.json",
         "command-shaped" | "portmaster-injection" => "command-shaped.synthetic.json",
         _ => "libretro.synthetic.json",
@@ -431,7 +435,11 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
                 .ok_or_else(|| "PortMaster package fixture is invalid".to_string())?;
             package.version = "9.9.9".to_string();
         }
-        "portmaster" | "portmaster-success" | "portmaster-nonzero" => {
+        "portmaster"
+        | "portmaster-success"
+        | "portmaster-nonzero"
+        | "portmaster-missing-data"
+        | "portmaster-missing-library" => {
             install_portmaster_fixture(
                 &root,
                 request
@@ -455,6 +463,16 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
             seed_portmaster_symlink(&root)?;
         }
         _ => {}
+    }
+    if journey == "portmaster-missing-data" {
+        fs::remove_file(root.join("host-root/roms/generated/content.bin"))
+            .map_err(|_| "PortMaster missing-data fixture unavailable".to_string())?;
+    }
+    if journey == "portmaster-missing-library" {
+        fs::remove_file(root.join(
+            "host-root/.brickpro/packages/generated-portmaster/1.0.0/runtime/lib/sdl2.library",
+        ))
+        .map_err(|_| "PortMaster missing-library fixture unavailable".to_string())?;
     }
     if journey == "resume-production-mode" {
         let result =
@@ -483,6 +501,7 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         None
     };
     let package_id = request.package.as_ref().map(|package| package.id.clone());
+    let request_id = request.request_id.clone();
     let output = match journey {
         "restart" | "marker-mismatch" | "start-time-mismatch" => {
             broker.seed_recovery_fixture(journey)?;
@@ -509,6 +528,18 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
                 return Err(
                     "PortMaster authorization failure entered the launch lifecycle".to_string(),
                 );
+            }
+            Output::Session(result)
+        }
+        "portmaster-missing-data" | "portmaster-missing-library" => {
+            let expected = if journey == "portmaster-missing-data" {
+                "missing-game-data"
+            } else {
+                "missing-library:runtime/lib/sdl2.library is missing"
+            };
+            let result = broker.launch(request, catalog, journey, RunMode::Success, Fault::None);
+            if result.accepted || result.reason != expected || !result.restored {
+                return Err("PortMaster preflight diagnostic was not exact".to_string());
             }
             Output::Session(result)
         }
@@ -585,6 +616,17 @@ fn run_journey(source: &Path, journey: &str) -> Result<Output, String> {
         }
         _ => return Err("unsupported journey".to_string()),
     };
+    if matches!(
+        journey,
+        "portmaster" | "portmaster-success" | "portmaster-nonzero"
+    ) && matches!(&output, Output::Session(result) if result.accepted)
+        && (!root.join("host-root/PortMaster/Imports").is_dir()
+            || !root
+                .join(format!("host-root/PortMaster/Logs/{request_id}.log"))
+                .is_file())
+    {
+        return Err("PortMaster import or per-launch log path is unavailable".to_string());
+    }
     if let Some(package_id) = package_id {
         if matches!(
             journey,
@@ -735,16 +777,31 @@ impl Broker {
         let core = request.core.as_ref().map(|value| value.id.clone());
         let paths = match self.validate_and_resolve(&request, &catalog) {
             Ok(paths) => paths,
-            Err(_) => {
+            Err(error) => {
                 self.phase = Phase::Idle;
-                return rejection_as_session(journey, "validation-failure");
+                let reason = if request.kind == LaunchKind::Portmaster
+                    && (error.contains("content") || error.contains("logical path"))
+                {
+                    "missing-game-data"
+                } else {
+                    "validation-failure"
+                };
+                return rejection_as_session(journey, reason);
             }
         };
         let plan = match self.validate_and_plan(&request, &catalog, &paths, mode) {
             Ok(plan) => plan,
-            Err(_) => {
+            Err(error) => {
                 self.phase = Phase::Idle;
-                return rejection_as_session(journey, "authorization-failure");
+                let reason = if request.kind == LaunchKind::Portmaster
+                    && !error.starts_with("PortMaster activation rejected:")
+                    && error != "catalog-owned PortMaster projection is unavailable"
+                {
+                    error.as_str()
+                } else {
+                    "authorization-failure"
+                };
+                return rejection_as_session(journey, reason);
             }
         };
         let snapshot = self.platform.snapshot();
@@ -941,7 +998,7 @@ impl Broker {
         catalog: &Catalog,
     ) -> Result<ResolvedPaths, String> {
         validate_host_fixture(request, catalog, &self.fixture_root)
-            .map_err(|_| "request validation failed".to_string())?;
+            .map_err(|error| error.to_string())?;
         let content = resolve_path(
             &self.fixture_root,
             &request.content_path,
@@ -1017,7 +1074,15 @@ impl Broker {
             restored = true;
             safe_default = true;
         }
-        let fields = outcome.finish_fields();
+        let mut fields = outcome.finish_fields();
+        if adapter == "portmaster"
+            && matches!(
+                fields.reason.as_str(),
+                "nonzero-exit" | "signal-death" | "spawn-failure"
+            )
+        {
+            fields.reason = "launch-crash".to_string();
+        }
         let successful = fields.reason == "success";
         if successful && confirms_save {
             let _ = write_file_sync(
@@ -1347,10 +1412,19 @@ fn spawn_with_barrier(plan: &LaunchPlan, marker: &str) -> io::Result<(Child, Lau
     for (key, value) in &plan.env {
         command.env(key, value);
     }
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    command.stdin(Stdio::null());
+    if let Some(path) = &plan.log_path {
+        fs::create_dir_all(path.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "launch log has no parent")
+        })?)?;
+        let mut log = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(log, "PortMaster launch started")?;
+        command
+            .stdout(Stdio::from(log.try_clone()?))
+            .stderr(Stdio::from(log));
+    } else {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
     unsafe {
         command.pre_exec(move || {
             libc::close(write_fd);

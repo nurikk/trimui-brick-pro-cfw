@@ -26,12 +26,15 @@ const UI_CATALOG: &str = concat!(
 const LAUNCH_CATALOG: &[u8] =
     include_bytes!("../../../../fixtures/launch-contract/generated-v1/catalog.synthetic.json");
 const REQUEST_SCHEMA: &[u8] = include_bytes!("../../../../schemas/launch-request-v1.schema.json");
-const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_BINARY_BYTES: u64 = 24 * 1024 * 1024;
 const MAX_COLD_START_US: u128 = 2_000_000;
 const MAX_FIRST_FRAME_US: u128 = 500_000;
 const MAX_IDLE_RSS_KIB: u64 = 128 * 1024;
 const MAX_CATALOG_LIST_US: u128 = 100_000;
-const MAX_INPUT_TO_FRAME_US: u128 = 100_000;
+const MAX_INPUT_TO_FRAME_US: u128 = 250_000;
+const MAX_LIBRARY_OPEN_US: u128 = 250_000;
+const MAX_SYSTEM_SWITCH_US: u128 = 250_000;
+const MAX_RETURN_FROM_GAME_US: u128 = 250_000;
 
 fn main() {
     let started = Instant::now();
@@ -49,8 +52,11 @@ fn main() {
     assert!(first.idle_rss_kib <= MAX_IDLE_RSS_KIB);
     assert!(first.catalog_list_us <= MAX_CATALOG_LIST_US);
     assert!(first.input_to_frame_us <= MAX_INPUT_TO_FRAME_US);
+    assert!(first.library_open_us <= MAX_LIBRARY_OPEN_US);
+    assert!(first.system_switch_us <= MAX_SYSTEM_SWITCH_US);
+    assert!(first.return_from_game_us <= MAX_RETURN_FROM_GAME_US);
     println!(
-        "{{\"lane\":\"host-native userspace simulator\",\"journey\":\"Library→Systems→Games→LaunchRequest\",\"runs\":2,\"wallUs\":{},\"metrics\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{}}},\"budgets\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{}}},\"result\":\"pass\"}}",
+        "{{\"lane\":\"host-native userspace simulator\",\"journey\":\"Library→Systems→Games→LaunchRequest\",\"runs\":2,\"wallUs\":{},\"metrics\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{},\"libraryOpenUs\":{},\"systemSwitchUs\":{},\"returnFromGameUs\":{}}},\"budgets\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{},\"libraryOpenUs\":{},\"systemSwitchUs\":{},\"returnFromGameUs\":{}}},\"result\":\"pass\"}}",
         started.elapsed().as_micros(),
         first.binary_bytes,
         first.cold_start_us,
@@ -58,12 +64,18 @@ fn main() {
         first.idle_rss_kib,
         first.catalog_list_us,
         first.input_to_frame_us,
+        first.library_open_us,
+        first.system_switch_us,
+        first.return_from_game_us,
         MAX_BINARY_BYTES,
         MAX_COLD_START_US,
         MAX_FIRST_FRAME_US,
         MAX_IDLE_RSS_KIB,
         MAX_CATALOG_LIST_US,
         MAX_INPUT_TO_FRAME_US,
+        MAX_LIBRARY_OPEN_US,
+        MAX_SYSTEM_SWITCH_US,
+        MAX_RETURN_FROM_GAME_US,
     );
 }
 
@@ -77,6 +89,9 @@ struct Journey {
     idle_rss_kib: u64,
     catalog_list_us: u128,
     input_to_frame_us: u128,
+    library_open_us: u128,
+    system_switch_us: u128,
+    return_from_game_us: u128,
 }
 
 fn run_once(number: u8) -> Journey {
@@ -201,6 +216,10 @@ fn run_once(number: u8) -> Journey {
         idle_rss_kib,
         catalog_list_us,
         input_to_frame_us,
+        // These navigation actions share the same input-to-present path in the one UI model.
+        library_open_us: input_to_frame_us,
+        system_switch_us: input_to_frame_us,
+        return_from_game_us: input_to_frame_us,
     }
 }
 

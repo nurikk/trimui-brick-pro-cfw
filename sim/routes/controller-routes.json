@@ -11,15 +11,6 @@
       ]
     },
     {
-      "id": "games-long-list",
-      "label": "1,402 indexed entries with visible alphabet group and bounded first/last feedback; R1/L1 change group or show boundary without changing route ID.",
-      "from": "fresh-home",
-      "buttons": [
-        "down",
-        "primary"
-      ]
-    },
-    {
       "id": "home-game-list",
       "label": "Ordinary stable-platform game list with selected row, artwork and metadata.",
       "from": "home-systems",
@@ -49,7 +40,6 @@
       "from": "fresh-home",
       "buttons": [
         "down",
-        "down",
         "primary"
       ]
     },
@@ -58,7 +48,16 @@
       "label": "Real virtual keyboard for game search, including editable query and Cancel.",
       "from": "fresh-home",
       "buttons": [
-        "down",
+        "primary",
+        "primary",
+        "select"
+      ]
+    },
+    {
+      "id": "games-recent",
+      "label": "Recent games list with the last played title and direct controller launch.",
+      "from": "fresh-home",
+      "buttons": [
         "down",
         "down",
         "primary"
@@ -74,10 +73,9 @@
     },
     {
       "id": "settings-root",
-      "label": "Settings section list with Display, Input, Audio, Power, Library, Scraper, Theme, and System.",
+      "label": "System menu with everyday library, display, input, audio, power, and an advanced-features entry.",
       "from": "fresh-home",
       "buttons": [
-        "down",
         "down",
         "down",
         "down",
@@ -397,9 +395,8 @@
         "down",
         "down",
         "down",
-        "down",
-        "down",
-        "primary"
+        "primary",
+        "start"
       ]
     },
     {
@@ -494,10 +491,8 @@
         "down",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "primary"
+        "primary",
+        "select"
       ]
     },
     {
@@ -530,19 +525,9 @@
       "label": "Nebula Notes relaunched through Game Switcher at its saved interaction marker.",
       "from": "platform-nebula-launch",
       "buttons": [
-        "right",
-        "select",
-        "primary",
         "menu",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "down",
-        "primary",
-        "primary",
-        "primary",
         "primary"
       ]
     },
@@ -562,19 +547,9 @@
       "label": "Mirror Museum relaunched through Game Switcher at its saved interaction marker.",
       "from": "platform-mirror-launch",
       "buttons": [
-        "right",
-        "select",
-        "primary",
         "menu",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "down",
-        "primary",
-        "primary",
-        "primary",
         "primary"
       ]
     },
@@ -583,10 +558,7 @@
       "label": "Local signed PortMaster catalog showing Orbit Garden and Signal Workshop install state.",
       "from": "fresh-home",
       "buttons": [
-        "down",
-        "down",
-        "down",
-        "down",
+        "primary",
         "down",
         "down",
         "down",
@@ -608,17 +580,9 @@
       "buttons": [
         "primary",
         "right",
-        "secondary",
         "menu",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "down",
-        "primary",
-        "primary",
-        "primary",
         "primary"
       ]
     },
@@ -629,17 +593,9 @@
       "buttons": [
         "down",
         "right",
-        "secondary",
         "menu",
         "down",
         "down",
-        "down",
-        "down",
-        "down",
-        "down",
-        "primary",
-        "primary",
-        "primary",
         "primary"
       ]
     },

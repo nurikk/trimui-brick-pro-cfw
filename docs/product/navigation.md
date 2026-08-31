@@ -5,11 +5,11 @@
 ## Composition
 
 - The logical canvas is 320x240 with a fixed 4:3 aspect-ratio contract.
-- Home is a full-screen, controller-first menu for Home, Systems, Games, Search, Favorites, Settings, Game Switcher, and Recovery.
+- Home is a controller-first menu for Systems, Favorites, Recent, and one System menu. Systems always lead to a filtered Games list, then Launch.
 - Systems expose large generated artwork and logo references.
 - Games expose an ordered, dense list contract with generated box-art and screenshot references, description, optional rating, optional release date, and favorite state.
 - The view contract declares large system artwork, dense game rows, full metadata, and a full-screen menu surface.
-- The help strip exposes readable labels for primary, secondary, menu, and start controls. Clock and battery values are supplied as model inputs; the reducer never reads a clock or battery.
+- The help strip names primary, back, and System menu controls; session screens name Menu as Quick menu. Clock and battery values are supplied as model inputs; the reducer never reads a clock or battery.
 - Preferences are typed: artwork mode, metadata visibility, font scale, and color scheme. The default is large artwork, full metadata, standard font, and ink colors.
 
 All artwork references are neutral generated identifiers. They are references only; this package contains no media, fonts, image loading, or theme implementation.
@@ -18,7 +18,9 @@ All artwork references are neutral generated identifiers. They are references on
 
 `Action::MoveSelection` moves through the ordered menu. Up/left move backward and down/right move forward, wrapping at the list boundary. Disabled entries remain visible with a typed capability reason and are skipped during movement. `Action::ActivateSelected` activates only the selected enabled entry. `Action::Back` dismisses a modal first; without a modal it returns to Home. Every menu contains an explicit selection index, item id, and selected flag. `ConfirmModal` dismisses and executes the command only for `ModalState::Confirm`; informational and unavailable modals are simply dismissed.
 
-Home activates the primary browsing routes. Systems activate a typed system selection and open Games filtered to that system. Games, Favorites, and Search expose ordered generated game rows. Search stores a bounded query in state and rebuilds the ordered matching menu. Favorite changes are explicit `ToggleFavorite` actions and become model feedback; they do not call a service. Launch is an explicit session request and is unavailable when the session capability is false.
+Home keeps the everyday loop to Systems → Games → Launch, with Favorites and Recent one move away. System menu is the single progressive-disclosure entry for settings and optional modules; capability-gated modules are absent when disabled and retain their stored data. Games, Favorites, Recent, and Search expose ordered generated game rows. Search stores a bounded query in state and rebuilds the ordered matching menu. Favorite changes are explicit `ToggleFavorite` actions and become model feedback; they do not call a service. Launch is an explicit session request and is unavailable when the session capability is false.
+
+During a session, Menu opens an explicit Quick menu: Continue, Save slot 1, Load slot 1 (with its preview), Restart game, RetroArch menu, and Exit game. It uses the same controller model as browsing; no shortcut is required to discover those actions.
 
 Settings actions replace one typed preference at a time. Settings persistence is a capability: when unavailable, the preference remains unchanged and the reducer emits an `Unavailable` modal. Persistence keys are typed and versioned; the preferences fixture shows the public JSON shape. The four current Artbook preference entries are generated fixture data only, not the settings architecture. Production `Route::Settings` must consume the declarative settings/menu projection owned by `t_45dfd680`/`t_bf010be5` and must not require hand-coded menus. This card does not integrate those sibling crates.
 

@@ -506,6 +506,8 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
         for ordinal, (route_id, record) in enumerate(sequence, 1):
             route_deadline = min(time.monotonic() + ROUTE_TIMEOUT, pass_deadline)
             state = button(container, run_dir, "menu")
+            if state["controllerRoute"]["currentId"] == "game-quick-menu":
+                state = button(container, run_dir, "menu")
             if state["controllerRoute"]["currentId"] is not None:
                 raise RuntimeError(f"{route_id} could not reset to Home before traversal")
             controls = route_paths[route_id]
@@ -556,6 +558,8 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
                 raise RuntimeError(f"whole pass timed out after route {route_id}; output: {run_dir}")
         validate_visits(visits, route_ids)
         home_state = button(container, run_dir, "menu")
+        if home_state["controllerRoute"]["currentId"] == "game-quick-menu":
+            home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] is not None:
             raise RuntimeError("could not return to Home before shutdown verification")
         shutdown_path = route_paths["shutdown-confirm"]
@@ -570,6 +574,8 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
                 f"state={cancelled.get('controllerRoute')!r}, exitStatus={(run_dir / 'exit-status.json').exists()}"
             )
         home_state = button(container, run_dir, "menu")
+        if home_state["controllerRoute"]["currentId"] == "game-quick-menu":
+            home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] is not None:
             raise RuntimeError("could not reset Home selection before final shutdown verification")
         for control in shutdown_path[:-1]:

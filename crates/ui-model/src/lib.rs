@@ -141,7 +141,7 @@ impl Default for ControllerHelpStrip {
                 },
                 HelpBinding {
                     button: Button::Menu,
-                    label: "Menu".into(),
+                    label: "System menu".into(),
                     action: Some(SemanticAction::Select),
                 },
                 HelpBinding {
@@ -1034,7 +1034,7 @@ fn move_selection(state: &mut UiState, direction: Direction) {
         return;
     }
     let step = match direction {
-        Direction::Up | Direction::Left => -1,
+        Direction::Up | Direction::Left => 0 - 1,
         Direction::Down | Direction::Right => 1,
     };
     let mut index = state.menu.selection.index as isize;
@@ -1413,12 +1413,9 @@ fn unavailable(capability: Capability) -> ModalState {
 fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
     let previous_id = state.menu.selection.item_id.clone();
     let entries = match route {
+        // Keep the first screen to the everyday loop. Optional tools live in System menu.
         Route::Home => vec![
             entry("systems", "Systems", Route::Systems, true, None),
-            entry("games", "Games", Route::Games, true, None),
-            entry("resume", "Resume", Route::Recent, true, None),
-            entry("search", "Search", Route::Search, true, None),
-            entry("recent", "Recent", Route::Recent, true, None),
             entry(
                 "favorites",
                 "Favorites",
@@ -1426,15 +1423,8 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
                 state.capabilities.favorites,
                 Some(Capability::Favorites),
             ),
-            entry("settings", "Settings", Route::Settings, true, None),
-            entry(
-                "game-switcher",
-                "Game Switcher",
-                Route::GameSwitcher,
-                state.capabilities.session,
-                Some(Capability::Session),
-            ),
-            entry("recovery", "Recovery", Route::Recovery, true, None),
+            entry("recent", "Recent", Route::Recent, true, None),
+            entry("settings", "System menu", Route::Settings, true, None),
         ],
         Route::Systems => state
             .systems

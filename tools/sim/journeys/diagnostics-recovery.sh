@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH=; cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+ROOT=$(
+    CDPATH=
+    cd -- "$(dirname -- "$0")/../../.." && pwd -P
+)
 BIN_DIR=${1:-$ROOT/target/release}
 DIAG=$BIN_DIR/brickpro-diagnostics
 RECOVERY=$BIN_DIR/brick-recovery
@@ -60,6 +63,26 @@ import json
 import sys
 assert json.load(open(sys.argv[1], encoding="utf-8"))["audio"] == {"status": "available", "activeSink": "jack", "sampleRateHz": 44100, "underrunCount": 3, "speakerAmpEnabled": False}
 PY
+
+# Invalid persisted rates fail closed and leave the state intact.
+INVALID_AUDIO=$WORK/invalid-audio
+cp -a "$FIXTURE" "$INVALID_AUDIO"
+python3 - "$INVALID_AUDIO/.brickpro/data/audio-routing/state.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+state = json.load(open(path, encoding="utf-8"))
+state["route"]["sampleRateHz"] = 192001
+open(path, "w", encoding="utf-8").write(json.dumps(state))
+PY
+INVALID_AUDIO_SHA=$(sha256sum "$INVALID_AUDIO/.brickpro/data/audio-routing/state.json")
+"$DIAG" --simulation-fixture-root "$INVALID_AUDIO" --present-safe-mode >"$WORK/invalid-audio-report.json"
+python3 - "$WORK/invalid-audio-report.json" <<'PY'
+import json
+import sys
+assert json.load(open(sys.argv[1], encoding="utf-8"))["audio"] == {"status": "unavailable", "reason": "audio-state-invalid"}
+PY
+[ "$INVALID_AUDIO_SHA" = "$(sha256sum "$INVALID_AUDIO/.brickpro/data/audio-routing/state.json")" ]
 
 "$DIAG" --simulation-fixture-root "$FIXTURE" --persist-crash >"$WORK/persist.json"
 "$DIAG" --simulation-fixture-root "$FIXTURE" --present-safe-mode >"$WORK/persisted-report.json"

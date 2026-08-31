@@ -1,9 +1,9 @@
-use std::{env, path::PathBuf, process};
+use std::{env, fs, path::PathBuf, process};
 
 use audio_routing::{
-    alsa_buffer, default_alsa_buffer, diagnostics_from_state, load_route, save_route,
-    AudioDiagnostics, FixtureAudioAdapter, LiveRouteManager, RouteManager, Runtime, Sink,
-    SystemAudioAdapter,
+    alsa_buffer, default_alsa_buffer, diagnostics_from_state, load_route_or_default, save_route,
+    valid_sample_rate_hz, AudioDiagnostics, FixtureAudioAdapter, LiveRouteManager, RouteManager,
+    Runtime, Sink, SystemAudioAdapter,
 };
 
 fn main() {
@@ -56,7 +56,7 @@ fn system(args: &[String]) -> Result<(), String> {
     }
     let action = args.get(index..).ok_or("audio-runtime-action-invalid")?;
     let state = state.ok_or("audio-state-required")?;
-    let route = load_route(&state).unwrap_or_default();
+    let route = load_route_or_default(&state)?;
     let adapter = SystemAudioAdapter::new(
         card.ok_or("alsa-card-required")?,
         speaker_control.ok_or("speaker-control-required")?,
@@ -83,7 +83,10 @@ fn system(args: &[String]) -> Result<(), String> {
             let rate = rate
                 .parse()
                 .map_err(|_| "sample-rate-invalid".to_string())?;
-            live.mutate(|route| route.begin_stream(rate))?
+            valid_sample_rate_hz(rate)
+                .then_some(())
+                .ok_or_else(|| "sample-rate-invalid".to_string())?;
+            lifecycle(live.transition(|route| route.begin_stream(rate))?)?
         }
         [command] if command == "stream-stop" => live.mutate(RouteManager::end_stream)?,
         [command] if command == "session-start" => {
@@ -124,6 +127,26 @@ fn journey() -> Result<(), String> {
         return Err("ALSA profiles are not centralized".into());
     }
 
+    let state = env::temp_dir().join(format!("brickpro-audio-routing-{}", process::id()));
+    let _ = fs::remove_file(&state);
+    if !matches!(
+        load_route_or_default(&state)?.diagnostics(),
+        AudioDiagnostics::Available {
+            sample_rate_hz: 48_000,
+            ..
+        }
+    ) {
+        return Err("missing audio state did not initialize defaults".into());
+    }
+    let corrupt = br#"{"schema":"brickpro-audio-route/v1","route":{"available":["speaker"],"currentSink":"speaker","requestedSink":"speaker","volumes":{"jack":50,"speaker":50},"streamActive":false,"sampleRateHz":192001,"underrunCount":0,"speakerAmpEnabled":false,"sessionSnapshot":null,"systemSuspendSnapshot":null}}"#;
+    fs::write(&state, corrupt).map_err(|_| "audio-state-write-failed".to_string())?;
+    if load_route_or_default(&state).is_ok()
+        || fs::read(&state).map_err(|_| "audio-state-unavailable".to_string())? != corrupt
+    {
+        return Err("invalid audio state was applied or overwritten".into());
+    }
+    fs::remove_file(&state).map_err(|_| "audio-state-write-failed".to_string())?;
+
     let mut adapter = FixtureAudioAdapter::default();
     adapter.set_sink_present(Sink::Speaker, true);
     adapter.set_sink_present(Sink::Jack, true);
@@ -133,7 +156,9 @@ fn journey() -> Result<(), String> {
         route.set_volume(Sink::Speaker, 33);
         route.set_volume(Sink::Jack, 71);
         route.select_sink(Sink::Jack);
-        route.begin_stream(48_000);
+        if !route.begin_stream(48_000) {
+            route.record_underrun();
+        }
     })?;
     expect(
         live.route(),
@@ -142,6 +167,18 @@ fn journey() -> Result<(), String> {
         false,
         "jack stream did not route deterministically",
     )?;
+    for rate in [7_999, 192_001] {
+        if live.transition(|route| route.begin_stream(rate))? {
+            return Err("out-of-range sample rate accepted".into());
+        }
+        expect(
+            live.route(),
+            Sink::Jack,
+            48_000,
+            false,
+            "invalid sample rate changed audio state",
+        )?;
+    }
     live.mutate(RouteManager::record_underrun)?;
     live.adapter_mut().set_sink_present(Sink::Jack, false);
     live.poll_hotplug()?;
@@ -209,9 +246,24 @@ fn journey() -> Result<(), String> {
     )?;
 
     live.mutate(|route| {
+        if !route.begin_session() || !route.begin_stream(44_100) || !route.end_session() {
+            route.record_underrun();
+        }
+    })?;
+    expect(
+        live.route(),
+        Sink::Jack,
+        48_000,
+        false,
+        "session exit left an inactive snapshot stream running",
+    )?;
+
+    live.mutate(|route| {
         route.select_sink(Sink::Speaker);
         route.set_volume(Sink::Speaker, 0);
-        route.begin_stream(48_000);
+        if !route.begin_stream(48_000) {
+            route.record_underrun();
+        }
     })?;
     expect(
         live.route(),

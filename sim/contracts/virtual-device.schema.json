@@ -65,7 +65,7 @@
       "type": "object",
       "description": "Deterministic fixture state, not a battery or power measurement.",
       "additionalProperties": false,
-      "required": ["levelPercent", "charging", "externalPower"],
+      "required": ["levelPercent", "charging", "full", "health", "externalPower"],
       "properties": {
         "levelPercent": {
           "type": "integer",
@@ -74,6 +74,12 @@
         },
         "charging": {
           "type": "boolean"
+        },
+        "full": {
+          "type": "boolean"
+        },
+        "health": {
+          "enum": ["good", "degraded", "unknown"]
         },
         "externalPower": {
           "type": "boolean"

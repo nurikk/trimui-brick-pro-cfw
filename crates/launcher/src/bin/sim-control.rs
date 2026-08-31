@@ -261,9 +261,40 @@ fn power_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             }
             Ok(json!({"operation": operation, "temperatureC": temperature}))
         }
+        [operation, warning_flag, warning, critical_flag, critical, action_flag, action, led_flag, led, display_flag, display]
+            if operation == "battery-policy"
+                && warning_flag == "--warning"
+                && critical_flag == "--critical"
+                && action_flag == "--action"
+                && led_flag == "--charging-led"
+                && display_flag == "--charging-display"
+                && ["warn-only", "save-and-exit", "exit-without-save"]
+                    .contains(&action.as_str()) =>
+        {
+            let warning = warning
+                .parse::<u8>()
+                .map_err(|_| ("usage", "warning must be 1-50".into()))?;
+            let critical = critical
+                .parse::<u8>()
+                .map_err(|_| ("usage", "critical must be below warning".into()))?;
+            if warning > 50 || critical == 0 || critical >= warning {
+                return Err((
+                    "usage",
+                    "battery thresholds must satisfy 1 <= critical < warning <= 50".into(),
+                ));
+            }
+            Ok(json!({
+                "operation": operation,
+                "warningPercent": warning,
+                "criticalPercent": critical,
+                "lowBatteryAction": action,
+                "chargingLed": parse_bool(led)?,
+                "chargingDisplay": parse_bool(display)?,
+            }))
+        }
         _ => Err((
             "usage",
-            "power override --profile eco|balanced|performance or power temperature --celsius N is required".into(),
+            "power override|temperature|battery-policy arguments are invalid".into(),
         )),
     }
 }
@@ -291,11 +322,20 @@ fn hardware_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             ("battery", "percent") => json!(value
                 .parse::<u8>()
                 .map_err(|_| ("usage", "battery.percent must be 0-100".into()))?),
-            ("battery", "charging")
+            ("battery", "available")
+            | ("battery", "charging")
+            | ("battery", "full")
             | ("battery", "externalPower")
             | ("radio", "enabled")
-            | ("radio", "connected") => {
-                json!(parse_bool(value)?)
+            | ("radio", "connected") => json!(parse_bool(value)?),
+            ("battery", "health") => {
+                if !["good", "degraded", "unknown"].contains(&value) {
+                    return Err((
+                        "usage",
+                        "battery.health must be good, degraded, or unknown".into(),
+                    ));
+                }
+                json!(value)
             }
             ("storage", "mode") => {
                 if !["available", "full"].contains(&value) {

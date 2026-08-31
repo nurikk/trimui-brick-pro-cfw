@@ -65,8 +65,12 @@ pub struct ScreenMedia {
 #[serde(rename_all = "camelCase")]
 pub struct Affordances {
     pub clock: String,
-    pub battery_percent: u8,
-    pub charging: bool,
+    pub battery_percent: Option<u8>,
+    pub charging_status: String,
+    pub external_power: Option<bool>,
+    pub battery_health: String,
+    pub battery_level: String,
+    pub show_charging_status: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -511,7 +515,11 @@ pub fn build_with_recent(
         affordances: Affordances {
             clock: state.affordances.clock.value.clone(),
             battery_percent: state.affordances.battery.percent,
-            charging: state.affordances.battery.charging,
+            charging_status: state.affordances.battery.charging_status.clone(),
+            external_power: state.affordances.battery.external_power,
+            battery_health: state.affordances.battery.health.clone(),
+            battery_level: state.affordances.battery.level.clone(),
+            show_charging_status: state.affordances.battery.show_charging_status,
         },
         controller_help: state.controller_help.bindings.clone(),
         group_jump: state.group_jump.clone(),

@@ -172,6 +172,44 @@
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {
+      "id": "core.power.low-battery-warning-percent", "namespace": "core", "section": "power", "group": "battery", "order": 30,
+      "labelKey": "settings.power.lowBatteryWarning.label", "descriptionKey": "settings.power.lowBatteryWarning.description", "kind": "integer",
+      "default": {"kind": "integer", "value": 20}, "current": {"kind": "integer", "value": 20}, "pending": null,
+      "constraints": {"range": {"min": 1, "max": 50, "step": 1}, "text": null, "options": []},
+      "units": "percent", "display": {"unit": "percent", "format": "slider", "redact": false}, "scope": "system", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.power.low-battery-action", "namespace": "core", "section": "power", "group": "battery", "order": 40,
+      "labelKey": "settings.power.lowBatteryAction.label", "descriptionKey": "settings.power.lowBatteryAction.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "warn-only"}, "current": {"kind": "enum-single", "value": "warn-only"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "warn-only", "labelKey": "settings.power.lowBatteryAction.warnOnly"},
+        {"value": "save-and-exit", "labelKey": "settings.power.lowBatteryAction.saveAndExit"},
+        {"value": "exit-without-save", "labelKey": "settings.power.lowBatteryAction.exitWithoutSave"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "system", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.power.charging-led", "namespace": "core", "section": "power", "group": "charging", "order": 50,
+      "labelKey": "settings.power.chargingLed.label", "descriptionKey": "settings.power.chargingLed.description", "kind": "boolean",
+      "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": false}, "pending": null,
+      "constraints": null, "units": null, "display": {"unit": null, "format": "toggle", "redact": false}, "scope": "system", "apply": ["immediate"],
+      "requiresCapabilities": ["cap.power.charging-led"], "unsupportedReason": "Charging LED control is unavailable on this platform", "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.power.charging-display", "namespace": "core", "section": "power", "group": "charging", "order": 60,
+      "labelKey": "settings.power.chargingDisplay.label", "descriptionKey": "settings.power.chargingDisplay.description", "kind": "boolean",
+      "default": {"kind": "boolean", "value": true}, "current": {"kind": "boolean", "value": true}, "pending": null,
+      "constraints": null, "units": null, "display": {"unit": null, "format": "toggle", "redact": false}, "scope": "user", "apply": ["immediate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
       "id": "core.wifi.enabled", "namespace": "core", "section": "wifi", "group": "connection", "order": 10,
       "labelKey": "settings.wifi.enabled.label", "descriptionKey": "settings.wifi.enabled.description", "kind": "boolean",
       "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": false}, "pending": null, "constraints": null, "units": null,

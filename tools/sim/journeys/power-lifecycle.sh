@@ -88,6 +88,7 @@ assert [event["event"] for event in lifecycle["journal"]][-1] == "suspend-comple
 PY
 }
 
+if [ "${POWER_BATTERY_ONLY:-0}" != 1 ]; then
 # Manual wake at 4:59 clears the first deadline and restores the checkpoint.
 MANUAL=$WORK/manual-459
 start "$MANUAL"
@@ -231,25 +232,137 @@ for case in user-alarm-clear-failure deadline-alarm-clear-failure; do
     assert_orderly "$run/state.json" alarm-clear-failure
 done
 
-# Low battery requests typed orderly shutdown; external power changes remain typed observations.
+fi
+
+# Battery policy persists, observations remain typed, and charge/unplug never wakes or checkpoints.
 POWER=$WORK/power-events
 start "$POWER"
-start_session "$POWER"
-ctl "$POWER" hardware set battery.externalPower=true >/dev/null
-ctl "$POWER" hardware set battery.externalPower=false >/dev/null
-ctl "$POWER" hardware set battery.percent=5 >"$POWER/low-battery.json"
-python3 - "$POWER/low-battery.json" <<'PY'
+ctl "$POWER" power battery-policy --warning 20 --critical 10 --action warn-only --charging-led true --charging-display false >/dev/null
+state_file "$POWER" >"$POWER/policy.json"
+python3 - "$POWER/policy.json" <<'PY'
 import json, sys
-state = json.load(open(sys.argv[1]))["result"]
+state = json.load(open(sys.argv[1], encoding="utf-8"))
+policy = state["battery"]["policy"]
+assert policy == {
+    "warningPercent": 20, "criticalPercent": 10, "lowBatteryAction": "warn-only",
+    "chargingLed": True, "chargingDisplay": False,
+}
+PY
+"$ROOT/scripts/sim" stop --run-dir "$POWER"
+rm -rf "$POWER/logs" "$POWER/screenshots" "$POWER/checkpoints" "$POWER/readiness.json" "$POWER/route-selection.json" "$POWER/launch.json" "$POWER/launch-request.json" "$POWER/session.json" "$POWER/exit-status.json"
+start "$POWER"
+state_file "$POWER" >"$POWER/policy-after-restart.json"
+python3 - "$POWER/policy-after-restart.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))
+assert state["battery"]["policy"]["chargingLed"] is True
+assert state["battery"]["policy"]["chargingDisplay"] is False
+PY
+start_session "$POWER"
+ctl "$POWER" lifecycle suspend --timeout 5 >/dev/null
+ctl "$POWER" lifecycle resume --timeout 5 --source user >/dev/null
+ctl "$POWER" presentation --action update >"$POWER/policy-after-suspend-update.json"
+python3 - "$POWER/policy-after-suspend-update.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
+assert state["battery"]["policy"]["chargingLed"] is True
+assert state["battery"]["policy"]["chargingDisplay"] is False
+assert state["lifecycle"]["phase"] == "awake"
+PY
+ctl "$POWER" hardware set battery.percent=80 battery.charging=true battery.full=false battery.health=good battery.externalPower=true >"$POWER/charging.json"
+ctl "$POWER" power battery-policy --warning 20 --critical 10 --action warn-only --charging-led false --charging-display false >/dev/null
+ctl "$POWER" state >"$POWER/led-off.json"
+ctl "$POWER" power battery-policy --warning 20 --critical 10 --action warn-only --charging-led true --charging-display false >/dev/null
+ctl "$POWER" hardware set battery.percent=100 battery.charging=false battery.full=true battery.externalPower=true >"$POWER/full.json"
+ctl "$POWER" hardware set battery.charging=false battery.full=false battery.externalPower=false >"$POWER/unplugged.json"
+ctl "$POWER" hardware set battery.available=false >"$POWER/unavailable.json"
+python3 - "$POWER/charging.json" "$POWER/led-off.json" "$POWER/full.json" "$POWER/unplugged.json" "$POWER/unavailable.json" <<'PY'
+import glob, json, sys
+charging, led_off, full, unplugged, unavailable = [json.load(open(path, encoding="utf-8"))["result"] for path in sys.argv[1:]]
+assert charging["battery"]["decision"]["chargingStatus"] == "charging"
+assert charging["hardware"]["externalPower"] is True
+assert charging["platformState"]["leds"] == {"on": True, "brightness_percent": 20}
+assert led_off["platformState"]["leds"] == {"on": False, "brightness_percent": 0}
+assert charging["battery"]["actionCount"] == 0 and charging["lifecycle"]["phase"] == "awake"
+assert charging["presentation"]["affordances"]["showChargingStatus"] is False
+assert full["battery"]["decision"]["chargingStatus"] == "full"
+assert full["hardware"]["battery"]["full"] is True
+assert unplugged["battery"]["decision"]["chargingStatus"] == "not-charging"
+assert unplugged["platformState"]["leds"] == {"on": False, "brightness_percent": 0}
+assert unavailable["hardware"]["battery"] == {"percent": None, "charging": None, "full": None, "health": "unknown"}
+assert unavailable["hardware"]["externalPower"] is None
+assert unavailable["battery"]["decision"]["level"] == "unknown"
+assert unavailable["presentation"]["affordances"]["batteryPercent"] is None
+assert unavailable["battery"]["actionCount"] == 0
+records = glob.glob(sys.argv[1].removesuffix("charging.json") + "data/resume/generations/*/record.json")
+assert records
+assert all(json.load(open(path, encoding="utf-8"))["reason"] in {"pre-suspend", "periodic"} for path in records)
+PY
+ctl "$POWER" hardware set battery.available=true battery.percent=73 battery.charging=false battery.full=false battery.health=degraded battery.externalPower=false >/dev/null
+ctl "$POWER" hardware set battery.percent=5 >"$POWER/critical-debounced.json"
+python3 - "$POWER/critical-debounced.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
+assert state["battery"]["decision"]["level"] == "critical"
+assert state["battery"]["decision"]["jumpDebounced"] is True
+assert state["battery"]["decision"]["displayedPercent"] == 73
+assert state["battery"]["actionCount"] == 0
+assert state["lifecycle"]["phase"] == "awake"
+PY
+ctl "$POWER" hardware set battery.percent=5 >"$POWER/critical.json"
+python3 - "$POWER/critical.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
 assert state["hardware"]["externalPower"] is False
+assert state["hardware"]["battery"]["health"] == "degraded"
+assert state["battery"]["decision"]["displayedPercent"] == 5
+assert state["battery"]["actionCount"] == 1
 assert state["lifecycle"]["shutdownRequest"]["reason"] == "low-battery"
 assert state["lifecycle"]["phase"] == "orderly-shutdown"
-root = sys.argv[1].removesuffix("low-battery.json")
-pointer = json.load(open(root + "data/resume/current.json"))
-assert pointer["generation"] >= 1
-record = json.load(open(root + f"data/resume/generations/generation-{pointer['generation']}/record.json"))
+root = sys.argv[1].removesuffix("critical.json")
+pointer = json.load(open(root + "data/resume/current.json", encoding="utf-8"))
+record = json.load(open(root + f"data/resume/generations/generation-{pointer['generation']}/record.json", encoding="utf-8"))
 assert record["reason"] == "low-battery"
 PY
+GENERATION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generation"])' "$POWER/data/resume/current.json")
+ctl "$POWER" hardware set battery.percent=5 >/dev/null
+ctl "$POWER" hardware set battery.charging=true battery.full=false battery.externalPower=true >/dev/null
+ctl "$POWER" hardware set battery.charging=false battery.externalPower=false >"$POWER/unplug-after-shutdown.json"
+python3 - "$POWER/unplug-after-shutdown.json" "$GENERATION" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
+assert state["lifecycle"]["phase"] == "orderly-shutdown"
+assert state["lifecycle"]["shutdownRequest"]["status"] == "terminal"
+assert state["battery"]["actionCount"] == 1
+pointer = json.load(open(sys.argv[1].removesuffix("unplug-after-shutdown.json") + "data/resume/current.json", encoding="utf-8"))
+assert pointer["generation"] == int(sys.argv[2])
+PY
+
+# Save-and-exit checkpoints exactly once at low battery and does not loop.
+LOW=$WORK/low-save-exit
+start "$LOW"
+ctl "$LOW" power battery-policy --warning 20 --critical 10 --action save-and-exit --charging-led false --charging-display true >/dev/null
+start_session "$LOW"
+for percent in 55 40 25; do ctl "$LOW" hardware set battery.percent="$percent" >/dev/null; done
+ctl "$LOW" hardware set battery.percent=20 >"$LOW/low.json"
+LOW_GENERATION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generation"])' "$LOW/data/resume/current.json")
+ctl "$LOW" hardware set battery.percent=20 >"$LOW/low-repeat.json"
+python3 - "$LOW/low.json" "$LOW/low-repeat.json" "$LOW_GENERATION" <<'PY'
+import json, sys
+first, repeated = [json.load(open(path, encoding="utf-8"))["result"] for path in sys.argv[1:3]]
+assert first["battery"]["decision"]["level"] == "low"
+assert first["battery"]["actionCount"] == 1
+assert first["activeSession"] is None and first["lifecycle"]["phase"] == "awake"
+assert repeated["battery"]["actionCount"] == 1
+session = json.load(open(sys.argv[1].removesuffix("low.json") + "session.json", encoding="utf-8"))
+assert session["state"] == "completed"
+pointer = json.load(open(sys.argv[1].removesuffix("low.json") + "data/resume/current.json", encoding="utf-8"))
+assert pointer["generation"] == int(sys.argv[3])
+PY
+if [ "${POWER_BATTERY_ONLY:-0}" = 1 ]; then
+    printf '%s\n' "power lifecycle battery subset: PASS $WORK"
+    exit 0
+fi
 
 # Shutdown retry is bounded and succeeds only after the fault is cleared.
 RETRY=$WORK/shutdown-retry

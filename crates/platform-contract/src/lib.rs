@@ -6,6 +6,7 @@
 
 use std::{fmt, path::Path};
 
+pub mod battery;
 pub mod lifecycle;
 pub mod power;
 
@@ -260,13 +261,15 @@ pub struct HallCalibrationState {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PowerState {
-    pub external_power: bool,
+    pub external_power: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BatteryState {
-    pub percent: u8,
-    pub charging: bool,
+    pub percent: Option<u8>,
+    pub charging: Option<bool>,
+    pub full: Option<bool>,
+    pub health: battery::BatteryHealth,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -330,9 +333,11 @@ pub struct PlatformState {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct HardwareState {
-    pub battery_percent: u8,
-    pub charging: bool,
-    pub external_power: bool,
+    pub battery_percent: Option<u8>,
+    pub charging: Option<bool>,
+    pub full: Option<bool>,
+    pub battery_health: battery::BatteryHealth,
+    pub external_power: Option<bool>,
     pub storage_mode: StorageMode,
     pub radio_enabled: bool,
     pub radio_connected: bool,
@@ -342,8 +347,11 @@ pub struct HardwareState {
 
 #[derive(Clone, Debug, Default)]
 pub struct HardwareChanges {
+    pub battery_available: Option<bool>,
     pub battery_percent: Option<u8>,
     pub charging: Option<bool>,
+    pub full: Option<bool>,
+    pub battery_health: Option<battery::BatteryHealth>,
     pub external_power: Option<bool>,
     pub storage_mode: Option<StorageMode>,
     pub radio_enabled: Option<bool>,
@@ -354,8 +362,11 @@ pub struct HardwareChanges {
 
 #[derive(Clone, Debug)]
 pub struct PlatformSnapshot {
-    pub battery_level_percent: u8,
-    pub charging: bool,
+    pub battery_level_percent: Option<u8>,
+    pub charging: Option<bool>,
+    pub full: Option<bool>,
+    pub battery_health: battery::BatteryHealth,
+    pub external_power: Option<bool>,
     pub led_on: bool,
     pub audio_enabled: bool,
     pub radio_enabled: bool,

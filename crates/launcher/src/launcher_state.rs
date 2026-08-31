@@ -5,6 +5,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sim_platform_contract::battery::BatteryPolicy;
 use ui_model::{ScraperProgress, UiPreferences};
 
 const SCHEMA_VERSION: u16 = 1;
@@ -29,6 +30,8 @@ pub struct State {
     pub favorites: Vec<String>,
     pub recent: Vec<RecentItem>,
     #[serde(default)]
+    pub battery_policy: BatteryPolicy,
+    #[serde(default)]
     pub scraper_progress: Option<ScraperProgress>,
 }
 
@@ -40,6 +43,7 @@ impl Default for State {
             preferences: UiPreferences::default(),
             favorites: Vec::new(),
             recent: Vec::new(),
+            battery_policy: BatteryPolicy::default(),
             scraper_progress: None,
         }
     }
@@ -107,6 +111,7 @@ fn valid_state(state: &State) -> bool {
         && !state.favorites.windows(2).any(|ids| ids[0] >= ids[1])
         && state.favorites.iter().all(|id| valid_id(id))
         && state.recent.iter().all(|item| valid_id(&item.content_id))
+        && state.battery_policy.validate().is_ok()
         && state
             .scraper_progress
             .as_ref()

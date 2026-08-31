@@ -12,8 +12,8 @@ use sdl2::{
 };
 use serde::Deserialize;
 use sim_platform_contract::{
-    AudioState, BatteryState, Button, ButtonAction, ButtonEvent, DisplayState,
-    HallCalibrationState, HardwareChanges, HardwareDomain, HardwareState, InputState,
+    battery::BatteryHealth, AudioState, BatteryState, Button, ButtonAction, ButtonEvent,
+    DisplayState, HallCalibrationState, HardwareChanges, HardwareDomain, HardwareState, InputState,
     LedState as PlatformLedState, Platform, PlatformCapabilities, PlatformError, PlatformIdentity,
     PlatformResult, PlatformSnapshot, PlatformState, PowerState, RadioState, RadiosState,
     RumbleState, Screen, StorageMode, SuspendResult, SuspendState, UsbRole, UsbState,
@@ -63,10 +63,12 @@ struct ConfiguredEvent {
 #[serde(deny_unknown_fields)]
 struct Battery {
     #[serde(rename = "levelPercent")]
-    level_percent: u8,
-    charging: bool,
+    level_percent: Option<u8>,
+    charging: Option<bool>,
+    full: Option<bool>,
+    health: BatteryHealth,
     #[serde(rename = "externalPower")]
-    external_power: bool,
+    external_power: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -352,6 +354,8 @@ impl HostPlatform {
             battery: BatteryState {
                 percent: profile.battery.level_percent,
                 charging: profile.battery.charging,
+                full: profile.battery.full,
+                health: profile.battery.health,
             },
             suspend: (suspend_state, suspend_result),
             radios: RadiosState {
@@ -654,6 +658,9 @@ impl Platform for HostPlatform {
         Ok(PlatformSnapshot {
             battery_level_percent: self.state.battery.percent,
             charging: self.state.battery.charging,
+            full: self.state.battery.full,
+            battery_health: self.state.battery.health,
+            external_power: self.state.power.external_power,
             led_on: self.state.leds.on,
             audio_enabled: self.state.audio.enabled,
             radio_enabled: self.state.radios.wifi.enabled,
@@ -669,6 +676,8 @@ impl Platform for HostPlatform {
         Ok(HardwareState {
             battery_percent: self.state.battery.percent,
             charging: self.state.battery.charging,
+            full: self.state.battery.full,
+            battery_health: self.state.battery.health,
             external_power: self.state.power.external_power,
             storage_mode: self.state.storage.clone(),
             radio_enabled: self.state.radios.wifi.enabled,
@@ -679,14 +688,33 @@ impl Platform for HostPlatform {
     }
 
     fn mutate_hardware(&mut self, changes: HardwareChanges) -> PlatformResult<()> {
+        if changes.battery_available == Some(false) {
+            self.state.battery.percent = None;
+            self.state.battery.charging = None;
+            self.state.battery.full = None;
+            self.state.battery.health = BatteryHealth::Unknown;
+            self.state.power.external_power = None;
+        }
         if let Some(value) = changes.battery_percent {
-            self.state.battery.percent = value;
+            self.state.battery.percent = Some(value);
         }
         if let Some(value) = changes.charging {
-            self.state.battery.charging = value;
+            self.state.battery.charging = Some(value);
+            if value {
+                self.state.battery.full = Some(false);
+            }
+        }
+        if let Some(value) = changes.full {
+            self.state.battery.full = Some(value);
+            if value {
+                self.state.battery.charging = Some(false);
+            }
+        }
+        if let Some(value) = changes.battery_health {
+            self.state.battery.health = value;
         }
         if let Some(value) = changes.external_power {
-            self.state.power.external_power = value;
+            self.state.power.external_power = Some(value);
         }
         if let Some(value) = changes.storage_mode {
             self.state.storage = value;
@@ -766,7 +794,7 @@ impl Platform for HostPlatform {
     }
 
     fn set_battery(&mut self, state: BatteryState) -> PlatformResult<()> {
-        if state.percent > 100 {
+        if state.percent.is_some_and(|percent| percent > 100) {
             return Err(PlatformError::Invalid {
                 domain: HardwareDomain::Battery,
                 reason: "percent must be between 0 and 100".to_string(),
@@ -2248,12 +2276,26 @@ pub fn supports_text(text: &str) -> bool {
 fn draw_status(canvas: &mut Canvas<Window>, screen: &Screen) {
     let width = active_layout().viewport_width as i32;
     let margin = (width / 32).max(12);
-    let battery = format!(
-        "{}%{}",
-        screen.affordances.battery_percent,
-        if screen.affordances.charging { "+" } else { "" }
+    let level = match screen.affordances.battery_level.as_str() {
+        "critical" => "!",
+        "low" => "*",
+        _ => "",
+    };
+    let power = if screen.affordances.show_charging_status {
+        match screen.affordances.charging_status.as_str() {
+            "charging" => "+",
+            "full" => "=",
+            _ if screen.affordances.external_power == Some(true) => "~",
+            _ => "",
+        }
+    } else {
+        ""
+    };
+    let battery = screen.affordances.battery_percent.map_or_else(
+        || "--".into(),
+        |percent| format!("{level}{percent}%{power}"),
     );
-    let battery_bounds = Rect::new(width - margin - 76, 12, 76, 28);
+    let battery_bounds = Rect::new(width - margin - 96, 12, 96, 28);
     let wifi_bounds = Rect::new(battery_bounds.x() - 24, 12, 20, 28);
     let clock_bounds = Rect::new(margin, 12, (wifi_bounds.x() - margin - 8).max(1) as u32, 28);
     draw_text_in_bounds(

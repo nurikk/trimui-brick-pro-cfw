@@ -1157,20 +1157,7 @@ fn validate_data_path(value: &str) -> Result<()> {
 }
 
 fn validate_relative(value: &str) -> Result<()> {
-    if value.is_empty()
-        || value.len() > 256
-        || value.contains('\\')
-        || Path::new(value).is_absolute()
-    {
-        bail!("path is not a bounded relative path")
-    }
-    for component in Path::new(value).components() {
-        match component {
-            Component::Normal(_) => {}
-            _ => bail!("path contains traversal or non-normal component"),
-        }
-    }
-    Ok(())
+    storage_layout::validate_logical_path(value)
 }
 
 fn data_relative(path: &str) -> Result<PathBuf> {

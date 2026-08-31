@@ -12,6 +12,7 @@ EXPECTED = {
     "usr/bin/brickpro-diagnostics",
     "usr/bin/brickpro-boot-state",
     "usr/bin/brickpro-storage-layout",
+    "usr/bin/brickpro-file-manager",
     "usr/bin/brickpro-update-agent",
     "usr/bin/brickpro-userspace-supervisor",
     "usr/bin/session-broker",

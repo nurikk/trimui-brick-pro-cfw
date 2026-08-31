@@ -130,15 +130,15 @@
         "schemaVersion": {"const": 1},
         "entries": {
           "type": "array",
-          "minItems": 6,
-          "maxItems": 6,
+          "minItems": 7,
+          "maxItems": 7,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["class", "path", "sourceSchema", "targetSchema", "migration"],
             "properties": {
-              "class": {"enum": ["saves", "credentials", "achievements", "mappings", "fn-led-settings", "service-settings"]},
-              "path": {"enum": ["data/saves", "data/credentials", "data/achievements", "data/mappings", "data/settings/fn-led", "data/settings/services"]},
+              "class": {"enum": ["saves", "credentials", "achievements", "mappings", "fn-led-settings", "service-settings", "emulator-selections"]},
+              "path": {"enum": ["data/saves", "data/credentials", "data/achievements", "data/mappings", "data/settings/fn-led", "data/settings/services", "data/settings/emulator-selections"]},
               "sourceSchema": {"type": "integer", "minimum": 1, "maximum": 1000},
               "targetSchema": {"type": "integer", "minimum": 1, "maximum": 1000},
               "migration": {"const": "shared-data-copy-on-write"}

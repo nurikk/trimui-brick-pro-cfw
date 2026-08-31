@@ -24,13 +24,14 @@ const MAX_PAYLOAD: u64 = 512 * 1024 * 1024;
 const DATA_SCHEMA: u32 = 1;
 const ABI: &str = "tg4040-userspace-v1";
 const MIN_BATTERY_PERCENT: u8 = 50;
-const APPROVED_USER_DATA: [(&str, &str); 6] = [
+const APPROVED_USER_DATA: [(&str, &str); 7] = [
     ("saves", "data/saves"),
     ("credentials", "data/credentials"),
     ("achievements", "data/achievements"),
     ("mappings", "data/mappings"),
     ("fn-led-settings", "data/settings/fn-led"),
     ("service-settings", "data/settings/services"),
+    ("emulator-selections", "data/settings/emulator-selections"),
 ];
 
 #[derive(Clone, Debug, Deserialize, serde::Serialize)]
@@ -778,6 +779,7 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf)> {
         "data/mappings",
         "data/settings/fn-led",
         "data/settings/services",
+        "data/settings/emulator-selections",
         ".brickpro/data",
         ".brickpro/system/slots/A",
         ".brickpro/system/slots/B",
@@ -808,6 +810,11 @@ fn journey_fixture(root: &Path) -> Result<(PathBuf, PathBuf)> {
         (
             "data/settings/services/options.synthetic",
             b"services\n".as_slice(),
+        ),
+        (
+            "data/settings/emulator-selections/v1.json",
+            br#"{"schema":"brickpro-user-emulator-selections/v1","schemaVersion":1,"systems":{"tg4040":{"runner":{"id":"clean-room-libretro","version":"1.0.0"},"core":{"id":"clean-room-gameboy-core","version":"1.0.0"},"inputRemap":"fixture-pad","shader":"fixture-shader"}},"games":{},"lastKnownGoodSystems":{"tg4040":{"runner":{"id":"clean-room-libretro","version":"1.0.0"},"core":{"id":"clean-room-gameboy-core","version":"1.0.0"}}}}
+"#.as_slice(),
         ),
         (
             ".brickpro/data/prior-release-readable",

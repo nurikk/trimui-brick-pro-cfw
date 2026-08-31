@@ -28,6 +28,13 @@ Experimental resolution requires both the experimental channel and `experimental
 
 The output includes every effective setting and its winning layer. The resolver rejects unknown fields, path escapes, case-colliding folder ancestors, unavailable runner/core/profile/extension selections, unsupported capabilities, and display settings beyond device limits. It does not accept shell commands, executable paths, or runtime directives from a fixture.
 
+
+## User selection and recovery
+
+Catalog system documents are immutable release metadata. The launcher stores only remaps, shaders, and pinned runner/core choices in `.brickpro/data/settings/emulator-selections/v1.json`; per-game choices win over per-system choices, which win over the catalog default. A missing or incompatible user runtime falls back to the immutable default with `game-override-unavailable` or `system-override-unavailable`, never silently to another core. Reset deletes only that user-layer file.
+
+A successful representative smoke records the system runtime pin as last-known-good. A failed later smoke restores that pin without touching saves or states. Launch presentation uses the typed `launch-contract` reasons `unsupported-format`, `missing-bios`, `missing-data`, `missing-runtime`, and `launch-crash`, so unsupported CHD/M3U/archive or multi-disc input is not confused with a BIOS, package, or process failure. Compatibility recipes remain a separate, explicit reversible per-game recipe layer; their exact core pin is applied only after recipe matching and preview.
+
 ## BIOS audit and privacy boundary
 
 `bios-audit` (also accepted as `audit`) takes `--catalog <catalog-root> --bios-root <fixture-filesystem-root> --channel stable|experimental` (`audit` also accepts the legacy `--root` spelling). The BIOS root is supplied separately from the catalog directory. Candidate locations remain logical `bios/...` paths. The audit streams each candidate through SHA-256 and emits only requirement IDs, present/missing/mismatch counts, and status. It never copies, uploads, indexes, prints, persists, or logs candidate filenames, host paths, discovered hashes, or bytes. A present BIOS with no approved hash is `unverified` and is a nonzero, fail-closed CLI outcome; it is not launchable. The repository fixtures intentionally contain no BIOS payload or private corpus. Experimental BIOS records are requirement IDs and logical locations only; they carry no BIOS hash and an explicit `required-unverified` status.

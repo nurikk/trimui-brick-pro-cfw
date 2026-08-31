@@ -30,6 +30,45 @@ impl fmt::Display for ContractError {
 
 impl std::error::Error for ContractError {}
 
+/// Stable, UI-safe reasons for a rejected or failed launch.
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LaunchDiagnosticCode {
+    UnsupportedFormat,
+    MissingBios,
+    MissingData,
+    MissingRuntime,
+    LaunchCrash,
+}
+
+impl LaunchDiagnosticCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::UnsupportedFormat => "unsupported-format",
+            Self::MissingBios => "missing-bios",
+            Self::MissingData => "missing-data",
+            Self::MissingRuntime => "missing-runtime",
+            Self::LaunchCrash => "launch-crash",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LaunchDiagnostic {
+    pub code: LaunchDiagnosticCode,
+    pub reason: String,
+}
+
+impl LaunchDiagnostic {
+    pub fn new(code: LaunchDiagnosticCode, reason: impl Into<String>) -> Self {
+        Self {
+            code,
+            reason: reason.into(),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, ContractError>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

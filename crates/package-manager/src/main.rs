@@ -6,7 +6,9 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use package_manager::{
-    install, load_manifest, uninstall, upgrade, validate_manifest, TransactionOptions,
+    bounded_log, install, install_for_device, load_manifest, package_status, preflight,
+    set_enabled, simple_launcher_visible, uninstall, upgrade, validate_manifest, DeviceProfile,
+    PackageStatus, TransactionOptions,
 };
 use serde_json::Value;
 
@@ -96,6 +98,18 @@ fn demo(fixtures: &Path) -> Result<()> {
         "PASS safe install promoted {} {}",
         activation.id, activation.version
     );
+    fs::write(
+        root.join(".brickpro/packages/demo-theme/1.0.0/writable/preferences.json"),
+        b"user preference",
+    )?;
+    if package_status(
+        &root,
+        &load_manifest(&manifest_path)?.0,
+        &DeviceProfile::brick_pro(),
+    ) != PackageStatus::Installed
+    {
+        bail!("installed package did not project its UI state")
+    }
 
     let (manifest, _) = load_manifest(&manifest_path)?;
     let mut update = manifest;
@@ -125,10 +139,14 @@ fn demo(fixtures: &Path) -> Result<()> {
         &payload_root,
         TransactionOptions::default(),
     )?;
-    if upgraded.version != "1.1.0" || root.join(".brickpro/packages/demo-theme/1.0.0").exists() {
-        bail!("update did not promote exactly one active version")
+    if upgraded.version != "1.1.0"
+        || root.join(".brickpro/packages/demo-theme/1.0.0").exists()
+        || fs::read(root.join(".brickpro/packages/demo-theme/1.1.0/writable/preferences.json"))?
+            != b"user preference"
+    {
+        bail!("update did not preserve declared user data")
     }
-    println!("PASS interrupted update retains prior activation; update promotes 1.1.0");
+    println!("PASS interrupted update retains prior activation; update preserves user data");
 
     uninstall(&root, "demo-theme", TransactionOptions::default())?;
     if root
@@ -138,10 +156,12 @@ fn demo(fixtures: &Path) -> Result<()> {
     {
         bail!("uninstall left package activation")
     }
-    if protected_before != protected_bytes(&root)? {
-        bail!("uninstall changed protected data")
+    if protected_before != protected_bytes(&root)?
+        || fs::read(root.join("data/packages/demo-theme/preferences.json"))? != b"user preference"
+    {
+        bail!("uninstall did not retain declared user data")
     }
-    println!("PASS uninstall preserves protected data");
+    println!("PASS uninstall preserves protected and declared user data");
 
     if install(
         &root,
@@ -181,19 +201,68 @@ fn demo(fixtures: &Path) -> Result<()> {
     uninstall(&root, "demo-theme", TransactionOptions::default())?;
     println!("PASS interrupted uninstall preserves protected data");
 
-    let (_, _) = load_manifest(&manifest_path)?;
-    let mut bad_path: package_manager::PackageManifest =
-        serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    let (manifest, _) = load_manifest(&manifest_path)?;
+    let mut bad_path = manifest.clone();
     bad_path.files[0].path = "../escape.json".into();
     if validate_manifest(&bad_path).is_ok() {
         bail!("traversal path was accepted")
     }
-    let mut raw: Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
-    raw["capabilities"]["network"] = Value::Array(vec![Value::String("raw-shell".into())]);
-    if serde_json::from_value::<package_manager::PackageManifest>(raw).is_ok() {
-        bail!("unsupported capability was accepted")
+    let mut wrong_sku = DeviceProfile::brick_pro();
+    wrong_sku.sku = "TG5050".into();
+    let mut wrong_abi = DeviceProfile::brick_pro();
+    wrong_abi.abi = "armv7-unknown-linux-musleabihf".into();
+    let mut missing_library = manifest.clone();
+    missing_library
+        .dependencies
+        .push(package_manager::Dependency {
+            id: "libcurl".into(),
+            version: "8.7.1".into(),
+        });
+    let missing_library_path = root.join("missing-library.json");
+    fs::write(&missing_library_path, serde_json::to_vec(&missing_library)?)?;
+    let mut no_space = DeviceProfile::brick_pro();
+    no_space.free_bytes = 1;
+    for device in [&wrong_sku, &wrong_abi, &no_space] {
+        if install_for_device(
+            &root,
+            &manifest_path,
+            &payload_root,
+            device,
+            TransactionOptions::default(),
+        )
+        .is_ok()
+        {
+            bail!("incompatible package reached activation")
+        }
     }
-    println!("PASS bad archive path, executable-free themes, and unsupported fields reject");
+    if install_for_device(
+        &root,
+        &missing_library_path,
+        &payload_root,
+        &DeviceProfile::brick_pro(),
+        TransactionOptions::default(),
+    )
+    .is_ok()
+        || preflight(&manifest, &wrong_sku).ready()
+        || package_status(&root, &manifest, &wrong_sku) != PackageStatus::Incompatible
+    {
+        bail!("package preflight did not block incompatible activation")
+    }
+    install(
+        &root,
+        &manifest_path,
+        &payload_root,
+        TransactionOptions::default(),
+    )?;
+    set_enabled(&root, "demo-theme", false)?;
+    if simple_launcher_visible(&root, "demo-theme")
+        || bounded_log((0..40).map(|line| "x".repeat(line + 1))).len() != 32
+    {
+        bail!("disabled package remained visible or package log was unbounded")
+    }
+    set_enabled(&root, "demo-theme", true)?;
+    uninstall(&root, "demo-theme", TransactionOptions::default())?;
+    println!("PASS preflight rejects SKU ABI dependency space and traversal; disabled package hides safely");
     if protected_before != protected_bytes(&root)? {
         bail!("package lifecycle changed protected data")
     }

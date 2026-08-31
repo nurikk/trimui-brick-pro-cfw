@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/trimui-brick-package-catalog-v1.schema.json",
+  "title": "Brick Pro optional package catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "format", "schemaVersion", "targetSku", "targetAbi", "entries"],
+  "properties": {
+    "$schema": {"const": "https://example.invalid/trimui-brick-package-catalog-v1.schema.json"},
+    "format": {"const": "brickpro-package-catalog"},
+    "schemaVersion": {"const": 1},
+    "targetSku": {"type": "string", "pattern": "^[A-Z0-9]+(?:-[A-Z0-9]+)*$"},
+    "targetAbi": {"const": "aarch64-unknown-linux-musl"},
+    "entries": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "version", "builtinEntrypoint", "dependencies", "capabilities", "storage", "uninstallOwnedPaths", "simpleLauncher"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+          "type": {"enum": ["module", "application", "utility"]},
+          "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+          "builtinEntrypoint": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+          "dependencies": {"type": "array", "maxItems": 32, "items": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}, "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}}}},
+          "capabilities": {"$ref": "https://example.invalid/trimui-brick-capabilities-v1.schema.json"},
+          "storage": {"type": "object", "additionalProperties": false, "required": ["requiredBytes", "userData"], "properties": {"requiredBytes": {"type": "integer", "minimum": 0, "maximum": 1048576}, "userData": {"type": "array", "maxItems": 64, "items": {"type": "string", "pattern": "^writable/(?!.*\\\\)(?!.*(^|/)\\.\\.?(/|$)).+$"}}}},
+          "uninstallOwnedPaths": {"const": ["immutable", "runtime", "cache", "staging"]},
+          "simpleLauncher": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

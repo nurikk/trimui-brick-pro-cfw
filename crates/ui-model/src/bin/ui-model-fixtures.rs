@@ -1,10 +1,10 @@
 use ui_model::{
-    reduce, Action, AmbiguousChoice, GameId, MenuCommand, ModalState, PlatformCapabilities,
-    PreferenceChange, Route, ScraperAction, SsidEntryMode, UiSize, UiState, WifiAction, WifiRoute,
-    WifiStatus, MAX_INPUT_CHARS,
+    reduce, Action, AmbiguousChoice, GameId, MenuCommand, ModalState, NightSchedule,
+    PlatformCapabilities, PreferenceChange, Route, ScraperAction, SsidEntryMode, UiSize, UiState,
+    VisualPreset, WifiAction, WifiRoute, WifiStatus, MAX_INPUT_CHARS,
 };
 
-const FIXTURES: &[(&str, &str)] = &[
+const FIXTURES: &[(&str, &str); 14] = &[
     (
         "artbook-4x3.json",
         include_str!("../../../../fixtures/ui-model/artbook-4x3.json"),
@@ -142,6 +142,56 @@ fn check_journey() {
         Action::SetPreference(PreferenceChange::UiSize(UiSize::Large)),
     );
     assert_eq!(state.preferences.ui_size, UiSize::Large);
+    let state = reduce(
+        &state,
+        Action::SetPreference(PreferenceChange::VisualPreset(VisualPreset::DenseList)),
+    );
+    let dense = state.preferences.visual_profile(0);
+    assert_eq!(dense.brightness_floor_percent, 20);
+    assert_eq!(dense.list_density, ui_model::ListDensity::Dense);
+    assert!(!dense.status_bar_visible);
+    let scheduled = reduce(
+        &reduce(
+            &state,
+            Action::SetPreference(PreferenceChange::VisualPreset(VisualPreset::NightWarm)),
+        ),
+        Action::SetPreference(PreferenceChange::NightSchedule(NightSchedule::LocalTime)),
+    );
+    let noon = 12 * 60 * 60 * 1000;
+    assert_eq!(
+        reduce(
+            &scheduled,
+            Action::SetVisualClock {
+                wall_clock_ms: noon,
+            },
+        )
+        .preferences
+        .visual_profile(noon)
+        .preset,
+        VisualPreset::Default
+    );
+    assert_eq!(
+        scheduled
+            .preferences
+            .visual_profile(22 * 60 * 60 * 1000)
+            .preset,
+        VisualPreset::NightWarm
+    );
+    let restored: ui_model::UiPreferences = serde_json::from_slice(
+        &serde_json::to_vec(&scheduled.preferences).expect("serialize visual preferences"),
+    )
+    .expect("restore visual preferences");
+    assert_eq!(restored, scheduled.preferences);
+    assert_eq!(
+        reduce(
+            &scheduled,
+            Action::SetPreference(PreferenceChange::VisualPreset(VisualPreset::Default)),
+        )
+        .preferences
+        .visual_profile(22 * 60 * 60 * 1000)
+        .preset,
+        VisualPreset::Default
+    );
 
     let state = reduce(
         &state,

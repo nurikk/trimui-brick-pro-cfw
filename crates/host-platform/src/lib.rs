@@ -194,10 +194,11 @@ impl UiLayout {
             viewport_height,
             automatic_scale_percent,
         );
+        let rows = launcher_presentation::row_metrics(screen, automatic_scale_percent);
         Self {
             scale_percent,
-            row_height: 26 * i32::from(scale_percent) / 100,
-            spacing: 12 * i32::from(scale_percent) / 100,
+            row_height: rows.row_height as i32,
+            spacing: rows.row_step.saturating_sub(rows.row_height) as i32,
             icon_size: (24 * u32::from(scale_percent) / 100).max(16),
             help_y: 704 - (i32::from(scale_percent).saturating_sub(100) / 4),
             help_step: 180 * i32::from(scale_percent) / 100,
@@ -1181,14 +1182,22 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
             };
             draw_screen_media(canvas, media, bounds)?;
         }
-        if screen.route != "games-no-metadata" {
+        if screen.route != "games-no-metadata"
+            && screen.visual_profile.artwork_mode != ui_model::ArtworkMode::Off
+        {
             if let Some(media) = screen.selected_game.as_ref().and_then(|game| {
                 screen
                     .game_media
                     .iter()
                     .find(|media| media.content_id == game.id && media.kind == "box-art")
             }) {
-                draw_screen_media(canvas, media, layout_rect(800, 352, 192, 140))?;
+                let bounds = if screen.visual_profile.artwork_mode == ui_model::ArtworkMode::Compact
+                {
+                    layout_rect(848, 384, 128, 96)
+                } else {
+                    layout_rect(800, 352, 192, 140)
+                };
+                draw_screen_media(canvas, media, bounds)?;
             }
         }
         if screen.route != "games-no-metadata" {
@@ -2274,6 +2283,9 @@ pub fn supports_text(text: &str) -> bool {
 }
 
 fn draw_status(canvas: &mut Canvas<Window>, screen: &Screen) {
+    if !screen.visual_profile.status_bar_visible {
+        return;
+    }
     let width = active_layout().viewport_width as i32;
     let margin = (width / 32).max(12);
     let level = match screen.affordances.battery_level.as_str() {

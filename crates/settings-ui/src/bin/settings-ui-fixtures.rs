@@ -43,6 +43,8 @@ fn run() -> Result<(), String> {
         "network".into(),
         "theme-engine".into(),
         "wifi".into(),
+        "cap.display.brightness".into(),
+        "cap.display.gamma".into(),
     ]);
     let mut ui = SettingsUi::new(registry.clone(), context).map_err(|error| error.to_string())?;
     let initial = ui.scene().map_err(|error| error.to_string())?;
@@ -100,12 +102,34 @@ fn run() -> Result<(), String> {
         != [
             "automatic",
             "compact",
+            "normal",
             "comfortable",
             "large",
             "extra-large",
         ]
     {
-        return Err("UI size options are not the five named values".into());
+        return Err("UI size options are not the six named values".into());
+    }
+
+    let visual_preset = control(&initial, "core.display.visual-preset")?;
+    let visual_options: Vec<_> = visual_preset
+        .constraints
+        .as_ref()
+        .ok_or("visual preset options missing")?
+        .options
+        .iter()
+        .map(|option| option.value.as_str())
+        .collect();
+    if visual_options
+        != [
+            "default",
+            "night-warm",
+            "low-brightness",
+            "pixel-accurate",
+            "dense-list",
+        ]
+    {
+        return Err("visual preset options are incomplete".into());
     }
 
     let synthetic = control(&initial, "core.system.synthetic-label")?;
@@ -352,6 +376,11 @@ fn run() -> Result<(), String> {
         .map_err(|error| error.to_string())?
         .scene()
         .map_err(|error| error.to_string())?;
+    let brightness = control(&unsupported, "core.display.brightness")?;
+    let gamma = control(&unsupported, "core.display.gamma")?;
+    if brightness.enabled || gamma.enabled {
+        return Err("unmeasured display controls were enabled".into());
+    }
     let audio = control(&unsupported, "core.audio.output")?;
     if audio.enabled || audio.disabled_reason.is_none() {
         return Err("capability-disabled control did not expose a reason".into());

@@ -14,7 +14,7 @@ use sim_host_platform::{Backend, HostPlatform};
 use sim_platform_contract::Platform;
 use ui_model::{
     Action, Button as UiButton, FallbackReason, PlatformCapabilities, Route, ScraperAction,
-    UiState, WifiAction,
+    UiState, VisualPreset, WifiAction,
 };
 use wifi_manager::{GeneratedWifiBackend, WifiManager};
 use wifi_settings_controller::{Metadata as WifiMetadata, WifiSettingsController};
@@ -293,6 +293,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &save_sync,
         &states,
     )?;
+    run_visual_profile_matrix(
+        &root,
+        &profile,
+        &theme,
+        &settings,
+        &wifi_snapshot,
+        &save_sync,
+        &states,
+    )?;
     run_localization_corpus(
         &root,
         &profile,
@@ -346,6 +355,7 @@ fn run_layout_matrix(
     let sizes = [
         ui_model::UiSize::Automatic,
         ui_model::UiSize::Compact,
+        ui_model::UiSize::Normal,
         ui_model::UiSize::Comfortable,
         ui_model::UiSize::Large,
         ui_model::UiSize::ExtraLarge,
@@ -401,6 +411,103 @@ fn run_layout_matrix(
                             root.join(format!("layout-{profile_name}-{size:?}-{route_name}-0.png"));
                         if fs::read(prior_png)? != fs::read(&png)? {
                             return Err(format!("{stem}: PNG output was not deterministic").into());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_visual_profile_matrix(
+    root: &Path,
+    host_profile: &Path,
+    theme: &launcher_theme::ValidatedTheme,
+    settings: &settings_ui::Scene,
+    wifi: &wifi_settings_controller::Snapshot,
+    save_sync: &SaveSyncView,
+    states: &[(&str, UiState)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let backend = if std::env::var_os("TRIMUI_PRESENTATION_HEADED").is_some() {
+        Backend::X11
+    } else {
+        Backend::Dummy
+    };
+
+    for pass in 0..2 {
+        let mut platform = HostPlatform::new(
+            host_profile,
+            &PathBuf::from("config/platform/tg4040/compatibility.json"),
+            backend,
+        )?;
+        for preset in [
+            VisualPreset::Default,
+            VisualPreset::NightWarm,
+            VisualPreset::LowBrightness,
+            VisualPreset::PixelAccurate,
+            VisualPreset::DenseList,
+        ] {
+            for (size, scale_percent) in [
+                (ui_model::UiSize::Normal, 100),
+                (ui_model::UiSize::Large, 125),
+                (ui_model::UiSize::ExtraLarge, 150),
+            ] {
+                for (route_name, base) in states {
+                    let mut state = base.clone();
+                    state.preferences.visual_preset = preset;
+                    state.preferences.ui_size = size;
+                    let mut screen = build_with_sync(
+                        &state,
+                        theme,
+                        None,
+                        Some(settings),
+                        Some(wifi),
+                        &launcher_presentation::IndexView::default(),
+                        &[],
+                        Some(save_sync),
+                    );
+                    set_surface_route(&mut screen, route_name);
+                    let visual = &screen.visual_profile;
+                    if visual.preset != preset
+                        || visual.requested_brightness_percent < visual.brightness_floor_percent
+                        || visual.gamma.is_some()
+                        || visual.color_temperature_kelvin.is_some()
+                    {
+                        return Err(
+                            "visual preset exposed an unexpected or unsupported TG4040 control"
+                                .into(),
+                        );
+                    }
+                    if screen
+                        .regions
+                        .iter()
+                        .filter(|region| matches!(region.kind.as_str(), "clock" | "battery"))
+                        .any(|region| region.visible != visual.status_bar_visible)
+                    {
+                        return Err("visual preset did not project status-bar visibility".into());
+                    }
+                    if screen.ui_size.preset_scale_percent() != Some(scale_percent) {
+                        return Err("visual profile did not retain its required scale".into());
+                    }
+                    assert_layout_contract(&screen, (1024, 768), scale_percent, route_name, size)?;
+                    let stem = format!("visual-{preset:?}-{size:?}-{route_name}-{pass}");
+                    let png = root.join(format!("{stem}.png"));
+                    let semantic = root.join(format!("{stem}.json"));
+                    platform.present(&screen)?;
+                    platform.capture_png(&png)?;
+                    fs::write(&semantic, serde_json::to_vec(&screen)?)?;
+                    if pass == 1 {
+                        let prior =
+                            root.join(format!("visual-{preset:?}-{size:?}-{route_name}-0.json"));
+                        let prior_png =
+                            root.join(format!("visual-{preset:?}-{size:?}-{route_name}-0.png"));
+                        if fs::read(prior)? != fs::read(&semantic)?
+                            || fs::read(prior_png)? != fs::read(&png)?
+                        {
+                            return Err(
+                                format!("{stem}: visual output was not deterministic").into()
+                            );
                         }
                     }
                 }
@@ -470,14 +577,18 @@ fn assert_theme_recovery(root: &Path) -> Result<(), Box<dyn std::error::Error>> 
         return Err("deleted theme asset did not activate the safe fallback".into());
     }
     fn low_contrast(theme: &mut Value) {
-        theme["colors"]["text"] = Value::String("#000000".into());
+        *theme.pointer_mut("/colors/text").expect("text color") = Value::String("#000000".into());
     }
     fn overlapping_status(theme: &mut Value) {
-        let regions = theme["layout"]["regions"].as_array_mut().expect("regions");
-        regions
+        let clock = theme
+            .pointer_mut("/layout/regions")
+            .and_then(Value::as_array_mut)
+            .expect("regions")
             .iter_mut()
-            .find(|region| region["kind"] == "clock")
-            .expect("clock")["x"] = Value::from(880);
+            .find(|region| region.get("kind").and_then(Value::as_str) == Some("clock"))
+            .and_then(Value::as_object_mut)
+            .expect("clock");
+        *clock.get_mut("x").expect("clock x") = Value::from(880);
     }
     for (name, mutator, reason) in [
         (

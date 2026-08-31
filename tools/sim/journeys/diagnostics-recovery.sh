@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+ROOT=$(CDPATH=; cd -- "$(dirname -- "$0")/../../.." && pwd -P)
 BIN_DIR=${1:-$ROOT/target/release}
 DIAG=$BIN_DIR/brickpro-diagnostics
 RECOVERY=$BIN_DIR/brick-recovery
@@ -27,9 +27,10 @@ import json
 import sys
 report = json.load(open(sys.argv[1], encoding="utf-8"))
 recovery = json.load(open(sys.argv[2], encoding="utf-8"))
-required = {"schema", "status", "mode", "activating", "firmware", "targetSku", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "policy"}
+required = {"schema", "status", "mode", "activating", "firmware", "targetSku", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "audio", "policy"}
 assert set(report) == required
 assert report["targetSku"] == {"status": "verified", "value": "TG4040"}
+assert report["audio"] == {"status": "available", "activeSink": "speaker", "sampleRateHz": 48000, "underrunCount": 0, "speakerAmpEnabled": False}
 assert report["activating"] is False and report["mode"] == "safe-mode"
 assert report["policy"] == {
     "theme": "built-in", "display": "conservative", "input": "conservative",
@@ -40,6 +41,24 @@ assert report["policy"] == {
     "rawStorageMutation": "not-permitted", "emmcMutation": "not-permitted",
 }
 assert recovery["safeModePresentation"] == report
+PY
+
+# Diagnostics reads the route manager state, not a duplicated diagnostics fixture value.
+LIVE=$WORK/live-audio
+cp -a "$FIXTURE" "$LIVE"
+python3 - "$LIVE/.brickpro/data/audio-routing/state.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+state = json.load(open(path, encoding="utf-8"))
+state["route"].update({"available": ["speaker", "jack"], "currentSink": "jack", "requestedSink": "jack", "sampleRateHz": 44100, "underrunCount": 3})
+open(path, "w", encoding="utf-8").write(json.dumps(state))
+PY
+"$DIAG" --simulation-fixture-root "$LIVE" --present-safe-mode >"$WORK/live-audio-report.json"
+python3 - "$WORK/live-audio-report.json" <<'PY'
+import json
+import sys
+assert json.load(open(sys.argv[1], encoding="utf-8"))["audio"] == {"status": "available", "activeSink": "jack", "sampleRateHz": 44100, "underrunCount": 3, "speakerAmpEnabled": False}
 PY
 
 "$DIAG" --simulation-fixture-root "$FIXTURE" --persist-crash >"$WORK/persist.json"

@@ -7,6 +7,7 @@ use std::{
 #[cfg(target_os = "linux")]
 use std::{ffi::CString, os::unix::ffi::OsStrExt};
 
+use audio_routing::{diagnostics_from_state, AudioDiagnostics};
 use bootstrap_probe::probe_simulation;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -19,6 +20,7 @@ const CRASH_INPUT: &str = ".brickpro/data/diagnostics/crash-input.json";
 const BUNDLE_DIR: &str = "trimui-support-bundle-v1";
 const ARCHIVE_NAME: &str = "trimui-support-bundle-v1.tar";
 const CHECKSUM_NAME: &str = "trimui-support-bundle-v1.tar.sha256";
+const AUDIO_STATE_PATH: &str = ".brickpro/data/audio-routing/state.json";
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +38,7 @@ pub struct SupportReport {
     pub slots: Slots,
     pub active_core: ActiveCore,
     pub last_crash: LastCrash,
+    pub audio: AudioDiagnostics,
     pub policy: SafeModePolicy,
 }
 
@@ -172,6 +175,9 @@ impl SupportReport {
                 reason: "not-supplied-by-fixture".into(),
             },
             last_crash: LastCrash::Unavailable {
+                reason: "not-supplied-by-fixture".into(),
+            },
+            audio: AudioDiagnostics::Unavailable {
                 reason: "not-supplied-by-fixture".into(),
             },
             policy: SafeModePolicy::default(),
@@ -407,6 +413,7 @@ fn report_from_fixture(root: &Path, strict: bool) -> Result<SupportReport, Strin
         core(&fixture.active_core).map_err(|_| "diagnostics-input-invalid".to_string())?;
     report.last_crash =
         crash_datum(&fixture.last_crash).map_err(|_| "diagnostics-input-invalid".to_string())?;
+    report.audio = diagnostics_from_state(&root.join(AUDIO_STATE_PATH));
     match load_persisted_crash(root) {
         Ok(Some(value)) => report.last_crash = value,
         Ok(None) => {}

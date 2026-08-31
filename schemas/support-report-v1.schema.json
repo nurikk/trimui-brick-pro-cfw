@@ -4,7 +4,7 @@
   "title": "TrimUI Brick Pro support report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "status", "mode", "activating", "targetSku", "firmware", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "policy"],
+  "required": ["schema", "status", "mode", "activating", "targetSku", "firmware", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "audio", "policy"],
   "properties": {
     "schema": {"const": "brickpro-support-report/v1"},
     "status": {"const": "recovery"},
@@ -13,6 +13,7 @@
     "targetSku": {"$ref": "#/$defs/verifiedTarget"},
     "firmware": {"$ref": "#/$defs/firmware"},
     "ram": {"$ref": "#/$defs/ram"},
+    "audio": {"$ref": "#/$defs/audio"},
     "battery": {"$ref": "#/$defs/battery"},
     "temperature": {"$ref": "#/$defs/temperature"},
     "storage": {"$ref": "#/$defs/storage"},
@@ -28,6 +29,12 @@
       "type": "object", "additionalProperties": false,
       "required": ["status", "reason"],
       "properties": {"status": {"const": "unavailable"}, "reason": {"$ref": "#/$defs/reason"}}
+    },
+    "audio": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "activeSink", "sampleRateHz", "underrunCount", "speakerAmpEnabled"], "properties": {"status": {"const": "available"}, "activeSink": {"enum": ["speaker", "jack"]}, "sampleRateHz": {"type": "integer", "minimum": 8000, "maximum": 192000}, "underrunCount": {"type": "integer", "minimum": 0}, "speakerAmpEnabled": {"type": "boolean"}}},
+        {"$ref": "#/$defs/unavailable"}
+      ]
     },
     "verifiedTarget": {
       "type": "object", "additionalProperties": false,

@@ -11,6 +11,7 @@ members = [
     "crates/bootstrap-probe",
     "crates/brick-recovery",
     "crates/brick-diagnostics",
+    "crates/audio-routing",
     "crates/launch-contract",
     "crates/metadata-scraper",
     "crates/launcher-theme",

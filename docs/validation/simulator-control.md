@@ -23,6 +23,8 @@ scripts/simctl --socket "$RUN/control.sock" button --button down --action press
 scripts/simctl --socket "$RUN/control.sock" button --button primary --action press
 scripts/simctl --socket "$RUN/control.sock" adapter complete --status 0 --value 0
 scripts/simctl --socket "$RUN/control.sock" hardware set battery.percent=5 storage.mode=full
+scripts/simctl --socket "$RUN/control.sock" hardware set battery.available=false
+scripts/simctl --socket "$RUN/control.sock" power battery-policy --warning 20 --critical 10 --action save-and-exit --charging-led false --charging-display true
 scripts/simctl --socket "$RUN/control.sock" presentation --action settings-form
 scripts/simctl --socket "$RUN/control.sock" presentation --action wifi-password
 scripts/simctl --socket "$RUN/control.sock" presentation --action scraper-ambiguity
@@ -37,7 +39,7 @@ scripts/simctl --socket "$RUN/control.sock" checkpoint --name after-launch
 
 `button` accepts `up`, `down`, `left`, `right`, `primary`, `secondary`,
 `start`, `select`, and `menu`, with `press` or `release`. Hardware assignments
-are limited to typed battery percent/charging/external-power, storage
+are limited to typed battery availability/percent/charging/full/health/external-power, storage
 `available|full`, radio enabled/connected, and suspend `active|suspended` plus
 result `none|success|failed`. `clock advance` changes semantic monotonic and
 boot time; `clock jump` changes only semantic boot/RTC time while retaining

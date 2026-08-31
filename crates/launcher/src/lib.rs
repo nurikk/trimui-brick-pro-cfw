@@ -36,12 +36,17 @@ use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
 use sim_domain::{Catalog as UiCatalog, Route, SessionState};
 use sim_platform_contract::{
+    battery::{
+        BatteryDecision, BatteryHealth, BatteryObservation, BatteryPolicy, BatteryPolicyController,
+        ChargingStatus, LowBatteryAction, PolicyAction,
+    },
     lifecycle::{
         CheckpointHook, LifecycleClock, LifecycleController, LifecycleFault, LifecycleMarker,
         LifecyclePhase, ResumeRequest, SuspendRequest, WakeSource, DEFAULT_SLEEP_DURATION_MINUTES,
     },
     power::PowerPolicyController,
-    Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, StorageMode,
+    Button, ButtonAction, ButtonEvent, HardwareChanges, LedState, Platform, PlatformResult,
+    StorageMode,
 };
 use ui_model::{Action as UiAction, PlatformCapabilities as UiCapabilities};
 use wifi_manager::{GeneratedWifiBackend, WifiManager};
@@ -146,6 +151,7 @@ struct AppState {
     session_step: u32,
     lifecycle: LifecycleController,
     power: PowerPolicyController,
+    battery: BatteryPolicyController,
     journey: ProductJourneyState,
     controller_routes: bool,
     resume_content: Option<DemoContent>,
@@ -582,6 +588,7 @@ impl PresentationState {
             "wifi".into(),
             "scraper".into(),
             "cap.power.bounded-sleep".into(),
+            "cap.power.charging-led".into(),
         ]);
         let settings =
             SettingsUi::new(registry, context).map_err(|error| anyhow!(error.to_string()))?;
@@ -1205,11 +1212,11 @@ fn settings_form_rows(section: SettingsSection) -> Vec<String> {
         ),
         SettingsSection::Power => (
             "Power settings",
-            "Game power profile",
-            "Balanced · 59.9 FPS · p99 17.4 ms · 61 C · 3.4 W",
-            "Synthetic simulator trade-off; hardware unverified. Thermal limit: 75 C (always on).",
-            "Apply mode: active game only; launcher and suspend use Eco",
-            "60 Hz · Real-device operations denied",
+            "Low battery / game profile",
+            "Warn 20% · Critical 10% · Balanced game profile",
+            "Checkpointed save-and-exit is optional; critical shutdown is bounded. Hardware values come from the platform HAL.",
+            "Apply mode: persisted device policy; launcher and suspend use Eco",
+            "Charging LED off · charging display on · hardware calibration pending",
         ),
         SettingsSection::Library => (
             "Library settings",
@@ -1329,8 +1336,11 @@ struct WaitArgs {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BatteryChanges {
+    available: Option<bool>,
     percent: Option<u8>,
     charging: Option<bool>,
+    full: Option<bool>,
+    health: Option<BatteryHealth>,
     #[serde(rename = "externalPower")]
     external_power: Option<bool>,
 }
@@ -1364,6 +1374,16 @@ struct PowerArgs {
     profile: Option<String>,
     #[serde(default, rename = "temperatureC")]
     temperature_c: Option<i16>,
+    #[serde(default, rename = "warningPercent")]
+    warning_percent: Option<u8>,
+    #[serde(default, rename = "criticalPercent")]
+    critical_percent: Option<u8>,
+    #[serde(default, rename = "lowBatteryAction")]
+    low_battery_action: Option<LowBatteryAction>,
+    #[serde(default, rename = "chargingLed")]
+    charging_led: Option<bool>,
+    #[serde(default, rename = "chargingDisplay")]
+    charging_display: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1732,6 +1752,11 @@ fn run_session<P: Platform>(
                 ui_model::reduce(&presentation.ui, UiAction::ToggleFavorite { game_id });
         }
     }
+    let mut battery = BatteryPolicyController::new(persisted.battery_policy.clone())
+        .map_err(anyhow::Error::msg)?;
+    let initial_battery = battery.observe(battery_observation(
+        platform.snapshot().map_err(|error| anyhow!(error))?,
+    ));
     let catalog_groups = rom_index::GroupIndex::from_catalog(&catalog);
     let mut state = AppState {
         route: Route::Library,
@@ -1752,6 +1777,7 @@ fn run_session<P: Platform>(
         session_step: 0,
         lifecycle: load_lifecycle(&evidence.root),
         power: PowerPolicyController::new().map_err(anyhow::Error::msg)?,
+        battery,
         journey: ProductJourneyState::default(),
         controller_routes: keep_alive,
         resume_content: None,
@@ -1771,8 +1797,11 @@ fn run_session<P: Platform>(
         );
         state.route = Route::GameSwitcher;
     }
-    refresh_presentation_affordances(&mut state.presentation, &platform)
-        .map_err(|error| anyhow!(error))?;
+    refresh_presentation_affordances(
+        &mut state.presentation,
+        &initial_battery,
+        state.battery.policy(),
+    );
     if let Ok(status) = state.broker.save_sync_status() {
         state.save_sync = Some(sync_view(status));
     }
@@ -1969,7 +1998,9 @@ fn handle_request<P: Platform>(
         "wait-ready" => wait_ready(request.args),
         "state" => parse_empty(request.args)
             .and_then(|_| state_json(platform, evidence, log, catalog, state)),
-        "power" => parse::<PowerArgs>(request.args).and_then(|args| power_control(state, args)),
+        "power" => {
+            parse::<PowerArgs>(request.args).and_then(|args| power_control(platform, state, args))
+        }
         "button" => parse::<ButtonArgs>(request.args).and_then(|args| {
             let event = ButtonEvent {
                 at_ms: platform.logical_time_ms().saturating_add(1),
@@ -2009,37 +2040,23 @@ fn handle_request<P: Platform>(
             .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
-            state.lifecycle.gate("hardware mutation")?;
-            let checkpoint_reason = args
-                .battery
-                .as_ref()
-                .and_then(|change| change.percent)
-                .filter(|percent| *percent <= 10)
-                .map(|_| CheckpointReason::LowBattery);
             apply_hardware(platform, log, args)?;
-            if let Some(reason) = checkpoint_reason {
-                if state.active_session.is_some() {
-                    state
-                        .broker
-                        .checkpoint(reason, CommitFault::None)
-                        .map_err(|error| error.to_string())?;
-                    refresh_resume_projection(state, catalog, launch_catalog)?;
-                }
-                state
-                    .lifecycle
-                    .low_battery(platform)
-                    .map_err(|error| error.to_string())?;
-                sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
-                if !state.lifecycle.is_awake() {
-                    state.power.game_exit();
-                    state.active_session = None;
-                    state.last_session = None;
-                    state.route = Route::Library;
-                    write_session(&evidence.root, SessionState::Aborted)
-                        .map_err(|error| error.to_string())?;
-                }
-            }
-            refresh_presentation_affordances(&mut state.presentation, platform)?;
+            let decision = state.battery.observe(battery_observation(
+                platform.snapshot().map_err(|error| error.to_string())?,
+            ));
+            handle_battery_decision(
+                platform,
+                evidence,
+                catalog,
+                launch_catalog,
+                state,
+                &decision,
+            )?;
+            refresh_presentation_affordances(
+                &mut state.presentation,
+                &decision,
+                state.battery.policy(),
+            );
             state_json(platform, evidence, log, catalog, state)
         }),
         "clock" => parse::<ClockArgs>(request.args).and_then(|args| {
@@ -2302,16 +2319,25 @@ fn resume_label(content_id: &str) -> String {
     }
 }
 
-fn refresh_presentation_affordances<P: Platform>(
+fn refresh_presentation_affordances(
     state: &mut PresentationState,
-    platform: &P,
-) -> Result<(), String> {
-    let snapshot = platform.snapshot().map_err(|error| error.to_string())?;
+    decision: &BatteryDecision,
+    policy: &BatteryPolicy,
+) {
     let mut affordances = state.ui.affordances.clone();
-    affordances.battery.percent = snapshot.battery_level_percent;
-    affordances.battery.charging = snapshot.charging;
+    affordances.battery.percent = decision.displayed_percent;
+    affordances.battery.charging_status = match decision.charging_status {
+        ChargingStatus::Charging => "charging",
+        ChargingStatus::Full => "full",
+        ChargingStatus::NotCharging => "not-charging",
+        ChargingStatus::Unknown => "unknown",
+    }
+    .into();
+    affordances.battery.external_power = decision.observation.external_power;
+    affordances.battery.health = format!("{:?}", decision.observation.health).to_ascii_lowercase();
+    affordances.battery.level = format!("{:?}", decision.level).to_ascii_lowercase();
+    affordances.battery.show_charging_status = policy.charging_display;
     state.ui = ui_model::reduce(&state.ui, UiAction::SetAffordances(affordances));
-    Ok(())
 }
 
 fn next_theme_garden_name(current: &str) -> &'static str {
@@ -2981,8 +3007,11 @@ mod tests {
 
         fn snapshot(&self) -> PlatformResult<sim_platform_contract::PlatformSnapshot> {
             Ok(sim_platform_contract::PlatformSnapshot {
-                battery_level_percent: 100,
-                charging: false,
+                battery_level_percent: Some(100),
+                charging: Some(false),
+                full: Some(true),
+                battery_health: BatteryHealth::Good,
+                external_power: Some(true),
                 led_on: false,
                 audio_enabled: false,
                 radio_enabled: false,
@@ -3051,6 +3080,8 @@ mod tests {
             session_step: 0,
             lifecycle: LifecycleController::new(),
             power: PowerPolicyController::new().expect("validated power policy fixture"),
+            battery: BatteryPolicyController::new(BatteryPolicy::default())
+                .expect("validated battery policy"),
             journey: ProductJourneyState::default(),
             controller_routes: true,
             resume_content: None,
@@ -4035,20 +4066,58 @@ fn wait_ready(args: Value) -> Result<Value, String> {
     Ok(json!({"ready": true, "generation": 1}))
 }
 
-fn power_control(state: &mut AppState, args: PowerArgs) -> Result<Value, String> {
+fn power_control<P: Platform>(
+    platform: &mut P,
+    state: &mut AppState,
+    args: PowerArgs,
+) -> Result<Value, String> {
     match args.operation.as_str() {
-        "override" => state.power.set_game_override(
-            args.profile
-                .as_deref()
-                .ok_or_else(|| "power override requires profile".to_string())?,
-        ),
-        "temperature" => state.power.set_temperature(
-            args.temperature_c
-                .ok_or_else(|| "power temperature requires temperatureC".to_string())?,
-        ),
-        _ => Err("power operation must be override or temperature".into()),
-    }?;
-    Ok(state.power.evidence())
+        "override" => {
+            state.power.set_game_override(
+                args.profile
+                    .as_deref()
+                    .ok_or_else(|| "power override requires profile".to_string())?,
+            )?;
+            Ok(state.power.evidence())
+        }
+        "temperature" => {
+            state.power.set_temperature(
+                args.temperature_c
+                    .ok_or_else(|| "power temperature requires temperatureC".to_string())?,
+            )?;
+            Ok(state.power.evidence())
+        }
+        "battery-policy" => {
+            let policy = BatteryPolicy {
+                warning_percent: args
+                    .warning_percent
+                    .ok_or_else(|| "battery policy requires warningPercent".to_string())?,
+                critical_percent: args
+                    .critical_percent
+                    .ok_or_else(|| "battery policy requires criticalPercent".to_string())?,
+                low_battery_action: args
+                    .low_battery_action
+                    .ok_or_else(|| "battery policy requires lowBatteryAction".to_string())?,
+                charging_led: args
+                    .charging_led
+                    .ok_or_else(|| "battery policy requires chargingLed".to_string())?,
+                charging_display: args
+                    .charging_display
+                    .ok_or_else(|| "battery policy requires chargingDisplay".to_string())?,
+            };
+            policy.validate()?;
+            apply_charging_led(platform, &policy, state.battery.decision())?;
+            state.battery.set_policy(policy.clone())?;
+            refresh_presentation_affordances(
+                &mut state.presentation,
+                &state.battery.decision().clone(),
+                &policy,
+            );
+            state.persisted.battery_policy = policy;
+            serde_json::to_value(state.battery.evidence()).map_err(|error| error.to_string())
+        }
+        _ => Err("power operation must be override, temperature, or battery-policy".into()),
+    }
 }
 
 struct BrokerCheckpoint<'a> {
@@ -4175,6 +4244,92 @@ fn lifecycle_control<P: Platform>(
     }
 }
 
+fn battery_observation(snapshot: sim_platform_contract::PlatformSnapshot) -> BatteryObservation {
+    BatteryObservation {
+        percent: snapshot.battery_level_percent,
+        charging: snapshot.charging,
+        full: snapshot.full,
+        external_power: snapshot.external_power,
+        health: snapshot.battery_health,
+    }
+}
+
+fn handle_battery_decision<P: Platform>(
+    platform: &mut P,
+    evidence: &Evidence,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    state: &mut AppState,
+    decision: &BatteryDecision,
+) -> Result<(), String> {
+    apply_charging_led(platform, state.battery.policy(), decision)?;
+    let Some(action) = decision.action else {
+        return Ok(());
+    };
+    if matches!(
+        action,
+        PolicyAction::CheckpointAndExit | PolicyAction::CheckpointAndShutdown
+    ) && state.active_session.is_some()
+    {
+        state
+            .broker
+            .checkpoint(CheckpointReason::LowBattery, CommitFault::None)
+            .map_err(|error| error.to_string())?;
+        refresh_resume_projection(state, catalog, launch_catalog)?;
+    }
+    match action {
+        PolicyAction::Warn => state.modal = Some("Low battery".into()),
+        PolicyAction::CheckpointAndExit | PolicyAction::ExitWithoutSave => {
+            let result = if state.active_session.is_some() {
+                Some(
+                    state
+                        .broker
+                        .complete(0, 0)
+                        .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+            state.power.game_exit();
+            state.active_session = None;
+            state.last_session = result;
+            state.route = Route::Library;
+            write_session(&evidence.root, SessionState::Completed)
+                .map_err(|error| error.to_string())?;
+        }
+        PolicyAction::CheckpointAndShutdown => {
+            state
+                .lifecycle
+                .low_battery(platform)
+                .map_err(|error| error.to_string())?;
+            sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
+            state.power.game_exit();
+            state.active_session = None;
+            state.last_session = None;
+            state.route = Route::Library;
+            write_session(&evidence.root, SessionState::Aborted)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_charging_led<P: Platform>(
+    platform: &mut P,
+    policy: &BatteryPolicy,
+    decision: &BatteryDecision,
+) -> Result<(), String> {
+    let on = policy.charging_led
+        && decision.observation.external_power == Some(true)
+        && (decision.observation.charging == Some(true) || decision.observation.full == Some(true));
+    platform
+        .set_leds(LedState {
+            on,
+            brightness_percent: if on { 20 } else { 0 },
+        })
+        .map_err(|error| error.to_string())
+}
+
 fn apply_hardware<P: Platform>(
     platform: &mut P,
     log: &mut EventLog,
@@ -4183,6 +4338,10 @@ fn apply_hardware<P: Platform>(
     let mut changes = HardwareChanges::default();
     let mut changed = false;
     if let Some(battery) = args.battery {
+        if let Some(value) = battery.available {
+            changes.battery_available = Some(value);
+            changed = true;
+        }
         if battery.percent.is_some_and(|value| value > 100) {
             return Err("battery percent must be between 0 and 100".to_string());
         }
@@ -4192,6 +4351,14 @@ fn apply_hardware<P: Platform>(
         }
         if let Some(value) = battery.charging {
             changes.charging = Some(value);
+            changed = true;
+        }
+        if let Some(value) = battery.full {
+            changes.full = Some(value);
+            changed = true;
+        }
+        if let Some(value) = battery.health {
+            changes.battery_health = Some(value);
             changed = true;
         }
         if let Some(value) = battery.external_power {
@@ -5677,6 +5844,7 @@ fn state_json<P: Platform>(
         "controllerRoute": { "navigatorVisible": false, "selectedIndex": 0, "currentId": canonical_route_id(&state.journey), "expectedCount": 64 },
         "presentation": presentation,
         "power": state.power.evidence(),
+        "battery": state.battery.evidence(),
     }))
 }
 
@@ -5809,7 +5977,12 @@ fn sync_lifecycle_marker(root: &Path, lifecycle: &LifecycleController) -> Result
 
 fn hardware_json(hardware: &sim_platform_contract::HardwareState) -> Value {
     json!({
-        "battery": {"percent": hardware.battery_percent, "charging": hardware.charging},
+        "battery": {
+            "percent": hardware.battery_percent,
+            "charging": hardware.charging,
+            "full": hardware.full,
+            "health": hardware.battery_health,
+        },
         "externalPower": hardware.external_power,
         "storage": {"mode": hardware.storage_mode},
         "radio": {"enabled": hardware.radio_enabled, "connected": hardware.radio_connected},

@@ -1,8 +1,8 @@
 use launch_contract::{InputLayout, LaunchRequest, SuspendMode};
 use sim_platform_contract::{
-    AudioState, BatteryState, Button, DisplayState, HallCalibrationState, InputState, LedState,
-    PlatformState, PowerState, RadioState, RadiosState, RumbleState, StorageMode, SuspendResult,
-    SuspendState, UsbRole, UsbState,
+    battery::BatteryHealth, AudioState, BatteryState, Button, DisplayState, HallCalibrationState,
+    InputState, LedState, PlatformState, PowerState, RadioState, RadiosState, RumbleState,
+    StorageMode, SuspendResult, SuspendState, UsbRole, UsbState,
 };
 
 pub struct LogicalPlatform {
@@ -22,11 +22,13 @@ impl LogicalPlatform {
                 },
                 hall_calibration: HallCalibrationState { calibrated: true },
                 power: PowerState {
-                    external_power: true,
+                    external_power: Some(true),
                 },
                 battery: BatteryState {
-                    percent: 73,
-                    charging: true,
+                    percent: Some(73),
+                    charging: Some(true),
+                    full: Some(false),
+                    health: BatteryHealth::Good,
                 },
                 suspend: (SuspendState::Active, SuspendResult::None),
                 radios: RadiosState {
@@ -104,11 +106,13 @@ impl LogicalPlatform {
         };
         self.state.hall_calibration = HallCalibrationState { calibrated: false };
         self.state.power = PowerState {
-            external_power: false,
+            external_power: None,
         };
         self.state.battery = BatteryState {
-            percent: 0,
-            charging: false,
+            percent: None,
+            charging: None,
+            full: None,
+            health: BatteryHealth::Unknown,
         };
         self.state.suspend = (SuspendState::Active, SuspendResult::None);
         self.state.radios = RadiosState {

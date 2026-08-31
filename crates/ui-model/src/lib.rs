@@ -449,8 +449,12 @@ pub struct ClockAffordance {
 #[serde(rename_all = "camelCase")]
 pub struct BatteryAffordance {
     pub visible: bool,
-    pub percent: u8,
-    pub charging: bool,
+    pub percent: Option<u8>,
+    pub charging_status: String,
+    pub external_power: Option<bool>,
+    pub health: String,
+    pub level: String,
+    pub show_charging_status: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -469,8 +473,12 @@ impl Default for PlatformAffordances {
             },
             battery: BatteryAffordance {
                 visible: true,
-                percent: 100,
-                charging: false,
+                percent: None,
+                charging_status: "unknown".into(),
+                external_power: None,
+                health: "unknown".into(),
+                level: "unknown".into(),
+                show_charging_status: true,
             },
         }
     }

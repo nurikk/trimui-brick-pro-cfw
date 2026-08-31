@@ -46,6 +46,7 @@ fn check_projection(registry: &Registry) -> Result<(), String> {
         "theme-engine".into(),
         "wifi".into(),
         "cap.power.bounded-sleep".into(),
+        "cap.power.charging-led".into(),
     ]);
     let model = registry
         .project(&context)

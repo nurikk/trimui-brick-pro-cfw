@@ -9,14 +9,17 @@ emit_error() {
 }
 
 command -v sha256sum >/dev/null 2>&1 || emit_error unavailable "sha256sum is required" 3
+command -v timeout >/dev/null 2>&1 || emit_error unavailable "timeout is required" 3
+CONTROL_TIMEOUT_SECONDS=10
+
+docker_with_timeout() { timeout "$CONTROL_TIMEOUT_SECONDS" docker "$@"; }
+
 . "$ROOT/scripts/docker-worktree.sh"
 DOCKER_NAMESPACE=$(trimui_docker_namespace "$ROOT") || emit_error usage "invalid Docker namespace" 2
 ROOT_FINGERPRINT=$(trimui_root_fingerprint "$ROOT") || emit_error unavailable "cannot fingerprint repository root" 3
-SOURCE_FINGERPRINT=$(trimui_checkout_fingerprint "$ROOT") || emit_error unavailable "cannot fingerprint checkout" 3
 SIMULATOR_LABEL=org.trimui-brick-pro-cfw.simulator=host-native
 WORKTREE_LABEL=org.trimui-brick-pro-cfw.worktree=${DOCKER_NAMESPACE}
 ROOT_LABEL=org.trimui-brick-pro-cfw.worktree-root-sha256=${ROOT_FINGERPRINT}
-SOURCE_LABEL=org.trimui-brick-pro-cfw.source-sha256=${SOURCE_FINGERPRINT}
 CACHE_LABEL=org.trimui-brick-pro-cfw.cache-scope=${DOCKER_NAMESPACE}
 
 usage() { emit_error usage "invalid simctl arguments" 2; }
@@ -45,7 +48,7 @@ SOCKET="$RUN_REAL/control.sock"
 NAME=$(printf '%s' "$RUN_REAL" | cksum | awk -v docker_ns="$DOCKER_NAMESPACE" '{print "trimui-sim-" docker_ns "-" $1}')
 
 verify_container() {
-    docker inspect "$NAME" 2>/dev/null | python3 -c '
+    docker_with_timeout inspect "$NAME" 2>/dev/null | python3 -c '
 import json, os, sys
 try:
     record = json.load(sys.stdin)[0]
@@ -57,7 +60,7 @@ try:
     if len(mounts) != 1 or os.path.realpath(mounts[0].get("Source", "")) != os.path.realpath(sys.argv[1]): raise ValueError
 except (IndexError, OSError, TypeError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
-' "$RUN_REAL" "$SIMULATOR_LABEL" "$WORKTREE_LABEL" "$ROOT_LABEL" "$SOURCE_LABEL" "$CACHE_LABEL"
+' "$RUN_REAL" "$SIMULATOR_LABEL" "$WORKTREE_LABEL" "$ROOT_LABEL" "$CACHE_LABEL"
 }
 
 validate_name() {
@@ -226,14 +229,32 @@ validate_command() {
                 esac
                 shift 2
             done ;;
+        tg4040)
+            case "$1:$#" in
+                led:3) [ "$2" = --enabled ] && validate_bool "$3" || usage ;;
+                led:5) [ "$2" = --enabled ] && validate_bool "$3" && [ "$4" = --brightness-percent ] && case "$5" in ''|*[!0-9]*) false ;; *) [ "$5" -le 100 ] ;; esac || usage ;;
+                rumble:3) [ "$2" = --active ] && validate_bool "$3" || usage ;;
+                low-battery:3) [ "$2" = --active ] && validate_bool "$3" || usage ;;
+                input:3) [ "$2" = --signal ] && [ "$3" = gpio243 ] || usage ;;
+                scan:3) [ "$2" = --role ] && { [ "$3" = controller ] || [ "$3" = audio ]; } || usage ;;
+                pair:1|paired:1|connected:1|reconnect:1|reboot:1|reset:1) ;;
+                *) usage ;;
+            esac ;;
         *) usage ;;
     esac
 }
 
 run_client() {
     status=0
-    output=$(docker exec --user 10001:10001 "$NAME" /usr/local/bin/sim-control --socket /evidence/control.sock "$@" 2>/dev/null) || status=$?
+    output=$(docker_with_timeout exec --user 10001:10001 "$NAME" /usr/local/bin/sim-control --socket /evidence/control.sock "$@" 2>/dev/null) || status=$?
     status=${status:-0}
+    if [ "$status" -eq 124 ]; then
+        if docker_with_timeout rm -f "$NAME" >/dev/null 2>&1; then
+            rm -f "$SOCKET"
+            emit_error timeout "control request timed out; simulator was removed" 5
+        fi
+        emit_error timeout "control request timed out; run scripts/sim clean-run to remove the simulator" 5
+    fi
     if [ -z "$output" ]; then
         emit_error unavailable "control client is unavailable" 3
     fi
@@ -247,7 +268,7 @@ command=$1
 shift
 validate_command "$command" "$@"
 if ! verify_container; then
-    emit_error unavailable "named simulator container is unavailable or does not own this run directory" 3
+    emit_error unavailable "named simulator container is unavailable, unresponsive, or does not own this run directory; run scripts/sim clean-run" 3
 fi
 
 if [ "$command" = wait-ready ]; then

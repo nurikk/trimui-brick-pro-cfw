@@ -45,8 +45,9 @@ use sim_platform_contract::{
         LifecyclePhase, ResumeRequest, SuspendRequest, WakeSource, DEFAULT_SLEEP_DURATION_MINUTES,
     },
     power::PowerPolicyController,
-    Button, ButtonAction, ButtonEvent, HardwareChanges, LedState, Platform, PlatformResult,
-    StorageMode,
+    tg4040::{BluetoothPhase, BluetoothRole, InputSignal, LedSettings, Tg4040State},
+    Button, ButtonAction, ButtonEvent, HardwareChanges, LedState, Platform, PlatformError,
+    PlatformResult, RumbleState, StorageMode,
 };
 use ui_model::{Action as UiAction, PlatformCapabilities as UiCapabilities};
 use wifi_manager::{GeneratedWifiBackend, WifiManager};
@@ -1727,6 +1728,22 @@ struct ClockArgs {
     wall_clock_ms: u64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Tg4040Args {
+    operation: String,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default, rename = "brightnessPercent")]
+    brightness_percent: Option<u8>,
+    #[serde(default)]
+    active: Option<bool>,
+    #[serde(default)]
+    signal: Option<InputSignal>,
+    #[serde(default)]
+    role: Option<BluetoothRole>,
+}
+
 const MAX_ADAPTER_VALUE: i32 = 1_000_000;
 
 pub struct CompatibilityRecipeController {
@@ -2313,7 +2330,15 @@ fn handle_request<P: Platform>(
             .and_then(|_| state_json(platform, evidence, log, catalog, state))
         }),
         "hardware.set" => parse::<HardwareArgs>(request.args).and_then(|args| {
+            let battery_low = args
+                .battery
+                .as_ref()
+                .and_then(|change| change.percent)
+                .map(|percent| percent <= 10);
             apply_hardware(platform, log, args)?;
+            if let Some(low) = battery_low {
+                update_tg4040(platform, |state| state.set_low_battery(low))?;
+            }
             let decision = state.battery.observe(battery_observation(
                 platform.snapshot().map_err(|error| error.to_string())?,
             ));
@@ -2383,12 +2408,15 @@ fn handle_request<P: Platform>(
                 args,
             )
         }),
+        "tg4040" => {
+            parse::<Tg4040Args>(request.args).and_then(|args| tg4040_control(platform, args))
+        }
         "fault.set" => parse::<FaultArgs>(request.args).and_then(|args| {
             set_fault(log, state, args)?;
             state_json(platform, evidence, log, catalog, state)
         }),
         "adapter" => parse::<AdapterArgs>(request.args).and_then(|args| {
-            adapter_result(log, state, catalog, launch_catalog, args)?;
+            adapter_result(platform, log, state, catalog, launch_catalog, args)?;
             write_session(&evidence.root, session_state(state))
                 .map_err(|error| error.to_string())?;
             state_json(platform, evidence, log, catalog, state)
@@ -3650,17 +3678,23 @@ mod tests {
                 ProductJourneyState::Diagnostics {
                     page: DiagnosticPage::Root,
                 },
-                &["Firmware", "RAM", "Last crash", "Support bundle"],
+                &[
+                    "Build/SKU",
+                    "Storage",
+                    "Battery/power",
+                    "Last crash",
+                    "Support bundle",
+                ],
             ),
             (
                 ProductJourneyState::Diagnostics {
                     page: DiagnosticPage::SafeMode,
                 },
                 &[
-                    "Network · DISABLED",
-                    "Third-party themes · DISABLED",
-                    "Background indexing · DISABLED",
-                    "Automatic game launch · DISABLED",
+                    "Network auto-start · DISABLED",
+                    "Third-party themes and modules · DISABLED",
+                    "Background indexing and auto-resume · DISABLED",
+                    "Saves and diagnostics · READ ONLY",
                 ],
             ),
         ];
@@ -4609,12 +4643,21 @@ fn lifecycle_control<P: Platform>(
         },
     );
     let phase = state.lifecycle.phase();
+    if result.is_ok() {
+        match args.operation.as_str() {
+            "suspend" => update_tg4040(platform, Tg4040State::suspend)?,
+            "resume" => update_tg4040(platform, Tg4040State::resume)?,
+            "shutdown" => update_tg4040(platform, Tg4040State::stop_session_effects)?,
+            _ => unreachable!("lifecycle operation was validated"),
+        }
+    }
     if matches!(
         phase,
         LifecyclePhase::ResumedForDeadline | LifecyclePhase::OrderlyShutdown
     ) {
         state.power.wake();
         state.active_session = None;
+        stop_session_effects(platform)?;
         state.last_session = None;
         state.route = Route::Library;
         write_session(&evidence.root, SessionState::Aborted).map_err(|error| error.to_string())?;
@@ -4815,7 +4858,8 @@ fn set_fault(log: &mut EventLog, state: &mut AppState, args: FaultArgs) -> Resul
     Ok(())
 }
 
-fn adapter_result(
+fn adapter_result<P: Platform>(
+    platform: &mut P,
     log: &mut EventLog,
     state: &mut AppState,
     catalog: &UiCatalog,
@@ -4853,6 +4897,7 @@ fn adapter_result(
             0,
         )
         .map_err(|error| error.to_string())?;
+    stop_session_effects(platform)?;
     state.active_session = None;
     state.power.game_exit();
     state.last_session = Some(result.clone());
@@ -4900,6 +4945,82 @@ fn adapter_result(
     )
     .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn update_tg4040<P: Platform>(
+    platform: &mut P,
+    update: impl FnOnce(&mut Tg4040State),
+) -> Result<(), String> {
+    match platform.tg4040_state() {
+        Ok(mut state) => {
+            update(&mut state);
+            sync_tg4040(platform, state)
+        }
+        Err(PlatformError::Unsupported { .. }) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn sync_tg4040<P: Platform>(platform: &mut P, state: Tg4040State) -> Result<(), String> {
+    platform
+        .set_leds(LedState {
+            on: state.effective_led_enabled,
+            brightness_percent: if state.effective_led_enabled {
+                state.persisted_led.brightness_percent
+            } else {
+                0
+            },
+        })
+        .map_err(|error| error.to_string())?;
+    platform
+        .set_rumble(RumbleState {
+            active: state.rumble_active,
+        })
+        .map_err(|error| error.to_string())?;
+    let mut radios = platform.radios_state().map_err(|error| error.to_string())?;
+    radios.bluetooth.enabled = state.bluetooth.role.is_some();
+    radios.bluetooth.connected = state.bluetooth.phase == BluetoothPhase::Connected;
+    platform
+        .set_radios(radios)
+        .map_err(|error| error.to_string())?;
+    platform
+        .set_tg4040_state(state)
+        .map_err(|error| error.to_string())
+}
+
+fn stop_session_effects<P: Platform>(platform: &mut P) -> Result<(), String> {
+    update_tg4040(platform, Tg4040State::stop_session_effects)
+}
+
+fn tg4040_control<P: Platform>(platform: &mut P, args: Tg4040Args) -> Result<Value, String> {
+    if args.brightness_percent.is_some_and(|value| value > 100) {
+        return Err("tg4040 LED brightness must be between 0 and 100".into());
+    }
+
+    let mut state = platform.tg4040_state().map_err(|error| error.to_string())?;
+    match args.operation.as_str() {
+        "led" => state.set_led(LedSettings {
+            enabled: args.enabled.ok_or("tg4040 LED enabled is required")?,
+            brightness_percent: args
+                .brightness_percent
+                .unwrap_or(state.persisted_led.brightness_percent),
+        }),
+        "rumble" => state.set_rumble_active(args.active.ok_or("tg4040 rumble active is required")?),
+        "low-battery" => {
+            state.set_low_battery(args.active.ok_or("tg4040 low-battery active is required")?)
+        }
+        "input" => state.observe_input(args.signal.ok_or("tg4040 input signal is required")?),
+        "scan" => state.scan(args.role.ok_or("tg4040 Bluetooth role is required")?),
+        "pair" => state.pair(),
+        "paired" => state.paired(),
+        "connected" => state.connected(),
+        "reconnect" => state.reconnect(),
+        "reboot" => state.reboot(),
+        "reset" => state.reset_to_baseline(),
+        _ => return Err("unsupported TG4040 operation".into()),
+    }
+    sync_tg4040(platform, state.clone())?;
+    serde_json::to_value(state).map_err(|error| error.to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6536,6 +6657,7 @@ fn state_json<P: Platform>(
         "sessionStep": state.session_step,
         "hardware": hardware_json(&platform.hardware_state().map_err(|error| error.to_string())?),
         "platformState": platform.platform_state().map_err(|error| error.to_string())?,
+        "tg4040": platform.tg4040_state().ok(),
         "faults": state.faults,
         "lifecycle": state.lifecycle.evidence(),
         "clock": {"monotonicMs": platform.logical_time_ms(), "wallClockMs": platform.wall_clock_ms()},

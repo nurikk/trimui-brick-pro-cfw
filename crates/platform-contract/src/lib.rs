@@ -9,6 +9,7 @@ use std::{fmt, path::Path};
 pub mod battery;
 pub mod lifecycle;
 pub mod power;
+pub mod tg4040;
 
 pub use launcher_presentation::Screen;
 use serde::{Deserialize, Serialize};
@@ -382,6 +383,20 @@ pub trait Platform {
 
     fn capabilities(&self) -> PlatformCapabilities {
         PlatformCapabilities::all(CapabilityStatus::Unsupported)
+    }
+
+    fn tg4040_state(&self) -> PlatformResult<tg4040::Tg4040State> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Leds,
+            "read TG4040 capability state",
+        ))
+    }
+
+    fn set_tg4040_state(&mut self, _state: tg4040::Tg4040State) -> PlatformResult<()> {
+        Err(PlatformError::unsupported(
+            HardwareDomain::Leds,
+            "set TG4040 capability state",
+        ))
     }
 
     fn next_button_event(&mut self) -> PlatformResult<Option<ButtonEvent>>;

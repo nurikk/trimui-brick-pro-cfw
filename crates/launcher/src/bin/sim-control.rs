@@ -12,6 +12,12 @@ const MAX_FRAME: usize = 8192;
 const MAX_RESPONSE_FRAME: usize = MAX_FRAME * 8;
 const MAX_NAME: usize = 48;
 
+fn object_mut(value: &mut Value) -> Result<&mut Map<String, Value>, (&'static str, String)> {
+    value
+        .as_object_mut()
+        .ok_or(("usage", "internal JSON object expected".into()))
+}
+
 fn main() {
     let result = run();
     if let Err((code, message)) = result {
@@ -154,8 +160,65 @@ fn command_args<'a>(
         "resume.delete" => Ok(("resume.delete", resume_delete_args(args)?)),
         "clock" => Ok(("clock", clock_args(args)?)),
         "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
+        "tg4040" => Ok(("tg4040", tg4040_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
     }
+}
+
+fn tg4040_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    match args {
+        [operation, flag, value] if operation == "led" && flag == "--enabled" => {
+            let enabled = parse_bool(value)?;
+            Ok(json!({"operation": "led", "enabled": enabled}))
+        }
+        [operation, enabled_flag, enabled, brightness_flag, brightness]
+            if operation == "led"
+                && enabled_flag == "--enabled"
+                && brightness_flag == "--brightness-percent" =>
+        {
+            let enabled = parse_bool(enabled)?;
+            let brightness_percent = parse_percent(brightness)?;
+            Ok(json!({"operation": "led", "enabled": enabled, "brightnessPercent": brightness_percent}))
+        }
+        [operation, flag, value] if operation == "rumble" && flag == "--active" => {
+            let active = parse_bool(value)?;
+            Ok(json!({"operation": "rumble", "active": active}))
+        }
+        [operation, flag, value] if operation == "low-battery" && flag == "--active" => {
+            let active = parse_bool(value)?;
+            Ok(json!({"operation": "low-battery", "active": active}))
+        }
+        [operation, flag, signal]
+            if operation == "input" && flag == "--signal" && signal == "gpio243" =>
+        {
+            Ok(json!({"operation": "input", "signal": signal}))
+        }
+        [operation, flag, role]
+            if operation == "scan"
+                && flag == "--role"
+                && ["controller", "audio"].contains(&role.as_str()) =>
+        {
+            Ok(json!({"operation": "scan", "role": role}))
+        }
+        [operation] if ["pair", "paired", "connected", "reconnect", "reboot", "reset"].contains(&operation.as_str()) => {
+            Ok(json!({"operation": operation}))
+        }
+        _ => Err((
+            "usage",
+            "tg4040 led --enabled BOOL [--brightness-percent 0..100] | rumble|low-battery --active BOOL | input --signal gpio243 | scan --role controller|audio | pair|paired|connected|reconnect|reboot|reset is required".into(),
+        )),
+    }
+}
+
+fn parse_percent(value: &str) -> Result<u8, (&'static str, String)> {
+    value
+        .parse::<u8>()
+        .ok()
+        .filter(|value| *value <= 100)
+        .ok_or((
+            "usage",
+            "brightness percent must be between 0 and 100".into(),
+        ))
 }
 
 fn save_sync_args(args: &[String]) -> Result<Value, (&'static str, String)> {
@@ -382,7 +445,7 @@ fn adapter_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             value = args[index + 1]
                 .parse::<i32>()
                 .map_err(|_| ("usage", "value must be a signed integer".into()))?;
-            if !(-1_000_000..=1_000_000).contains(&value) {
+            if value.saturating_abs() > 1_000_000 {
                 return Err(("usage", "value must be between -1000000 and 1000000".into()));
             }
         }
@@ -456,10 +519,13 @@ fn presentation_args(args: &[String]) -> Result<Value, (&'static str, String)> {
 }
 
 fn artifact_args(args: &[String]) -> Result<Value, (&'static str, String)> {
-    if args.len() != 2 || args[0] != "--name" || !valid_name(&args[1]) {
+    if args.len() != 2 || args[0] != "--name" {
         return Err(("usage", "--name must be a safe basename".into()));
     }
-    Ok(json!({"name": args[1]}))
+    match valid_name(&args[1]) {
+        true => Ok(json!({"name": args[1]})),
+        false => Err(("usage", "--name must be a safe basename".into())),
+    }
 }
 
 fn autosave_args(args: &[String]) -> Result<Value, (&'static str, String)> {
@@ -477,7 +543,7 @@ fn autosave_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         {
             return Err(("usage", "--fault is not allowlisted".into()));
         }
-        value["fault"] = json!(args[3]);
+        object_mut(&mut value)?.insert("fault".into(), json!(args[3]));
     }
     Ok(value)
 }
@@ -542,13 +608,13 @@ fn lifecycle_args(args: &[String]) -> Result<Value, (&'static str, String)> {
                 if ![1, 5, 10, 15, 30, 60].contains(&duration) {
                     return Err(("usage", "duration must be 1, 5, 10, 15, 30, or 60".into()));
                 }
-                value["durationMinutes"] = json!(duration);
+                object_mut(&mut value)?.insert("durationMinutes".into(), json!(duration));
             }
             "--source" => {
                 if !["user", "deadline", "stale-alarm"].contains(&args[index + 1].as_str()) {
                     return Err(("usage", "wake source is not allowlisted".into()));
                 }
-                value["wakeSource"] = json!(args[index + 1]);
+                object_mut(&mut value)?.insert("wakeSource".into(), json!(args[index + 1]));
             }
             _ => return Err(("usage", "unknown lifecycle option".into())),
         }
@@ -593,7 +659,7 @@ fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             "--core-version" if valid_version(&args[index + 1]) => "coreVersion",
             _ => return Err(("usage", "resume identity overrides are invalid".into())),
         };
-        value[field] = json!(args[index + 1]);
+        object_mut(&mut value)?.insert(field.into(), json!(args[index + 1]));
         index += 2;
     }
     Ok(value)

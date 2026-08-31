@@ -26,6 +26,13 @@ PROBE=$SIM_PROBE
 RECOVERY=$SIM_RECOVERY
 SUPERVISOR=$SIM_SUPERVISOR
 
+# A pending safe-mode request is handled before the normal supervisor handoff.
+if [ -f "$ROOT/.brickpro/data/recovery-next-boot" ] &&
+    [ "$(cat "$ROOT/.brickpro/data/recovery-next-boot")" = safe-mode ]; then
+    exec "$RECOVERY" --simulation-fixture-root "$ROOT"
+fi
+
+
 if _PROBE_OUTPUT=$("$PROBE" --simulation-fixture-root "$ROOT"); then
     STATE=$ROOT/.brickpro/data/update
     [ -d "$STATE" ] || exit 1

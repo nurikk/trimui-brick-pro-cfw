@@ -40,6 +40,7 @@ pub struct SupportReport {
     pub last_crash: LastCrash,
     pub audio: AudioDiagnostics,
     pub policy: SafeModePolicy,
+    pub health_checks: Vec<HealthCheck>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -134,12 +135,36 @@ pub struct SafeModePolicy {
     pub third_party_themes: &'static str,
     pub background_indexing: &'static str,
     pub automatic_game_launch: &'static str,
+    pub third_party_modules: &'static str,
+    pub network_auto_start: &'static str,
+    pub auto_resume: &'static str,
+    pub saves: &'static str,
+    pub diagnostics: &'static str,
     pub firmware_mutation: &'static str,
     pub rom_mutation: &'static str,
     pub save_mutation: &'static str,
     pub updater_record_mutation: &'static str,
     pub raw_storage_mutation: &'static str,
     pub emmc_mutation: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthCheck {
+    pub id: &'static str,
+    pub status: String,
+    pub detail: String,
+    pub next_step: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundlePreview {
+    pub schema: &'static str,
+    pub status: &'static str,
+    pub included_fields: [&'static str; 2],
+    pub bytes: usize,
+    pub checksum: String,
 }
 
 impl SupportReport {
@@ -180,6 +205,7 @@ impl SupportReport {
             audio: AudioDiagnostics::Unavailable {
                 reason: "not-supplied-by-fixture".into(),
             },
+            health_checks: unavailable_health_checks(),
             policy: SafeModePolicy::default(),
         }
     }
@@ -195,6 +221,11 @@ impl Default for SafeModePolicy {
             third_party_themes: "disabled",
             background_indexing: "disabled",
             automatic_game_launch: "disabled",
+            third_party_modules: "disabled",
+            network_auto_start: "disabled",
+            auto_resume: "disabled",
+            saves: "read-only",
+            diagnostics: "read-only",
             firmware_mutation: "not-permitted",
             rom_mutation: "not-permitted",
             save_mutation: "not-permitted",
@@ -219,6 +250,8 @@ struct DiagnosticsFixture {
     active_core: RawCore,
     #[serde(rename = "lastCrash")]
     last_crash: RawCrashDatum,
+    #[serde(rename = "healthChecks")]
+    health_checks: Vec<RawHealthCheck>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,6 +317,15 @@ struct RawCrashDatum {
     reason: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawHealthCheck {
+    id: String,
+    status: String,
+    detail: String,
+    next_step: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawCrash {
@@ -328,12 +370,43 @@ pub fn safe_mode_report(root: &Path) -> Result<SupportReport, String> {
     Ok(report_from_fixture(root, false).unwrap_or_else(|_| SupportReport::unavailable()))
 }
 
-pub fn export_bundle(root: &Path, destination: &Path) -> Result<ExportResult, String> {
+pub fn preview_bundle(root: &Path) -> Result<BundlePreview, String> {
+    let (archive, checksum) = bundle_payload(root)?;
+    Ok(BundlePreview {
+        schema: "brickpro-support-bundle-preview/v1",
+        status: "ready",
+        included_fields: ["support-report.json", "metadata.json"],
+        bytes: archive.len(),
+        checksum,
+    })
+}
+
+pub fn export_bundle(
+    root: &Path,
+    destination: &Path,
+    preview_checksum: &str,
+) -> Result<ExportResult, String> {
+    validate_destination(destination)?;
+    let (archive, checksum) = bundle_payload(root)?;
+    if checksum != preview_checksum {
+        return Err("preview-confirmation-required".into());
+    }
+    let checksum_file = format!("{}  {}\n", checksum, ARCHIVE_NAME);
+    atomic_export(destination, &archive, checksum_file.as_bytes())?;
+    Ok(ExportResult {
+        schema: "brickpro-diagnostics-result/v1",
+        status: "exported",
+        bundle: BUNDLE_DIR,
+        archive: ARCHIVE_NAME,
+        checksum,
+    })
+}
+
+fn bundle_payload(root: &Path) -> Result<(Vec<u8>, String), String> {
     validate_fixture_boundary(root, true)?;
     if probe_simulation(root).status != "compatible" {
         return Err("fixture-not-compatible".into());
     }
-    validate_destination(destination)?;
     let report = report_from_fixture(root, true)?;
     let report_json = json_bytes(&report)?;
     let metadata = BundleMetadata {
@@ -348,16 +421,11 @@ pub fn export_bundle(root: &Path, destination: &Path) -> Result<ExportResult, St
         ("support-report.json", &report_json),
         ("metadata.json", &metadata_json),
     ])?;
+    if archive.len() > 64 * 1024 {
+        return Err("bundle-too-large".into());
+    }
     let checksum = hex_digest(&Sha256::digest(&archive));
-    let checksum_file = format!("{}  {}\n", checksum, ARCHIVE_NAME);
-    atomic_export(destination, &archive, checksum_file.as_bytes())?;
-    Ok(ExportResult {
-        schema: "brickpro-diagnostics-result/v1",
-        status: "exported",
-        bundle: BUNDLE_DIR,
-        archive: ARCHIVE_NAME,
-        checksum,
-    })
+    Ok((archive, checksum))
 }
 
 pub fn persist_crash(root: &Path) -> Result<(), String> {
@@ -414,6 +482,25 @@ fn report_from_fixture(root: &Path, strict: bool) -> Result<SupportReport, Strin
     report.last_crash =
         crash_datum(&fixture.last_crash).map_err(|_| "diagnostics-input-invalid".to_string())?;
     report.audio = diagnostics_from_state(&root.join(AUDIO_STATE_PATH));
+    report.health_checks = health_checks(&fixture.health_checks)?;
+    if let Some(check) = report
+        .health_checks
+        .iter_mut()
+        .find(|check| check.id == "audio")
+    {
+        match &report.audio {
+            AudioDiagnostics::Available { .. } => {
+                check.status = "pass".into();
+                check.detail = "Audio route available".into();
+                check.next_step = "Continue recovery".into();
+            }
+            AudioDiagnostics::Unavailable { .. } => {
+                check.status = "unavailable".into();
+                check.detail = "Audio capability unavailable".into();
+                check.next_step = "Check audio route".into();
+            }
+        }
+    }
     match load_persisted_crash(root) {
         Ok(Some(value)) => report.last_crash = value,
         Ok(None) => {}
@@ -546,6 +633,86 @@ fn crash_datum(raw: &RawCrashDatum) -> Result<LastCrash, ()> {
     }
 }
 
+const HEALTH_CHECK_IDS: [&str; 8] = [
+    "build-sku",
+    "storage",
+    "battery-power",
+    "input",
+    "display",
+    "audio",
+    "wifi",
+    "last-failed-stage",
+];
+
+fn unavailable_health_checks() -> Vec<HealthCheck> {
+    HEALTH_CHECK_IDS
+        .iter()
+        .map(|id| HealthCheck {
+            id,
+            status: "unavailable".into(),
+            detail: "not-supplied-by-fixture".into(),
+            next_step: "Use supported diagnostics".into(),
+        })
+        .collect()
+}
+
+fn health_checks(raw: &[RawHealthCheck]) -> Result<Vec<HealthCheck>, String> {
+    if raw.len() != HEALTH_CHECK_IDS.len() {
+        return Err("diagnostics-input-invalid".into());
+    }
+    raw.iter()
+        .zip(HEALTH_CHECK_IDS)
+        .map(|(check, id)| {
+            if check.id != id
+                || !matches!(
+                    check.status.as_str(),
+                    "pass" | "warn" | "fail" | "unavailable"
+                )
+            {
+                return Err("diagnostics-input-invalid".into());
+            }
+            Ok(HealthCheck {
+                id,
+                status: check.status.clone(),
+                detail: health_text(&check.detail).map_err(|_| "diagnostics-input-invalid")?,
+                next_step: health_text(&check.next_step)
+                    .map_err(|_| "diagnostics-input-invalid")?,
+            })
+        })
+        .collect()
+}
+
+fn health_text(value: &str) -> Result<String, ()> {
+    if value.is_empty()
+        || value.len() > MAX_TEXT
+        || value.chars().any(|c| c.is_control())
+        || value.contains('/')
+        || value.contains('\\')
+        || value.contains("..")
+    {
+        return Err(());
+    }
+    let lower = value.to_ascii_lowercase();
+    if [
+        "password",
+        "secret",
+        "token",
+        "credential",
+        "authorization",
+        "bearer",
+        "rom",
+        "bios",
+        "private",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+        || (value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(());
+    }
+    Ok(value.into())
+}
+
 fn validate_crash(raw: RawCrash) -> Result<CrashRecord, ()> {
     if raw.schema != "brickpro-synthetic-crash/v1" {
         return Err(());
@@ -566,6 +733,7 @@ fn text(value: Option<&str>) -> Result<String, ()> {
         || value.contains('/')
         || value.contains('\\')
         || value.contains("..")
+        || (value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
     {
         return Err(());
     }
@@ -579,6 +747,7 @@ fn text(value: Option<&str>) -> Result<String, ()> {
         "bearer",
         "rom",
         "bios",
+        "private",
         "network",
         "radio",
         "command",

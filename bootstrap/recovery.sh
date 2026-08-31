@@ -23,6 +23,14 @@ elif [ "$#" -eq 2 ] && [ "$1" = "--select" ]; then
     *) exit 64 ;;
     esac
     exec "$RECOVERY" --simulation-fixture-root "$ROOT" --select "$2"
+elif [ "$#" -eq 1 ] && { [ "$1" = "--schedule-safe-mode" ] || [ "$1" = "--cancel" ]; }; then
+    exec "$RECOVERY" --simulation-fixture-root "$ROOT" "$1"
+elif [ "$#" -eq 2 ] && [ "$1" = "--apply-action" ]; then
+    case "$2" in
+    reset-ui-profile | disable-last-module-or-theme | choose-internal-storage | retry-index | previous-update-slot) ;;
+    *) exit 64 ;;
+    esac
+    exec "$RECOVERY" --simulation-fixture-root "$ROOT" --apply-action "$2"
 else
     exit 64
 fi

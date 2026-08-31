@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf, process};
 
-use brick_diagnostics::{export_bundle, persist_crash, safe_mode_report};
+use brick_diagnostics::{export_bundle, persist_crash, preview_bundle, safe_mode_report};
 
 fn main() {
     let result = match parse_args() {
@@ -11,8 +11,11 @@ fn main() {
             "{\"schema\":\"brickpro-diagnostics-result/v1\",\"status\":\"crash-persisted\"}"
                 .to_string()
         }),
-        Ok(Action::Export(root, destination)) => {
-            export_bundle(&root, &destination).and_then(|result| {
+        Ok(Action::Preview(root)) => preview_bundle(&root).and_then(|result| {
+            serde_json::to_string(&result).map_err(|_| "serialization-failed".to_string())
+        }),
+        Ok(Action::Export(root, destination, checksum)) => {
+            export_bundle(&root, &destination, &checksum).and_then(|result| {
                 serde_json::to_string(&result).map_err(|_| "serialization-failed".to_string())
             })
         }
@@ -30,7 +33,8 @@ fn main() {
 enum Action {
     Present(PathBuf),
     Persist(PathBuf),
-    Export(PathBuf, PathBuf),
+    Preview(PathBuf),
+    Export(PathBuf, PathBuf, String),
 }
 
 fn parse_args() -> Result<Action, ()> {
@@ -42,13 +46,18 @@ fn parse_args() -> Result<Action, ()> {
     match args.next().as_deref() {
         Some("--present-safe-mode") if args.next().is_none() => Ok(Action::Present(root)),
         Some("--persist-crash") if args.next().is_none() => Ok(Action::Persist(root)),
+        Some("--preview-support-bundle") if args.next().is_none() => Ok(Action::Preview(root)),
         Some("--export-support-bundle") => {
             let destination =
                 PathBuf::from(args.next().filter(|value| !value.is_empty()).ok_or(())?);
+            if args.next().as_deref() != Some("--confirm-preview") {
+                return Err(());
+            }
+            let checksum = args.next().filter(|value| value.len() == 64).ok_or(())?;
             if args.next().is_some() {
                 return Err(());
             }
-            Ok(Action::Export(root, destination))
+            Ok(Action::Export(root, destination, checksum))
         }
         _ => Err(()),
     }

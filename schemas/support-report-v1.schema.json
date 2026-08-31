@@ -4,7 +4,7 @@
   "title": "TrimUI Brick Pro support report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "status", "mode", "activating", "targetSku", "firmware", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "audio", "policy"],
+  "required": ["schema", "status", "mode", "activating", "targetSku", "firmware", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "audio", "healthChecks", "policy"],
   "properties": {
     "schema": {"const": "brickpro-support-report/v1"},
     "status": {"const": "recovery"},
@@ -20,6 +20,7 @@
     "slots": {"$ref": "#/$defs/slots"},
     "activeCore": {"$ref": "#/$defs/core"},
     "lastCrash": {"$ref": "#/$defs/lastCrash"},
+    "healthChecks": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/healthCheck"}},
     "policy": {"$ref": "#/$defs/policy"}
   },
   "$defs": {
@@ -94,11 +95,20 @@
       "required": ["id", "atMs", "component", "reason"],
       "properties": {"id": {"$ref": "#/$defs/text"}, "atMs": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}, "component": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"}}
     },
+    "healthCheck": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "status", "detail", "nextStep"],
+      "properties": {
+        "id": {"enum": ["build-sku", "storage", "battery-power", "input", "display", "audio", "wifi", "last-failed-stage"]},
+        "status": {"enum": ["pass", "warn", "fail", "unavailable"]},
+        "detail": {"$ref": "#/$defs/text"}, "nextStep": {"$ref": "#/$defs/text"}
+      }
+    },
     "policy": {
       "type": "object", "additionalProperties": false,
-      "required": ["theme", "display", "input", "network", "thirdPartyThemes", "backgroundIndexing", "automaticGameLaunch", "firmwareMutation", "romMutation", "saveMutation", "updaterRecordMutation", "rawStorageMutation", "emmcMutation"],
+      "required": ["theme", "display", "input", "network", "thirdPartyThemes", "thirdPartyModules", "networkAutoStart", "backgroundIndexing", "automaticGameLaunch", "autoResume", "saves", "diagnostics", "firmwareMutation", "romMutation", "saveMutation", "updaterRecordMutation", "rawStorageMutation", "emmcMutation"],
       "properties": {
-        "theme": {"const": "built-in"}, "display": {"const": "conservative"}, "input": {"const": "conservative"}, "network": {"const": "disabled"}, "thirdPartyThemes": {"const": "disabled"}, "backgroundIndexing": {"const": "disabled"}, "automaticGameLaunch": {"const": "disabled"},
+        "theme": {"const": "built-in"}, "display": {"const": "conservative"}, "input": {"const": "conservative"}, "network": {"const": "disabled"}, "thirdPartyThemes": {"const": "disabled"}, "thirdPartyModules": {"const": "disabled"}, "networkAutoStart": {"const": "disabled"}, "backgroundIndexing": {"const": "disabled"}, "automaticGameLaunch": {"const": "disabled"}, "autoResume": {"const": "disabled"}, "saves": {"const": "read-only"}, "diagnostics": {"const": "read-only"},
         "firmwareMutation": {"const": "not-permitted"}, "romMutation": {"const": "not-permitted"}, "saveMutation": {"const": "not-permitted"}, "updaterRecordMutation": {"const": "not-permitted"}, "rawStorageMutation": {"const": "not-permitted"}, "emmcMutation": {"const": "not-permitted"}
       }
     }

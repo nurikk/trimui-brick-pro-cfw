@@ -36,8 +36,9 @@ fixture data is generated and contains no provider response or artwork bytes.
 exactly `pending`, `running`, `retry`, `succeeded`, `not-found`, `ambiguous`,
 `failed`, and `cancelled`. Single and bulk enqueue carry independent metadata
 and media overwrite toggles. Pause, resume, cancel, progress, and typed
-`enqueue_discovered` are public APIs. Discovery supplies only opaque IDs; it is
-not a catalog or filesystem integration.
+`enqueue_discovered` are public APIs. `enqueue_systems` accepts a selected system
+list, with an empty list meaning all systems. Discovery supplies only opaque IDs;
+it is not a catalog or filesystem integration.
 
 Automatic discovery enqueue requires Wi-Fi, no suspension, no low battery, no
 foreground gameplay, available concurrency, and storage usage within quota.
@@ -49,7 +50,8 @@ their individual limits. Missing credentials skip only that provider and an
 auth failure makes it unavailable for the current batch. Retry-After and
 exponential backoff are applied before fallback. Fixture journeys cover
 success, fallback, not-found, ambiguous, retry, rate-limit, manual search,
-priority, credential skip, and failure paths. The bulk worker is synthetic and
+priority, credential skip, and failure paths. Matched results below 0.80 confidence
+are retained as `ambiguous` for explicit review rather than applied automatically. The bulk worker is synthetic and
 uses no live transport.
 
 ## Checkpoint and recovery
@@ -76,7 +78,8 @@ userinfo, malformed authority, missing host, localhost, private, loopback,
 link-local, multicast, or unspecified IP literals. `MediaCachePublisher` converts
 the validated references to the existing `media-cache` API; that cache downloads,
 decodes, atomically publishes, and deduplicates validated content-addressed
-objects.
+objects. A `media-cache` manual-artwork protection marker makes the publisher skip
+that content ID; confirmed orphan cleanup only removes unreferenced cache indexes.
 
 ## Deferred non-goals
 

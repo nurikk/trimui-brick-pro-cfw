@@ -1,7 +1,10 @@
 use std::{
     env, fs,
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Instant,
 };
 
@@ -55,6 +58,7 @@ fn main() {
     assert!(first.library_open_us <= MAX_LIBRARY_OPEN_US);
     assert!(first.system_switch_us <= MAX_SYSTEM_SWITCH_US);
     assert!(first.return_from_game_us <= MAX_RETURN_FROM_GAME_US);
+    rom_index_corpus();
     println!(
         "{{\"lane\":\"host-native userspace simulator\",\"journey\":\"Library→Systems→Games→LaunchRequest\",\"runs\":2,\"wallUs\":{},\"metrics\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{},\"libraryOpenUs\":{},\"systemSwitchUs\":{},\"returnFromGameUs\":{}}},\"budgets\":{{\"binaryBytes\":{},\"coldStartUs\":{},\"firstFrameUs\":{},\"idleRssKiB\":{},\"catalogListUs\":{},\"inputToFrameUs\":{},\"libraryOpenUs\":{},\"systemSwitchUs\":{},\"returnFromGameUs\":{}}},\"result\":\"pass\"}}",
         started.elapsed().as_micros(),
@@ -77,6 +81,130 @@ fn main() {
         MAX_SYSTEM_SWITCH_US,
         MAX_RETURN_FROM_GAME_US,
     );
+}
+
+fn rom_index_corpus() {
+    let root = env::temp_dir().join(format!("trimui-rom-index-corpus-{}", process_id()));
+    let _ = fs::remove_dir_all(&root);
+    let roms = root.join("roms");
+    for (relative, bytes) in [
+        ("NES/deep/Été Quest.nes", b"nes-utf8".as_slice()),
+        ("NES/Duplicate.nes", b"duplicate-nes".as_slice()),
+        ("SNES/Duplicate.sfc", b"duplicate-snes".as_slice()),
+        ("PS1/Archive.zip", b"zip".as_slice()),
+        ("PS1/Archive.7z", b"7z".as_slice()),
+        ("PS1/Solo.chd", b"chd".as_slice()),
+        ("PS1/disc-1.bin", b"disc-one".as_slice()),
+        ("PS1/disc-2.bin", b"disc-two".as_slice()),
+        (".hidden/ignored.nes", b"hidden".as_slice()),
+        ("bios/firmware.chd", b"service".as_slice()),
+    ] {
+        let path = roms.join(relative);
+        fs::create_dir_all(path.parent().expect("corpus parent")).expect("create corpus parent");
+        fs::write(path, bytes).expect("write corpus ROM");
+    }
+    fs::write(roms.join("PS1/Multi Disc.m3u"), "disc-1.bin\ndisc-2.bin\n")
+        .expect("write playlist");
+    let cancelled = AtomicBool::new(false);
+    let first = sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled);
+    assert_eq!(first.report.entry_count, 7, "nested corpus count");
+    assert_eq!(
+        first
+            .entries
+            .iter()
+            .filter(|entry| entry.filename == "Duplicate.nes" || entry.filename == "Duplicate.sfc")
+            .count(),
+        2
+    );
+    assert_eq!(
+        first
+            .entries
+            .iter()
+            .filter(|entry| entry.path.ends_with(".m3u"))
+            .count(),
+        1
+    );
+    assert!(first
+        .entries
+        .iter()
+        .all(|entry| !entry.path.ends_with(".bin")
+            && !entry.path.contains(".hidden/")
+            && !entry.path.starts_with("bios/")));
+    let second = sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled);
+    assert_eq!(
+        (
+            second.report.entry_count,
+            second.report.added,
+            second.report.removed,
+            second.report.changed
+        ),
+        (7, 0, 0, 0)
+    );
+
+    let index_path = root.join("data/rom-index.json");
+    let mut index: Value =
+        serde_json::from_slice(&fs::read(&index_path).expect("read index")).expect("parse index");
+    let before = index
+        .get_mut("entries")
+        .and_then(Value::as_array_mut)
+        .expect("index entries")
+        .iter_mut()
+        .find(|entry| entry.get("filename").and_then(Value::as_str) == Some("Été Quest.nes"))
+        .expect("UTF-8 game");
+    let stable_id = before
+        .get("contentId")
+        .and_then(Value::as_str)
+        .expect("content ID")
+        .to_owned();
+    let before = before.as_object_mut().expect("index entry");
+    before.insert("displayName".into(), Value::String("Manual title".into()));
+    before.insert("title".into(), Value::String("Manual title".into()));
+    fs::write(
+        &index_path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&index).expect("serialize index")
+        ),
+    )
+    .expect("save override");
+    fs::create_dir_all(roms.join("NES/moved")).expect("create moved folder");
+    fs::rename(
+        roms.join("NES/deep/Été Quest.nes"),
+        roms.join("NES/moved/Été Quest.nes"),
+    )
+    .expect("move ROM");
+    let moved = sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled);
+    let moved_entry = moved
+        .entries
+        .iter()
+        .find(|entry| entry.filename == "Été Quest.nes")
+        .expect("moved game");
+    assert_eq!(
+        (&moved_entry.content_id, moved_entry.title.as_str()),
+        (&stable_id, "Manual title")
+    );
+
+    let complete_index = fs::read(&index_path).expect("complete index");
+    cancelled.store(true, Ordering::Release);
+    assert_eq!(
+        sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled)
+            .report
+            .status,
+        "cancelled"
+    );
+    assert_eq!(
+        fs::read(&index_path).expect("unchanged index"),
+        complete_index
+    );
+    cancelled.store(false, Ordering::Release);
+    fs::remove_file(roms.join("PS1/Archive.7z")).expect("remove ROM");
+    assert_eq!(
+        sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled)
+            .report
+            .removed,
+        1
+    );
+    let _ = fs::remove_dir_all(root);
 }
 
 struct Journey {

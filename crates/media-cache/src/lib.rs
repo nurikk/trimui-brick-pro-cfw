@@ -198,6 +198,13 @@ pub struct Provenance {
     pub status: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OrphanCleanup {
+    pub candidates: usize,
+    pub deleted: usize,
+    pub confirmed: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct IndexEntry {
@@ -234,6 +241,7 @@ impl MediaCache {
         fs::create_dir_all(root.join("objects"))?;
         fs::create_dir_all(root.join("metadata"))?;
         fs::create_dir_all(root.join("index"))?;
+        fs::create_dir_all(root.join("manual"))?;
         reject_cache_symlinks(&root)?;
         cleanup_temporary_files(&root)?;
         cleanup_external_temporary_files(
@@ -456,6 +464,89 @@ impl MediaCache {
         }
         sync_dir(&objects)?;
         Ok(total)
+    }
+
+    /// Remove only cache index records absent from the completed ROM index.
+    /// Protected manual artwork is retained, and no deletion happens until confirmed.
+    pub fn cleanup_orphans(
+        &self,
+        live_content_ids: &[String],
+        confirmed: bool,
+    ) -> Result<OrphanCleanup> {
+        if live_content_ids.iter().any(|id| !valid_opaque(id, 128)) {
+            bail!("invalid live content ID");
+        }
+        let _guard = OBJECT_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|_| anyhow!("storage lock poisoned"))?;
+        let live: std::collections::HashSet<_> =
+            live_content_ids.iter().map(String::as_str).collect();
+        let directory = self.root.join("index");
+        let mut cleanup = OrphanCleanup {
+            confirmed,
+            ..Default::default()
+        };
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json")
+                || fs::symlink_metadata(&path)?.file_type().is_symlink()
+            {
+                continue;
+            }
+            let Some(content_id) = path.file_stem().and_then(|value| value.to_str()) else {
+                bail!("unsafe cache index name");
+            };
+            if !valid_opaque(content_id, 128) {
+                bail!("unsafe cache index name");
+            }
+            if live.contains(content_id)
+                || fs::symlink_metadata(self.manual_artwork_path(content_id)).is_ok()
+            {
+                continue;
+            }
+            cleanup.candidates += 1;
+            if confirmed {
+                fs::remove_file(path)?;
+                cleanup.deleted += 1;
+            }
+        }
+        if confirmed {
+            sync_dir(&directory)?;
+        }
+        Ok(cleanup)
+    }
+
+    /// Mark the artwork for an opaque content ID as user-managed.
+    pub fn protect_manual_artwork(&self, content_id: &str) -> Result<()> {
+        if !valid_opaque(content_id, 128) {
+            bail!("invalid content ID");
+        }
+        let path = self.manual_artwork_path(content_id);
+        let parent = path.parent().expect("manual artwork parent");
+        fs::create_dir_all(parent)?;
+        if path.exists() {
+            if fs::symlink_metadata(&path)?.file_type().is_symlink() {
+                bail!("unsafe manual artwork marker");
+            }
+            return Ok(());
+        }
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        file.write_all(b"manual\n")?;
+        file.sync_all()?;
+        sync_dir(parent)
+    }
+
+    pub fn manual_artwork_is_protected(&self, content_id: &str) -> bool {
+        valid_opaque(content_id, 128)
+            && fs::symlink_metadata(self.manual_artwork_path(content_id)).is_ok()
+    }
+
+    fn manual_artwork_path(&self, content_id: &str) -> PathBuf {
+        self.root.join("manual").join(format!("{content_id}.lock"))
     }
 
     pub fn root(&self) -> &Path {
@@ -1195,7 +1286,7 @@ fn sync_dir(path: &Path) -> Result<()> {
 }
 
 fn reject_cache_symlinks(root: &Path) -> Result<()> {
-    for directory in ["objects", "metadata", "index"] {
+    for directory in ["objects", "metadata", "index", "manual"] {
         let path = root.join(directory);
         if fs::symlink_metadata(&path)?.file_type().is_symlink() {
             bail!("cache tree contains a symlink")

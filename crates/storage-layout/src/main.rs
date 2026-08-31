@@ -287,9 +287,10 @@ fn simulate_onboard(
         sd2_uuid,
         usb_mode: None,
     };
-    if !valid_uuid(&onboarding.sd1.uuid) || !card_root(root, &onboarding.sd1)?.is_dir() {
-        return Ok(recovery("sd1-unavailable", None));
-    }
+    let sd1 = match card_root(root, &onboarding.sd1) {
+        Ok(path) if valid_uuid(&onboarding.sd1.uuid) && path.is_dir() => path,
+        _ => return Ok(recovery("sd1-unavailable", None)),
+    };
     if onboarding.two_card_requested && onboarding.sd2.is_none() {
         return Ok(recovery(
             "sd2-missing: insert the registered card; SD1 was not changed",
@@ -297,12 +298,27 @@ fn simulate_onboard(
         ));
     }
     if let Some(sd2) = &onboarding.sd2 {
-        if !valid_uuid(&sd2.uuid) || !card_root(root, sd2)?.is_dir() {
+        let sd2_root = match card_root(root, sd2) {
+            Ok(path) if valid_uuid(&sd2.uuid) && path.is_dir() => path,
+            _ => {
+                return Ok(recovery(
+                    "sd2-unavailable: SD1 was not changed",
+                    Some(sd2.uuid.clone()),
+                ))
+            }
+        };
+        if fs::canonicalize(&sd1)? == fs::canonicalize(sd2_root)? {
             return Ok(recovery(
-                "sd2-unavailable: SD1 was not changed",
+                "sd-card-roots-alias: SD1 was not changed",
                 Some(sd2.uuid.clone()),
             ));
         }
+    }
+    if onboarding_bundle(root, &onboarding.bundle).is_err() {
+        return Ok(recovery(
+            "onboarding-bundle-invalid: SD1 was not changed",
+            onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+        ));
     }
     if let Some(diagnostic) = card_diagnostic(&onboarding.sd1) {
         return Ok(recovery(
@@ -315,7 +331,7 @@ fn simulate_onboard(
             return Ok(recovery(diagnostic, Some(sd2.uuid.clone())));
         }
     }
-    if let Some(diagnostic) = stored_identity_diagnostic(root, &onboarding)? {
+    if let Some(diagnostic) = stored_identity_diagnostic(&sd1, &onboarding)? {
         return Ok(recovery(
             diagnostic,
             onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
@@ -335,10 +351,7 @@ fn simulate_onboard(
                 onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
             ));
         }
-        verify_format(
-            card_root(root, &onboarding.sd1)?,
-            onboarding.sd1.verification_file_bytes,
-        )?;
+        verify_format(&sd1, onboarding.sd1.verification_file_bytes)?;
     }
     if onboarding.usb.requested {
         if onboarding.usb.active_users != 0 {
@@ -377,28 +390,69 @@ fn simulate_onboard(
 }
 
 fn card_root(root: &Path, card: &Card) -> Result<PathBuf> {
-    validate_relative(&card.root)?;
-    let path = root.join(&card.root);
-    if fs::symlink_metadata(&path)
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        bail!("card root must not be a symlink")
+    safe_simulator_path(root, &card.root)
+}
+
+fn safe_simulator_path(root: &Path, relative: &str) -> Result<PathBuf> {
+    validate_relative(relative)?;
+    let root_metadata = fs::symlink_metadata(root)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        bail!("simulator root must be a non-symlink directory")
+    }
+    let mut path = root.to_path_buf();
+    for component in Path::new(relative).components() {
+        let Component::Normal(component) = component else {
+            bail!("path contains traversal or non-normal component")
+        };
+        path.push(component);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!("simulator path contains a symlink")
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(path)
 }
 
-fn stored_identity_diagnostic(
-    root: &Path,
-    onboarding: &Onboarding,
-) -> Result<Option<&'static str>> {
-    let layout_path = card_root(root, &onboarding.sd1)?.join("data/meta/layout.json");
+fn onboarding_bundle(root: &Path, bundle: &Bundle) -> Result<()> {
+    let source = safe_simulator_path(root, &bundle.root)?;
+    for name in ["runtime", "config", "themes"] {
+        inspect_bundle_tree(&source.join(name))?;
+    }
+    Ok(())
+}
+
+fn inspect_bundle_tree(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        bail!("onboarding bundle symlinks are forbidden")
+    }
+    if metadata.is_file() {
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        bail!("onboarding bundle contains unsupported entry")
+    }
+    for entry in fs::read_dir(path)? {
+        inspect_bundle_tree(&entry?.path())?;
+    }
+    Ok(())
+}
+
+fn stored_identity_diagnostic(sd1: &Path, onboarding: &Onboarding) -> Result<Option<&'static str>> {
+    let layout_path = match safe_simulator_path(sd1, "data/meta/layout.json") {
+        Ok(path) => path,
+        Err(_) => return Ok(Some("storage-metadata-invalid: read-only recovery")),
+    };
     if !layout_path.exists() {
         return Ok(None);
     }
     let existing = match read_json::<Layout>(&layout_path) {
-        Ok(layout) => layout,
-        Err(_) => return Ok(Some("storage-metadata-invalid: read-only recovery")),
+        Ok(layout) if validate_layout(&layout, sd1).is_ok() => layout,
+        _ => return Ok(Some("storage-metadata-invalid: read-only recovery")),
     };
     if existing.installation_uuid != onboarding.sd1.uuid {
         return Ok(Some("sd1-identity-mismatch: read-only recovery"));
@@ -453,25 +507,42 @@ fn format_confirmed(confirmation: &FormatConfirmation, card: &Card) -> bool {
         && confirmation.confirmation.as_deref() == Some(card.uuid.as_str())
 }
 
-fn verify_format(root: PathBuf, requested_bytes: u64) -> Result<()> {
+fn verify_format(root: &Path, requested_bytes: u64) -> Result<()> {
     let path = root.join(".brickpro-format-verify");
     if path.exists() {
         bail!("format verification path already exists")
     }
-    let bytes = vec![0xa5; requested_bytes.min(4096) as usize];
-    let written_crc = crc32(&bytes);
+    let bytes = [0xa5; 64 * 1024];
+    let mut remaining = requested_bytes;
+    let mut written_crc = !0u32;
     {
         let mut file = OpenOptions::new()
             .create_new(true)
             .write(true)
             .open(&path)?;
-        file.write_all(&bytes)?;
+        while remaining != 0 {
+            let length = remaining.min(bytes.len() as u64) as usize;
+            file.write_all(&bytes[..length])?;
+            written_crc = crc32_update(written_crc, &bytes[..length]);
+            remaining -= length as u64;
+        }
         file.sync_all()?;
     }
-    let read = fs::read(&path)?;
+    let mut read_bytes = 0u64;
+    let mut read_crc = !0u32;
+    let mut file = File::open(&path)?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let length = file.read(&mut buffer)?;
+        if length == 0 {
+            break;
+        }
+        read_bytes += length as u64;
+        read_crc = crc32_update(read_crc, &buffer[..length]);
+    }
     fs::remove_file(&path)?;
-    sync_directory(Some(&root))?;
-    if read != bytes || crc32(&read) != written_crc {
+    sync_directory(Some(root))?;
+    if read_bytes != requested_bytes || read_crc != written_crc {
         bail!("format write/read/CRC verification failed")
     }
     Ok(())
@@ -503,10 +574,10 @@ fn provision_onboarding(root: &Path, onboarding: &Onboarding) -> Result<()> {
         ".brickpro/system/slots/B",
         ".brickpro/save-vault",
     ] {
-        fs::create_dir_all(sd1.join(relative))?;
+        create_safe_directory(&sd1, relative)?;
     }
     let rom_card = sd2.as_ref().unwrap_or(&sd1);
-    fs::create_dir_all(rom_card.join("roms/BIOS"))?;
+    create_safe_directory(rom_card, "roms/BIOS")?;
     copy_bundle(root, &onboarding.bundle, &sd1)?;
     let layout = Layout {
         schema: LAYOUT_SCHEMA.into(),
@@ -527,20 +598,44 @@ fn provision_onboarding(root: &Path, onboarding: &Onboarding) -> Result<()> {
     Ok(())
 }
 
+fn create_safe_directory(root: &Path, relative: &str) -> Result<PathBuf> {
+    validate_relative(relative)?;
+    let mut path = root.to_path_buf();
+    for component in Path::new(relative).components() {
+        let Component::Normal(component) = component else {
+            bail!("path contains traversal or non-normal component")
+        };
+        path.push(component);
+        create_child_directory(&path)?;
+    }
+    Ok(path)
+}
+
+fn create_child_directory(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!("onboarding path contains a symlink")
+        }
+        Ok(metadata) if metadata.is_dir() => Ok(()),
+        Ok(_) => bail!("onboarding path is not a directory"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(fs::create_dir(path)?),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn copy_bundle(root: &Path, bundle: &Bundle, sd1: &Path) -> Result<()> {
-    validate_relative(&bundle.root)?;
-    let source = root.join(&bundle.root);
+    let source = safe_simulator_path(root, &bundle.root)?;
     for (name, target) in [
         ("runtime", ".brickpro/system/slots/A/runtime"),
         ("config", "data/config"),
         ("themes", "data/themes"),
     ] {
         let input = source.join(name);
-        fs::create_dir_all(sd1.join(target))?;
         if !input.is_dir() {
             bail!("onboarding bundle is incomplete")
         }
-        copy_bundle_tree(&input, &sd1.join(target))?;
+        let destination = create_safe_directory(sd1, target)?;
+        copy_bundle_tree(&input, &destination)?;
     }
     let config = sd1.join("data/config/synthetic-config.json");
     if !config.is_file() || sha256_file(&config)? != default_migration().steps[0].sha256 {
@@ -559,11 +654,18 @@ fn copy_bundle_tree(source: &Path, target: &Path) -> Result<()> {
             bail!("onboarding bundle symlinks are forbidden")
         }
         if metadata.is_dir() {
-            fs::create_dir_all(&output)?;
+            create_child_directory(&output)?;
             copy_bundle_tree(&input, &output)?;
         } else if metadata.is_file() {
-            if !output.exists() {
-                copy_synced(&input, &output)?;
+            match fs::symlink_metadata(&output) {
+                Ok(existing) if existing.file_type().is_symlink() => {
+                    bail!("onboarding path contains a symlink")
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    copy_synced(&input, &output)?
+                }
+                Err(error) => return Err(error.into()),
             }
         } else {
             bail!("onboarding bundle contains unsupported entry")
@@ -596,12 +698,12 @@ fn default_migration() -> Migration {
     }
 }
 
-fn crc32(bytes: &[u8]) -> u32 {
-    bytes.iter().fold(!0u32, |crc, byte| {
+fn crc32_update(crc: u32, bytes: &[u8]) -> u32 {
+    bytes.iter().fold(crc, |crc, byte| {
         (0..8).fold(crc ^ u32::from(*byte), |value, _| {
             (value >> 1) ^ (0xedb8_8320 & (0u32.wrapping_sub(value & 1)))
         })
-    }) ^ !0
+    })
 }
 
 fn required_option(args: &mut impl Iterator<Item = String>, name: &str) -> Result<String> {

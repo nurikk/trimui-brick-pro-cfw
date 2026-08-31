@@ -1,0 +1,18 @@
+{
+  "schema": "brickpro-audio-route/v1",
+  "route": {
+    "available": ["speaker"],
+    "currentSink": "speaker",
+    "requestedSink": "speaker",
+    "volumes": {
+      "jack": 50,
+      "speaker": 50
+    },
+    "streamActive": false,
+    "sampleRateHz": 48000,
+    "underrunCount": 0,
+    "speakerAmpEnabled": false,
+    "sessionSnapshot": null,
+    "systemSuspendSnapshot": null
+  }
+}

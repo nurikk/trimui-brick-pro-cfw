@@ -1,0 +1,12 @@
+[package]
+name = "audio-routing"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "brickpro-audio-routing"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

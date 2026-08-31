@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "schemas/support-report-v1.schema.json"
 METADATA = ROOT / "schemas/support-bundle-metadata-v1.schema.json"
 FIXTURE = ROOT / "fixtures/bootstrap/supported/diagnostics.json"
+AUDIO_STATE = ROOT / "fixtures/bootstrap/supported/.brickpro/data/audio-routing/state.json"
 
 
 def load(path):
@@ -30,16 +31,20 @@ def main():
     report = load(REPORT)
     metadata = load(METADATA)
     fixture = load(FIXTURE)
+    audio_state = load(AUDIO_STATE)
     walk(report)
     walk(metadata)
     if report["properties"]["schema"]["const"] != "brickpro-support-report/v1":
         raise ValueError("report schema version is not pinned")
     required = set(report["required"])
-    expected = {"firmware", "targetSku", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash"}
+    expected = {"firmware", "targetSku", "ram", "battery", "temperature", "storage", "slots", "activeCore", "lastCrash", "audio"}
     if not expected <= required:
         raise ValueError("required diagnostic fields are incomplete")
-    if fixture["schema"] != "brickpro-synthetic-diagnostics-fixture/v1":
-        raise ValueError("fixture schema version is not pinned")
+    if fixture["schema"] != "brickpro-synthetic-diagnostics-fixture/v1" or "audio" in fixture:
+        raise ValueError("fixture must not provide live audio diagnostics")
+    route = audio_state.get("route", {})
+    if audio_state.get("schema") != "brickpro-audio-route/v1" or route.get("currentSink") != "speaker":
+        raise ValueError("audio route state is not pinned")
     print("diagnostics schema check: PASS")
 
 

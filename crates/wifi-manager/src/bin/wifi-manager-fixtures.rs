@@ -7,12 +7,13 @@ use wifi_manager::{
     WifiError, WifiManager, WifiPhase,
 };
 
-const JOURNEYS: [&str; 14] = [
+const JOURNEYS: [&str; 16] = [
     "successful-scan-select-connect",
     "refresh",
     "strongest-radio-collapse",
     "hidden-ssid",
     "bad-password",
+    "dhcp-dns-offline",
     "timeout",
     "radio-unavailable",
     "cancellation",
@@ -22,6 +23,7 @@ const JOURNEYS: [&str; 14] = [
     "retry",
     "restart",
     "negative-validation",
+    "resilient-profiles",
 ];
 
 fn main() -> Result<(), String> {
@@ -39,6 +41,7 @@ fn main() -> Result<(), String> {
     strongest_radio_collapse()?;
     hidden_ssid()?;
     bad_password()?;
+    dhcp_dns_offline()?;
     timeout()?;
     radio_unavailable()?;
     cancellation()?;
@@ -48,6 +51,7 @@ fn main() -> Result<(), String> {
     retry()?;
     restart()?;
     negative_validation()?;
+    resilient_profiles()?;
 
     println!("wifi-manager-fixtures: {} journeys passed", JOURNEYS.len());
     Ok(())
@@ -141,7 +145,7 @@ fn successful_scan_select_connect() -> Result<(), String> {
     expect_ok(manager.select(&id("net-home-strong")?), "select WPA2")?;
     connect(&mut manager, "net-home-strong", false, Some("cred-home"))?;
     require(
-        manager.state().phase == WifiPhase::Connected,
+        manager.state().phase == WifiPhase::Internet,
         "successful WPA2 connection",
     )?;
     require(
@@ -211,6 +215,9 @@ fn strongest_radio_collapse() -> Result<(), String> {
                 "Hidden network",
                 "Bad Login Synthetic",
                 "Timeout Synthetic",
+                "DHCP Failure Synthetic",
+                "DNS Failure Synthetic",
+                "Offline Synthetic",
                 "Radio Failure Synthetic",
                 "Unsupported Synthetic",
             ],
@@ -284,6 +291,38 @@ fn bad_password() -> Result<(), String> {
         manager.state().phase == WifiPhase::Failed,
         "bad-password failure phase",
     )
+}
+
+fn dhcp_dns_offline() -> Result<(), String> {
+    for (network_id, reason, phase) in [
+        ("net-dhcp", ReasonCode::DhcpFailed, WifiPhase::Failed),
+        ("net-dns", ReasonCode::DnsFailed, WifiPhase::Lan),
+        ("net-offline", ReasonCode::NoInternet, WifiPhase::Lan),
+    ] {
+        let mut manager = manager()?;
+        scan(&mut manager, false)?;
+        expect_ok(
+            manager.select(&id(network_id)?),
+            "select connectivity failure",
+        )?;
+        expect_error(
+            manager.connect(ConnectRequest {
+                network_id: id(network_id)?,
+                open_confirmation: false,
+                credential_reference: Some(credential("cred-network")?),
+            }),
+            reason,
+            "distinct connectivity failure",
+        )?;
+        require(manager.state().phase == phase, "connectivity phase")?;
+        if phase == WifiPhase::Lan {
+            require(
+                manager.state().connected_network_id == Some(id(network_id)?),
+                "LAN remains connected without Internet",
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn timeout() -> Result<(), String> {
@@ -397,7 +436,7 @@ fn reconnect() -> Result<(), String> {
     }
     require(
         restarted.auto_reconnect(conditions) == AutoReconnectDecision::Attempted
-            && restarted.state().phase == WifiPhase::Connected,
+            && restarted.state().phase == WifiPhase::Internet,
         "saved-network reconnect",
     )
 }
@@ -472,6 +511,79 @@ fn restart() -> Result<(), String> {
         restarted.state().phase == WifiPhase::Idle,
         "restart resets transient state",
     )
+}
+
+fn resilient_profiles() -> Result<(), String> {
+    let mut manager = manager()?;
+    for ssid in ["Café # Wi-Fi", "space name", "quote \" #", "日本語"] {
+        expect_ok(
+            manager.add_manual_network(ManualNetworkRequest {
+                network_id: id(&format!(
+                    "net-profile-{}",
+                    manager.state().scan_results.len()
+                ))?,
+                ssid: ssid.into(),
+                security: Security::Wpa2Psk,
+                hidden: true,
+            }),
+            "UTF-8 hidden profile",
+        )?;
+    }
+    connect(
+        &mut manager,
+        "net-profile-3",
+        false,
+        Some("cred-hidden-profile"),
+    )?;
+    for _ in 0..50 {
+        expect_ok(manager.set_enabled(false), "radio toggle off")?;
+        require(
+            manager.state().phase == WifiPhase::RadioOff,
+            "radio off phase",
+        )?;
+        expect_ok(manager.set_enabled(true), "radio toggle on")?;
+        scan(&mut manager, true)?;
+    }
+    connect(&mut manager, "net-home-strong", false, Some("cred-home"))?;
+    connect(&mut manager, "net-known", false, Some("cred-known"))?;
+    manager
+        .set_profile_priority(&id("net-home-strong")?, 10)
+        .map_err(error)?;
+    manager
+        .set_profile_priority(&id("net-known")?, 1)
+        .map_err(error)?;
+    let saved = manager.saved_state();
+    let mut restarted = WifiManager::from_saved_state(
+        GeneratedWifiBackend::from_fixture(fixture()?).map_err(error)?,
+        saved,
+    )
+    .map_err(error)?;
+    let awake = ReconnectConditions {
+        battery_percent: 80,
+        suspended: false,
+        gameplay_active: false,
+        capability_available: true,
+    };
+    for _ in 0..50 {
+        require(
+            restarted.auto_reconnect(ReconnectConditions {
+                suspended: true,
+                ..awake
+            }) == AutoReconnectDecision::Blocked(ReconnectBlock::Suspended),
+            "suspend blocks reconnect",
+        )?;
+        require(
+            restarted.auto_reconnect(awake) == AutoReconnectDecision::Attempted,
+            "wake reconnects highest-priority profile",
+        )?;
+        require(
+            restarted.state().connected_network_id == Some(id("net-home-strong")?),
+            "priority reconnect is deterministic",
+        )?;
+        expect_ok(restarted.set_enabled(false), "cycle radio off")?;
+        expect_ok(restarted.set_enabled(true), "cycle radio on")?;
+    }
+    Ok(())
 }
 
 fn negative_validation() -> Result<(), String> {

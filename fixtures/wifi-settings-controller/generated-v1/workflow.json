@@ -16,7 +16,7 @@
   ],
   "format": "trimui-wifi-settings-controller",
   "manualSsid": {"allowed": "any", "hidden": true, "maxBytes": 32, "maxScalars": 32, "placeholder": "Network name"},
-  "networkKey": {"allowed": "url-safe", "hidden": false, "maxBytes": 63, "maxScalars": 63, "placeholder": "Network key"},
+  "networkKey": {"allowed": "any", "hidden": false, "maxBytes": 63, "maxScalars": 63, "placeholder": "Network key"},
   "schemaVersion": 1,
   "securityChoices": ["open", "wpa2-psk", "wpa3-sae"],
   "snapshot": {"fields": ["canvas", "menu", "networks", "phase", "selection", "saved", "keyboard", "confirmation", "error"]}

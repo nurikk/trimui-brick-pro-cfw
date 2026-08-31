@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use virtual_keyboard::Button;
+use virtual_keyboard::{AllowedChars, Button, FieldPolicy, Keyboard};
 use wifi_manager::{
     AutoReconnectDecision, GeneratedWifiBackend, GeneratedWifiFixture, NetworkId, ReasonCode,
     ReconnectConditions, Security, WifiManager, WifiPhase,
@@ -15,7 +15,7 @@ const JOURNEYS: &[u8] =
     include_bytes!("../../../../fixtures/wifi-settings-controller/generated-v1/journeys.json");
 const WIFI_FIXTURE: &[u8] = include_bytes!("../../../../fixtures/wifi-manager/journeys.json");
 const SCHEMA: &[u8] = include_bytes!("../../../../schemas/wifi-settings-controller-v1.schema.json");
-const JOURNEY_NAMES: [&str; 14] = [
+const JOURNEY_NAMES: [&str; 15] = [
     "metadata-validation-negatives",
     "byte-identical-snapshots",
     "controller-navigation",
@@ -28,6 +28,7 @@ const JOURNEY_NAMES: [&str; 14] = [
     "saved-reference-only-restart-reconnect",
     "disconnect-forget",
     "bad-credential-timeout-radio-unsupported",
+    "dhcp-dns-offline-and-utf8",
     "retry-cancel",
     "privacy-assertions",
 ];
@@ -48,6 +49,7 @@ fn main() -> Result<(), String> {
     restart_reconnect(&metadata)?;
     disconnect_forget(&metadata)?;
     failure_journeys(&metadata)?;
+    dhcp_dns_offline_and_utf8(&metadata)?;
     retry_cancel(&metadata)?;
     privacy(&metadata)?;
     println!(
@@ -216,7 +218,7 @@ fn navigation(metadata: &Metadata) -> Result<(), String> {
 fn scan_and_results(metadata: &Metadata) -> Result<(), String> {
     let mut controller = scanned(metadata)?;
     let snapshot = controller.snapshot();
-    if snapshot.view != View::Networks || snapshot.networks.len() != 8 {
+    if snapshot.view != View::Networks || snapshot.networks.len() != 11 {
         return Err("scan did not project deduplicated results".into());
     }
     let home = snapshot
@@ -245,7 +247,7 @@ fn open_journey(metadata: &Metadata) -> Result<(), String> {
         return Err("open confirmation was not requested".into());
     }
     controller.confirm_open().map_err(error)?;
-    if controller.snapshot().phase != WifiPhase::Connected {
+    if controller.snapshot().phase != WifiPhase::Internet {
         return Err("open network did not connect".into());
     }
     Ok(())
@@ -266,14 +268,14 @@ fn wpa_journey(metadata: &Metadata, security: Security, id: &str) -> Result<(), 
         return Err("WPA selection did not request masked key input".into());
     }
     type_xx(&mut controller)?;
-    if controller.snapshot().phase != WifiPhase::Connected {
+    if controller.snapshot().phase != WifiPhase::Internet {
         return Err("WPA network did not connect".into());
     }
     if !controller.drain_events().iter().any(|event| {
         matches!(
             event,
             ControllerEvent::PhaseChanged {
-                phase: WifiPhase::Connecting,
+                phase: WifiPhase::Associating,
                 ..
             }
         )
@@ -352,7 +354,7 @@ fn restart_reconnect(metadata: &Metadata) -> Result<(), String> {
         capability_available: true,
     });
     if decision != AutoReconnectDecision::Attempted
-        || restarted.snapshot().phase != WifiPhase::Connected
+        || restarted.snapshot().phase != WifiPhase::Internet
     {
         return Err("saved reference did not reconnect through manager policy".into());
     }
@@ -408,6 +410,39 @@ fn failure_journeys(metadata: &Metadata) -> Result<(), String> {
         WifiSettingsController::new(metadata.clone(), WifiManager::new(backend), true)
             .map_err(error)?;
     expect_reason(unavailable.scan(), ReasonCode::RadioUnavailable)
+}
+
+fn dhcp_dns_offline_and_utf8(metadata: &Metadata) -> Result<(), String> {
+    for (network_id, reason, lan) in [
+        ("net-dhcp", ReasonCode::DhcpFailed, false),
+        ("net-dns", ReasonCode::DnsFailed, true),
+        ("net-offline", ReasonCode::NoInternet, true),
+    ] {
+        let mut controller = scanned(metadata)?;
+        select(&mut controller, network_id)?;
+        expect_reason_text(type_xx(&mut controller), reason)?;
+        let snapshot = controller.snapshot();
+        if snapshot.reason != Some(reason)
+            || (lan
+                && (snapshot.phase != WifiPhase::Lan
+                    || !snapshot
+                        .selected_network
+                        .is_some_and(|network| network.connected)))
+        {
+            return Err("connectivity failure lost its actionable state".into());
+        }
+    }
+    for value in ["Café # Wi-Fi", "space name", "quote \" #", "日本語"] {
+        Keyboard::new(FieldPolicy::secret(
+            value,
+            "Network key",
+            63,
+            63,
+            AllowedChars::any(),
+        ))
+        .map_err(error)?;
+    }
+    Ok(())
 }
 
 fn retry_cancel(metadata: &Metadata) -> Result<(), String> {

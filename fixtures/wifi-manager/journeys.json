@@ -58,6 +58,33 @@
       "connected": false,
       "hidden": false,
       "known": false,
+      "network_id": "net-dhcp",
+      "security": "wpa2-psk",
+      "signal_quality": 28,
+      "ssid": "DHCP Failure Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-dns",
+      "security": "wpa2-psk",
+      "signal_quality": 27,
+      "ssid": "DNS Failure Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
+      "network_id": "net-offline",
+      "security": "wpa2-psk",
+      "signal_quality": 26,
+      "ssid": "Offline Synthetic"
+    },
+    {
+      "connected": false,
+      "hidden": false,
+      "known": false,
       "network_id": "net-timeout",
       "security": "wpa2-psk",
       "signal_quality": 29,
@@ -84,6 +111,9 @@
   ],
   "connect_outcomes": {
     "net-bad": "bad-password",
+    "net-dhcp": "dhcp-failure",
+    "net-dns": "dns-failure",
+    "net-offline": "no-internet",
     "net-radio": "radio-unavailable",
     "net-timeout": "timeout"
   },
@@ -95,6 +125,7 @@
     "strongest-radio-collapse",
     "hidden-ssid",
     "bad-password",
+    "dhcp-dns-offline",
     "timeout",
     "radio-unavailable",
     "cancellation",
@@ -103,7 +134,8 @@
     "forget",
     "retry",
     "restart",
-    "negative-validation"
+    "negative-validation",
+    "resilient-profiles"
   ],
   "radio_available": true
 }

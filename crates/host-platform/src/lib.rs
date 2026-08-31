@@ -1941,12 +1941,7 @@ fn draw_wifi(canvas: &mut Canvas<Window>, screen: &Screen) {
                 canvas,
                 88,
                 274,
-                &format!(
-                    "REASON {}",
-                    wifi.reason
-                        .map(|reason| format_debug(&reason))
-                        .unwrap_or_else(|| "unknown".into())
-                ),
+                wifi_error_help(wifi.reason),
                 screen.palette.text,
                 1,
             );
@@ -2015,6 +2010,19 @@ fn draw_wifi_keyboard(
             screen.palette.muted,
             1,
         );
+    }
+}
+
+fn wifi_error_help(reason: Option<wifi_manager::ReasonCode>) -> &'static str {
+    match reason {
+        Some(wifi_manager::ReasonCode::BadCredentials) => "CHECK NETWORK KEY",
+        Some(wifi_manager::ReasonCode::DhcpFailed) => "NO ADDRESS: CHECK ROUTER DHCP",
+        Some(wifi_manager::ReasonCode::DnsFailed) => "LAN READY: CHECK DNS SETTINGS",
+        Some(wifi_manager::ReasonCode::NoInternet) => "LAN READY: INTERNET UNAVAILABLE",
+        Some(wifi_manager::ReasonCode::RadioUnavailable) => "TURN WI-FI ON AND RETRY",
+        Some(wifi_manager::ReasonCode::RetryExhausted) => "RETRY LIMIT REACHED: RESCAN",
+        Some(wifi_manager::ReasonCode::Timeout) => "NETWORK TIMED OUT: RETRY",
+        _ => "CONNECTION FAILED: RETRY OR RESCAN",
     }
 }
 

@@ -1,0 +1,46 @@
+{
+  "schema": "tg4040-power-policies/v1",
+  "targetSku": "TG4040",
+  "lane": "host-native userspace simulator",
+  "hardwareVerified": false,
+  "realDeviceOperations": "denied",
+  "globalDefault": "balanced",
+  "thermal": {
+    "limitC": 75,
+    "hysteresisC": 5,
+    "throttleProfile": "eco",
+    "throttlingEnabled": true
+  },
+  "profiles": [
+    {
+      "id": "eco",
+      "cpu": {"minKHz": 400000, "maxKHz": 900000, "policy": "userspace-cap"},
+      "gpu": {"maxKHz": 300000, "policy": "driver-default-capped"},
+      "display": {"width": 1024, "height": 768, "refreshHz": 60, "mode": "1024x768@60"},
+      "tradeoff": {"fps": 59.8, "p99FrameMs": 18.0, "temperatureC": 52.0, "powerW": 2.1}
+    },
+    {
+      "id": "balanced",
+      "cpu": {"minKHz": 400000, "maxKHz": 1400000, "policy": "userspace-cap"},
+      "gpu": {"maxKHz": 400000, "policy": "driver-default-capped"},
+      "display": {"width": 1024, "height": 768, "refreshHz": 60, "mode": "1024x768@60"},
+      "tradeoff": {"fps": 59.9, "p99FrameMs": 17.4, "temperatureC": 61.0, "powerW": 3.4}
+    },
+    {
+      "id": "performance",
+      "cpu": {"minKHz": 400000, "maxKHz": 1800000, "policy": "userspace-cap"},
+      "gpu": {"maxKHz": 500000, "policy": "driver-default-capped"},
+      "display": {"width": 1024, "height": 768, "refreshHz": 60, "mode": "1024x768@60"},
+      "tradeoff": {"fps": 60.0, "p99FrameMs": 17.1, "temperatureC": 69.0, "powerW": 4.6}
+    }
+  ],
+  "systemDefaults": {
+    "nes": "eco",
+    "ps1": "balanced",
+    "portmaster": "balanced"
+  },
+  "gameOverrides": {
+    "orbit-garden": "performance",
+    "signal-workshop": "eco"
+  }
+}

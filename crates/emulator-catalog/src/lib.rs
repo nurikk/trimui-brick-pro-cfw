@@ -234,6 +234,8 @@ pub struct SettingsDefaults {
     pub rumble: bool,
     #[serde(rename = "audioLatencyMs")]
     pub audio_latency_ms: u16,
+    #[serde(default, rename = "powerProfile")]
+    pub power_profile: PowerProfile,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -251,6 +253,8 @@ pub struct SettingsDelta {
     pub rumble: Option<bool>,
     #[serde(rename = "audioLatencyMs", default)]
     pub audio_latency_ms: Option<u16>,
+    #[serde(default, rename = "powerProfile")]
+    pub power_profile: Option<PowerProfile>,
 }
 
 impl SettingsDelta {
@@ -261,6 +265,7 @@ impl SettingsDelta {
             && self.frame_skip.is_none()
             && self.rumble.is_none()
             && self.audio_latency_ms.is_none()
+            && self.power_profile.is_none()
     }
 }
 
@@ -289,6 +294,15 @@ pub struct GameDelta {
 pub enum DisplayMode {
     Integer,
     Fit,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerProfile {
+    Eco,
+    #[default]
+    Balanced,
+    Performance,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1603,6 +1617,7 @@ struct EffectiveSettings {
     frame_skip: WinningSetting<u8>,
     rumble: WinningSetting<bool>,
     audio_latency_ms: WinningSetting<u16>,
+    power_profile: WinningSetting<PowerProfile>,
 }
 impl EffectiveSettings {
     fn from_defaults(d: &SettingsDefaults) -> Self {
@@ -1630,6 +1645,10 @@ impl EffectiveSettings {
             },
             audio_latency_ms: WinningSetting {
                 value: d.audio_latency_ms,
+                source: source.clone(),
+            },
+            power_profile: WinningSetting {
+                value: d.power_profile.clone(),
                 source,
             },
         }
@@ -1666,7 +1685,16 @@ impl EffectiveSettings {
             };
         }
         if let Some(value) = d.audio_latency_ms {
-            self.audio_latency_ms = WinningSetting { value, source };
+            self.audio_latency_ms = WinningSetting {
+                value,
+                source: source.clone(),
+            };
+        }
+        if let Some(value) = &d.power_profile {
+            self.power_profile = WinningSetting {
+                value: value.clone(),
+                source,
+            };
         }
     }
     fn into_map(self) -> BTreeMap<String, serde_json::Value> {
@@ -1689,6 +1717,10 @@ impl EffectiveSettings {
             (
                 "audioLatencyMs",
                 serde_json::to_value(self.audio_latency_ms).unwrap(),
+            ),
+            (
+                "powerProfile",
+                serde_json::to_value(self.power_profile).unwrap(),
             ),
         ] {
             map.insert(name.to_string(), value);
@@ -1755,6 +1787,7 @@ pub fn fixture_journey() -> Result<String> {
         "frameSkip",
         "rumble",
         "audioLatencyMs",
+        "powerProfile",
     ];
     if resolved.settings["displayWidth"]["source"] != "device"
         || resolved.settings["displayWidth"]["value"] != 800
@@ -1768,6 +1801,8 @@ pub fn fixture_journey() -> Result<String> {
         || resolved.settings["rumble"]["value"] != true
         || resolved.settings["audioLatencyMs"]["source"] != "session"
         || resolved.settings["audioLatencyMs"]["value"] != 32
+        || resolved.settings["powerProfile"]["source"] != "game"
+        || resolved.settings["powerProfile"]["value"] != "performance"
     {
         return Err(CatalogError::new(
             "journey",

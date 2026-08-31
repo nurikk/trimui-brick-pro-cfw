@@ -1,0 +1,21 @@
+{
+  "schema": "tg4040-power-benchmark-matrix/v1",
+  "targetSku": "TG4040",
+  "lane": "host-native userspace simulator",
+  "measurementSource": "deterministic synthetic fixture",
+  "hardwareVerified": false,
+  "realDeviceOperations": "denied",
+  "conditions": {
+    "displayMode": "1024x768@60",
+    "refreshHz": 60,
+    "thermalLimitC": 75,
+    "sampleSeconds": 300
+  },
+  "rows": [
+    {"workload": "NES / Nebula Notes", "kind": "emulator", "profile": "eco", "fps": 59.8, "p99FrameMs": 18.0, "temperatureC": 52.0, "powerW": 2.1, "result": "pass"},
+    {"workload": "PS1 / Mirror Museum", "kind": "emulator", "profile": "balanced", "fps": 59.9, "p99FrameMs": 17.4, "temperatureC": 61.0, "powerW": 3.4, "result": "pass"},
+    {"workload": "PortMaster / Orbit Garden", "kind": "portmaster", "profile": "performance", "fps": 60.0, "p99FrameMs": 17.1, "temperatureC": 69.0, "powerW": 4.6, "result": "pass"},
+    {"workload": "PortMaster / Signal Workshop", "kind": "portmaster", "profile": "eco", "fps": 59.8, "p99FrameMs": 18.0, "temperatureC": 54.0, "powerW": 2.3, "result": "pass"},
+    {"workload": "PortMaster / Orbit Garden thermal limit", "kind": "thermal-degrade", "profile": "eco", "requestedProfile": "performance", "fps": 52.0, "p99FrameMs": 25.0, "temperatureC": 75.0, "powerW": 3.2, "result": "safe-degrade"}
+  ]
+}

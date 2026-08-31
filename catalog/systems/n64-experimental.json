@@ -46,7 +46,8 @@
     "displayMode": "integer",
     "frameSkip": 0,
     "rumble": false,
-    "audioLatencyMs": 64
+    "audioLatencyMs": 64,
+    "powerProfile": "balanced"
   },
   "licenseProvenanceUrl": "https://github.com/libretro/mupen64plus-libretro-nx",
   "experimental": {

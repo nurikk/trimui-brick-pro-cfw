@@ -19,7 +19,7 @@ pub const MAX_RECIPE_BYTES: usize = 256 * 1024;
 pub const MAX_DELTA: usize = 16;
 const CONFIG_ROOT: &str = ".brickpro/config/compatibility-recipes";
 const VAULT_ROOT: &str = ".brickpro/config/compatibility-recipes/rollback-metadata";
-const SAFE_POWER_PROFILES: [&str; 2] = ["balanced", "battery-saver"];
+const SAFE_POWER_PROFILES: [&str; 3] = ["eco", "balanced", "performance"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecipeError {

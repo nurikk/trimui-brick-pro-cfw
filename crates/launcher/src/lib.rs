@@ -484,12 +484,15 @@ struct DisplayCompatibility {
     theme_aspect: String,
 }
 
-fn bundled_theme_for_device(target_sku: &str) -> Result<ValidatedTheme> {
-    let device = target_sku.to_ascii_lowercase();
-    let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+fn device_config_path(target_sku: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../config/platform")
-        .join(device)
-        .join("compatibility.json");
+        .join(target_sku.to_ascii_lowercase())
+        .join("compatibility.json")
+}
+
+fn bundled_theme_for_device(target_sku: &str) -> Result<ValidatedTheme> {
+    let config_path = device_config_path(target_sku);
     let config: DeviceCompatibility = serde_json::from_slice(&fs::read(config_path)?)?;
     let aspect = config.display.theme_aspect.replace(':', "-");
     let theme_path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -497,6 +500,22 @@ fn bundled_theme_for_device(target_sku: &str) -> Result<ValidatedTheme> {
         .join(&config.display.default_theme);
     launcher_theme::load_bundled_theme(&theme_path, &aspect)
         .map_err(|error| anyhow!(error.to_string()))
+}
+
+fn selected_theme_for_device(
+    target_sku: &str,
+) -> Result<(ValidatedTheme, Option<launcher_theme::Reason>)> {
+    let Some(path) = std::env::var_os("TRIMUI_THEME_DIR") else {
+        return Ok((bundled_theme_for_device(target_sku)?, None));
+    };
+    let device = device_profile::DeviceProfile::from_path(&device_config_path(target_sku))
+        .map_err(|error| anyhow!(error.to_string()))?;
+    match launcher_theme::load_theme_dir(Path::new(&path))
+        .and_then(|theme| launcher_theme::validate_for_device(theme, &device))
+    {
+        Ok(theme) => Ok((theme, None)),
+        Err(error) => Ok((bundled_theme_for_device(target_sku)?, Some(error.reason))),
+    }
 }
 
 struct PresentationState {
@@ -574,15 +593,11 @@ impl PresentationState {
             .map_err(|error| anyhow!(error.to_string()))?;
         let wifi = WifiSettingsController::new(metadata, WifiManager::new(backend), true)
             .map_err(|error| anyhow!(error.to_string()))?;
+        let (theme, theme_fallback) = selected_theme_for_device(target_sku)?;
         Ok(Self {
             ui,
-            theme: std::env::var_os("TRIMUI_THEME_DIR")
-                .map(|path| launcher_theme::preview_path_or_fallback(Path::new(&path)))
-                .transpose()
-                .map_err(|error| anyhow!(error.to_string()))?
-                .map(|preview| preview.theme)
-                .unwrap_or(bundled_theme_for_device(target_sku)?),
-            theme_fallback: None,
+            theme,
+            theme_fallback,
             theme_garden: false,
             metadata_off: false,
             settings,
@@ -598,7 +613,7 @@ impl PresentationState {
             .scene()
             .map_err(|error| anyhow!(error.to_string()))?;
         let wifi = self.wifi.snapshot();
-        Ok(launcher_presentation::build_with_recent(
+        let mut screen = launcher_presentation::build_with_recent(
             &self.ui,
             &self.theme,
             self.theme_fallback,
@@ -606,7 +621,14 @@ impl PresentationState {
             Some(&wifi),
             &self.index,
             &self.recent,
-        ))
+        );
+        if self.theme_fallback.is_some() {
+            screen.route = "recovery".into();
+            screen.title = "Safe theme restored".into();
+            screen.selected_label =
+                "Invalid theme rejected — open Theme Garden to choose another".into();
+        }
+        Ok(screen)
     }
 }
 

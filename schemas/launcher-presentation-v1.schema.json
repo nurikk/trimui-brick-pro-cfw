@@ -4,7 +4,7 @@
   "title": "Generated Artbook launcher presentation",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "resume", "selectedGame", "gameMedia", "systemMedia", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp", "groupJump", "index", "boundaries", "saveSync"],
+  "required": ["schema", "identity", "route", "focus", "title", "selectedLabel", "menu", "gameRows", "resume", "selectedGame", "gameMedia", "systemMedia", "regions", "palette", "theme", "themeFallback", "generatedAssets", "settings", "wifi", "scraper", "modal", "splash", "affordances", "controllerHelp", "groupJump", "index", "boundaries", "saveSync", "uiSize"],
   "properties": {
     "schema": {"const": "launcher-presentation/v1"},
     "identity": {"const": "Artbook"},
@@ -12,6 +12,7 @@
     "focus": {"type": "string", "pattern": "^[a-z0-9-]{1,48}$"},
     "title": {"type": "string", "minLength": 1, "maxLength": 80},
     "selectedLabel": {"type": "string", "maxLength": 128},
+    "uiSize": {"enum": ["automatic", "small", "medium", "large", "extra-large"]},
     "menu": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/item"}},
     "gameRows": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/item"}},
     "resume": {"type": "array", "maxItems": 32, "items": {"type": "object", "additionalProperties": false, "required": ["contentId", "label", "status", "screenshot", "choices"], "properties": {"contentId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}, "label": {"type": "string", "maxLength": 128}, "status": {"type": "string", "maxLength": 48}, "screenshot": {"type": "string", "pattern": "^generated-[a-z0-9-]+$"}, "choices": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 32}}}}},

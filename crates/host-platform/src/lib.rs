@@ -505,28 +505,7 @@ impl Platform for HostPlatform {
                 screen.palette.text,
                 3,
             );
-            let (viewport_width, _) = self.canvas.output_size().map_err(backend_error)?;
-            draw_text(
-                &mut self.canvas,
-                viewport_width.saturating_sub(256) as i32,
-                26,
-                &screen.affordances.clock,
-                screen.palette.background,
-                2,
-            );
-            let battery = format!(
-                "{}%{}",
-                screen.affordances.battery_percent,
-                if screen.affordances.charging { "+" } else { "" }
-            );
-            draw_text(
-                &mut self.canvas,
-                viewport_width.saturating_sub(136) as i32,
-                26,
-                &battery,
-                screen.palette.background,
-                2,
-            );
+            draw_status(&mut self.canvas, screen);
 
             if screen.theme_fallback.is_some() || screen.splash == "nova8-fallback" {
                 draw_fallback(&mut self.canvas, screen);
@@ -1207,37 +1186,7 @@ fn draw_art_book_next(canvas: &mut Canvas<Window>, screen: &Screen) -> PlatformR
             draw_text(canvas, 580, 338, &game.title, [255, 255, 255, 255], 5);
         }
     }
-    canvas.set_draw_color(rgb([255, 255, 255, 255]));
-    for (x, y, width) in [(900, 18, 24), (904, 23, 16), (908, 28, 8)] {
-        let (start_x, start_y) = reflow_point(x, y);
-        let (end_x, end_y) = reflow_point(x + width, y);
-        canvas
-            .draw_line(
-                sdl2::rect::Point::new(start_x, start_y),
-                sdl2::rect::Point::new(end_x, end_y),
-            )
-            .map_err(backend_error)?;
-    }
-    canvas
-        .fill_rect(layout_rect(910, 33, 4, 4))
-        .map_err(backend_error)?;
-    canvas
-        .draw_rect(layout_rect(950, 18, 24, 16))
-        .map_err(backend_error)?;
-    canvas
-        .fill_rect(layout_rect(954, 22, 14, 8))
-        .map_err(backend_error)?;
-    canvas
-        .fill_rect(layout_rect(974, 23, 4, 6))
-        .map_err(backend_error)?;
-    draw_text(
-        canvas,
-        812,
-        18,
-        &screen.affordances.clock,
-        [255, 255, 255, 255],
-        1,
-    );
+    draw_status(canvas, screen);
     if let Some(modal) = &screen.modal {
         canvas.set_blend_mode(BlendMode::Blend);
         canvas.set_draw_color(sdl2::pixels::Color::RGBA(0, 0, 0, 190));
@@ -2277,6 +2226,51 @@ fn button_label(button: ui_model::Button) -> &'static str {
     }
 }
 
+pub fn supports_text(text: &str) -> bool {
+    let Some(ttf) = ttf_context() else {
+        return false;
+    };
+    let Some(font) = fallback_font(ttf, text, 16) else {
+        return false;
+    };
+    text.chars()
+        .all(|character| character.is_whitespace() || font.find_glyph(character).is_some())
+}
+
+fn draw_status(canvas: &mut Canvas<Window>, screen: &Screen) {
+    let width = active_layout().viewport_width as i32;
+    let margin = (width / 32).max(12);
+    let battery = format!(
+        "{}%{}",
+        screen.affordances.battery_percent,
+        if screen.affordances.charging { "+" } else { "" }
+    );
+    let battery_bounds = Rect::new(width - margin - 76, 12, 76, 28);
+    let wifi_bounds = Rect::new(battery_bounds.x() - 24, 12, 20, 28);
+    let clock_bounds = Rect::new(margin, 12, (wifi_bounds.x() - margin - 8).max(1) as u32, 28);
+    draw_text_in_bounds(
+        canvas,
+        clock_bounds,
+        &screen.affordances.clock,
+        screen.palette.text,
+        16,
+    );
+    draw_wifi_indicator(canvas, wifi_bounds, screen.palette.text);
+    draw_text_in_bounds(canvas, battery_bounds, &battery, screen.palette.text, 16);
+}
+
+fn draw_wifi_indicator(canvas: &mut Canvas<Window>, bounds: Rect, color: [u8; 4]) {
+    canvas.set_draw_color(rgb(color));
+    for (offset, width) in [(4, 16), (9, 10), (14, 4)] {
+        let y = bounds.y() + offset;
+        let x = bounds.x() + ((bounds.width() as i32 - width) / 2);
+        let _ = canvas.draw_line(
+            sdl2::rect::Point::new(x, y),
+            sdl2::rect::Point::new(x + width, y),
+        );
+    }
+}
+
 fn ttf_context() -> Option<&'static sdl2::ttf::Sdl2TtfContext> {
     static CONTEXT: OnceLock<Option<sdl2::ttf::Sdl2TtfContext>> = OnceLock::new();
     CONTEXT.get_or_init(|| sdl2::ttf::init().ok()).as_ref()
@@ -2303,40 +2297,85 @@ fn draw_text_in_bounds(
         return;
     };
     let point_size = active_layout().text_point(i32::from(point_size));
-    let Ok(rwops) =
-        sdl2::rwops::RWops::from_bytes(include_bytes!("../assets/fonts/Lato-Regular.ttf"))
-    else {
+    let Some(font) = fallback_font(ttf, text, point_size.clamp(8, 96)) else {
         return;
     };
-    let Ok(font) = ttf.load_font_from_rwops(rwops, point_size.clamp(8, 96)) else {
-        return;
-    };
+    draw_lines(
+        canvas,
+        bounds,
+        color,
+        &font,
+        wrapped_lines(&font, text, bounds.width()),
+    );
+}
+
+fn fallback_font<'a>(
+    ttf: &'a sdl2::ttf::Sdl2TtfContext,
+    text: &str,
+    point_size: u16,
+) -> Option<sdl2::ttf::Font<'a, 'static>> {
+    for bytes in [
+        include_bytes!("../assets/fonts/Lato-Regular.ttf").as_slice(),
+        include_bytes!("../assets/fonts/DroidSansFallbackCjk.ttf").as_slice(),
+        include_bytes!("../assets/fonts/NanumBarunGothicKorean.ttf").as_slice(),
+    ] {
+        let rwops = sdl2::rwops::RWops::from_bytes(bytes).ok()?;
+        let font = ttf.load_font_from_rwops(rwops, point_size).ok()?;
+        if text
+            .chars()
+            .all(|character| character.is_whitespace() || font.find_glyph(character).is_some())
+        {
+            return Some(font);
+        }
+    }
+    None
+}
+
+fn wrapped_lines(font: &sdl2::ttf::Font<'_, '_>, text: &str, width: u32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
-    for word in text.split_whitespace() {
-        let candidate = if line.is_empty() {
-            word.to_string()
-        } else {
-            format!("{line} {word}")
-        };
+    for character in text.chars() {
+        if character == '\n' {
+            lines.push(std::mem::take(&mut line));
+            continue;
+        }
+        let mut candidate = line.clone();
+        candidate.push(character);
         let fits = font
             .size_of(&candidate)
-            .map(|(width, _)| width <= bounds.width())
+            .map(|(measured, _)| measured <= width)
             .unwrap_or(false);
         if !line.is_empty() && !fits {
             lines.push(std::mem::take(&mut line));
         }
-        if line.is_empty() {
-            line.push_str(word);
-        } else if fits {
-            line = candidate;
-        } else {
-            lines.push(std::mem::take(&mut line));
-            line.push_str(word);
-        }
+        line.push(character);
     }
     if !line.is_empty() || lines.is_empty() {
         lines.push(line);
+    }
+    lines
+}
+
+fn draw_lines(
+    canvas: &mut Canvas<Window>,
+    bounds: Rect,
+    color: [u8; 4],
+    font: &sdl2::ttf::Font<'_, '_>,
+    mut lines: Vec<String>,
+) {
+    let max_lines = (bounds.height() as i32 / font.height().max(1)).max(1) as usize;
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+        let line = lines.last_mut().expect("at least one text line");
+        while !line.is_empty()
+            && font
+                .size_of(&format!("{line}…"))
+                .map(|(width, _)| width > bounds.width())
+                .unwrap_or(true)
+        {
+            line.pop();
+        }
+        line.push('…');
     }
     canvas.set_clip_rect(Some(bounds));
     let texture_creator = canvas.texture_creator();
@@ -2351,9 +2390,6 @@ fn draw_text_in_bounds(
         let target = Rect::new(bounds.x(), cursor_y, surface.width(), surface.height());
         let _ = canvas.copy(&texture, None, target);
         cursor_y += surface.height() as i32;
-        if cursor_y >= bounds.y() + bounds.height() as i32 {
-            break;
-        }
     }
     canvas.set_clip_rect(None);
 }

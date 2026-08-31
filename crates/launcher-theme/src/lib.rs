@@ -35,6 +35,7 @@ const MAX_ART_BOOK_NEXT_XML_BYTES: u64 = MAX_JSON_BYTES as u64;
 const MAX_ART_BOOK_NEXT_ASSET_BYTES: u64 = MAX_RESOURCE_BYTES * 64;
 pub const SCHEMA: &str = "theme-v1";
 pub const SCHEMA_URI: &str = "urn:project:theme-v1";
+pub const MIN_LABEL_CONTRAST: f64 = 4.5;
 
 pub fn select_theme_layout<'a>(
     device: &device_profile::DeviceProfile,
@@ -629,6 +630,22 @@ fn hex_color(value: &str, label: &str) -> Result<[u8; 4], ThemeError> {
     Ok([rgb[0], rgb[1], rgb[2], 255])
 }
 
+fn contrast(left: [u8; 4], right: [u8; 4]) -> f64 {
+    fn channel(value: u8) -> f64 {
+        let value = f64::from(value) / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    let luminance = |color: [u8; 4]| {
+        0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+    };
+    let (left, right) = (luminance(left), luminance(right));
+    (left.max(right) + 0.05) / (left.min(right) + 0.05)
+}
+
 fn validate_asset_path(value: &str) -> Result<(), ThemeError> {
     if value.len() > 128 || value.ends_with('/') || value.contains("//") {
         return Err(ThemeError::new(
@@ -903,6 +920,18 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     ] {
         hex_color(value, label)?;
     }
+    let background = hex_color(&theme.colors.background, "background")?;
+    for (label, value) in [
+        ("text", &theme.colors.text),
+        ("highlight", &theme.colors.highlight),
+    ] {
+        if contrast(hex_color(value, label)?, background) < MIN_LABEL_CONTRAST {
+            return Err(ThemeError::new(
+                Reason::InvalidColor,
+                format!("{label} contrast is below {MIN_LABEL_CONTRAST}:1 against background"),
+            ));
+        }
+    }
     for (label, resource) in [
         ("font", &theme.resources.font),
         ("icon", &theme.resources.icon),
@@ -999,6 +1028,27 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
         return Err(ThemeError::new(
             Reason::InvalidLayout,
             "layout omits a required Artbook region",
+        ));
+    }
+    let clock = theme
+        .layout
+        .regions
+        .iter()
+        .find(|region| region.kind == RegionKind::Clock)
+        .expect("required clock region");
+    let battery = theme
+        .layout
+        .regions
+        .iter()
+        .find(|region| region.kind == RegionKind::Battery)
+        .expect("required battery region");
+    if clock.y != battery.y
+        || clock.height != battery.height
+        || u32::from(clock.x) + u32::from(clock.width) + 12 > u32::from(battery.x)
+    {
+        return Err(ThemeError::new(
+            Reason::InvalidLayout,
+            "clock, Wi-Fi, and battery need ordered non-overlapping status space",
         ));
     }
     if !(80..=160).contains(&theme.settings.font_scale) {
@@ -1400,8 +1450,8 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
                 ("metadata", RegionKind::Metadata, 512, 608, 512, 160),
                 ("menu", RegionKind::Menu, 208, 120, 608, 528),
                 ("help", RegionKind::HelpStrip, 0, 720, 1024, 48),
-                ("clock", RegionKind::Clock, 872, 12, 64, 28),
-                ("battery", RegionKind::Battery, 944, 12, 64, 28),
+                ("clock", RegionKind::Clock, 760, 12, 104, 36),
+                ("battery", RegionKind::Battery, 880, 12, 112, 36),
             ]
             .into_iter()
             .map(|(id, kind, x, y, width, height)| Region {

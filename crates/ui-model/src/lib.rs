@@ -330,7 +330,7 @@ impl UiSize {
             Self::Compact => Some(90),
             Self::Comfortable => Some(110),
             Self::Large => Some(125),
-            Self::ExtraLarge => Some(140),
+            Self::ExtraLarge => Some(150),
         }
     }
 }

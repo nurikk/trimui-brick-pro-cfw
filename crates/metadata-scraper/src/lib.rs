@@ -26,6 +26,7 @@ const MAX_JOBS: usize = 256;
 const MAX_ARRAY_ITEMS: usize = 64;
 const MAX_RETRY_AFTER_SECS: u64 = 3600;
 const MAX_BACKOFF_SECS: u64 = 3600;
+const AUTOMATIC_CONFIDENCE: f32 = 0.80;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -246,6 +247,11 @@ impl ScrapeResult {
         let result: Self = serde_json::from_slice(json).context("malformed scrape result")?;
         result.validate()?;
         Ok(result)
+    }
+
+    pub fn requires_review(&self) -> bool {
+        self.status == MatchStatus::Ambiguous
+            || self.status == MatchStatus::Matched && self.confidence < AUTOMATIC_CONFIDENCE
     }
 }
 
@@ -485,6 +491,10 @@ impl MetadataProvider for FixtureProvider {
                 status: MatchStatus::Ambiguous,
                 confidence: 0.5,
                 ..self.success_result(request, "Synthetic Ambiguous Record".to_string())
+            })),
+            "low-confidence" => ProviderResponse::Result(Box::new(ScrapeResult {
+                confidence: 0.5,
+                ..self.success_result(request, "Synthetic Review Record".to_string())
             })),
             "retry" | "rate-limit" => {
                 let attempts = self.attempts.entry(key.to_string()).or_default();
@@ -916,6 +926,36 @@ impl Queue {
         )
     }
 
+    /// An empty selection means all systems; otherwise only selected system IDs are queued.
+    pub fn enqueue_systems(
+        &mut self,
+        discoveries: impl IntoIterator<Item = DiscoveryRecord>,
+        selected_system_ids: &[String],
+        policy: SchedulingPolicy,
+        overwrite_metadata: bool,
+        overwrite_media: bool,
+    ) -> Result<usize> {
+        policy.validate()?;
+        for system_id in selected_system_ids {
+            validate_opaque_id(system_id, "system ID")?;
+        }
+        let selected: std::collections::HashSet<_> =
+            selected_system_ids.iter().map(String::as_str).collect();
+        let requests = discoveries
+            .into_iter()
+            .map(|discovery| {
+                discovery.validate()?;
+                Ok(discovery)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|discovery| {
+                selected.is_empty() || selected.contains(discovery.system_id.as_str())
+            })
+            .map(|discovery| ScrapeRequest::new(discovery.content_id, discovery.system_id));
+        self.enqueue_bulk(requests, overwrite_metadata, overwrite_media)
+    }
+
     pub fn pause(&mut self) -> Result<()> {
         self.paused = true;
         self.persist()
@@ -990,7 +1030,14 @@ impl Queue {
                 {
                     bail!("provider result IDs do not match request");
                 }
-                self.jobs[index].state = result.status.as_queue_state();
+                self.jobs[index].state = if result.requires_review() {
+                    QueueState::Ambiguous
+                } else {
+                    result.status.as_queue_state()
+                };
+                self.jobs[index].reason = result
+                    .requires_review()
+                    .then_some("confidence-review".into());
                 self.jobs[index].result = Some(result);
                 self.jobs[index].next_attempt_at = 0;
             }
@@ -1744,6 +1791,9 @@ impl MediaCachePublisher {
 
 impl BulkMediaPublisher for MediaCachePublisher {
     fn publish(&self, provider_id: &str, result: &ScrapeResult) -> Result<()> {
+        if self.cache.manual_artwork_is_protected(&result.content_id) {
+            return Ok(());
+        }
         for media in result
             .media
             .iter()
@@ -2269,7 +2319,7 @@ fn scrape_one(
                     });
                     continue;
                 }
-                if result.status == MatchStatus::Ambiguous {
+                if result.requires_review() {
                     let _ = events.send(BulkEvent::Phase {
                         index,
                         provider: Some(declaration.id.clone()),
@@ -2280,7 +2330,7 @@ fn scrape_one(
                         content_id: job.content_id.clone(),
                         state: QueueState::Ambiguous,
                         result: Some(result),
-                        reason: Some("ambiguous".into()),
+                        reason: Some("confidence-review".into()),
                         fallback,
                     };
                 }

@@ -158,6 +158,32 @@ fn queue_controls_and_recovery(provider: &mut FixtureProvider) -> Result<()> {
         false,
         false,
     )?;
+    queue.enqueue(ScrapeRequest::new("low-confidence", "nes"), false, false)?;
+    let mut systems = Queue::open(root.join("systems"))?;
+    if systems.enqueue_systems(
+        [
+            DiscoveryRecord::new("selected-nes", "nes"),
+            DiscoveryRecord::new("selected-snes", "snes"),
+        ],
+        &["snes".into()],
+        policy,
+        false,
+        false,
+    )? != 1
+        || systems.get_for("selected-snes", "snes").is_none()
+        || systems.enqueue_systems(
+            [
+                DiscoveryRecord::new("all-nes", "nes"),
+                DiscoveryRecord::new("all-snes", "snes"),
+            ],
+            &[],
+            policy,
+            false,
+            false,
+        )? != 2
+    {
+        bail!("system selection did not queue the expected records");
+    }
     let checkpoint = fs::read_to_string(root.join("scraper-queue.json"))?;
     if ["synthetic manual", "romHash", "filename", "manualQuery"]
         .iter()
@@ -175,6 +201,15 @@ fn queue_controls_and_recovery(provider: &mut FixtureProvider) -> Result<()> {
     queue.resume()?;
     queue.dispatch_at(provider, policy, 0)?;
     queue.dispatch_at(provider, policy, 0)?;
+    queue.dispatch_at(provider, policy, 0)?;
+    require_state(&queue, "low-confidence", QueueState::Ambiguous)?;
+    if queue
+        .get("low-confidence")
+        .and_then(|job| job.reason.as_deref())
+        != Some("confidence-review")
+    {
+        bail!("low-confidence match was applied without review");
+    }
     queue.enqueue(ScrapeRequest::new("cancelled", "nes"), false, false)?;
     queue.cancel("cancelled")?;
     if queue
@@ -732,7 +767,10 @@ fn bulk_provider_and_scheduler() -> Result<()> {
     let transport = Arc::new(FixtureTransport {
         bytes: jpeg_bytes()?,
     });
-    let publisher = Arc::new(metadata_scraper::MediaCachePublisher::new(cache, transport));
+    let publisher = Arc::new(metadata_scraper::MediaCachePublisher::new(
+        cache.clone(),
+        transport,
+    ));
     let settings = metadata_scraper::ScraperSettings::default();
     let mut queue = Queue::open(root.join("queue"))?;
     queue.enqueue(ScrapeRequest::new("fallback-2", "nes"), false, false)?;
@@ -744,6 +782,17 @@ fn bulk_provider_and_scheduler() -> Result<()> {
     )?;
     if published.results[0].state != QueueState::Succeeded {
         bail!("durable queue media cache publication failed");
+    }
+    let cleanup = cache.cleanup_orphans(&[], false)?;
+    if cleanup.candidates != 1 || cleanup.deleted != 0 {
+        bail!("unconfirmed orphan cleanup removed cache data");
+    }
+    cache.protect_manual_artwork("fallback-2")?;
+    if !cache.manual_artwork_is_protected("fallback-2")
+        || cache.cleanup_orphans(&[], true)?.deleted != 0
+        || !cache_root.join("index/fallback-2.json").is_file()
+    {
+        bail!("manual artwork was not protected from confirmed cleanup");
     }
     let published = metadata_scraper::scrape_bulk_with_media_publisher(
         vec![BulkJob::new(

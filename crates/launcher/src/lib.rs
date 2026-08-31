@@ -1,6 +1,6 @@
 mod control;
 mod launcher_state;
-mod rom_index;
+pub mod rom_index;
 #[cfg(feature = "simulator")]
 mod simulator_session;
 

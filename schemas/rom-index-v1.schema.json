@@ -4,72 +4,47 @@
   "title": "Bounded launcher ROM index",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema",
-    "entries",
-    "groups"
-  ],
+  "required": ["schema", "entries", "groups"],
   "properties": {
-    "schema": {
-      "const": "launcher-rom-index/v1"
-    },
+    "schema": {"const": "launcher-rom-index/v1"},
     "entries": {
       "type": "array",
-      "maxItems": 4096,
+      "maxItems": 30000,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "contentId",
-          "title",
-          "path"
-        ],
+        "required": ["contentId", "title", "path"],
         "properties": {
-          "contentId": {
-            "type": "string",
-            "maxLength": 128
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 4096
-          }
+          "contentId": {"type": "string", "maxLength": 128},
+          "title": {"type": "string", "minLength": 1, "maxLength": 256},
+          "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+          "filename": {"type": "string", "maxLength": 256},
+          "friendlyName": {"type": "string", "maxLength": 256},
+          "displayName": {"type": "string", "maxLength": 256},
+          "systemId": {"type": "string", "maxLength": 128},
+          "sourceHash": {"type": "string", "maxLength": 128},
+          "sourceSize": {"type": "integer", "minimum": 0},
+          "sourceModifiedNanos": {"type": "integer", "minimum": 0},
+          "sourceDevice": {"type": "integer", "minimum": 0},
+          "sourceInode": {"type": "integer", "minimum": 0}
         }
       }
     },
     "groups": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "boundaries"
-      ],
+      "required": ["boundaries"],
       "properties": {
         "boundaries": {
           "type": "array",
-          "maxItems": 4096,
+          "maxItems": 30000,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "group",
-              "firstIndex"
-            ],
+            "required": ["group", "firstIndex"],
             "properties": {
-              "group": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 32
-              },
-              "firstIndex": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 4095
-              }
+              "group": {"type": "string", "minLength": 1, "maxLength": 32},
+              "firstIndex": {"type": "integer", "minimum": 0, "maximum": 29999}
             }
           }
         }

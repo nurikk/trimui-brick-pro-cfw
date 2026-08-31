@@ -13,6 +13,7 @@ const IDENTITY: &str = "Artbook";
 const MAX_BYTES: u64 = 64 * 1024;
 const MAX_FAVORITES: usize = 512;
 const MAX_RECENT: usize = 64;
+const MAX_FOCUS: usize = 64;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -33,6 +34,12 @@ pub struct State {
     pub battery_policy: BatteryPolicy,
     #[serde(default)]
     pub scraper_progress: Option<ScraperProgress>,
+    #[serde(default)]
+    pub focus: Vec<String>,
+    #[serde(default)]
+    pub focus_home: bool,
+    #[serde(default)]
+    pub kid_safe: bool,
 }
 
 impl Default for State {
@@ -45,6 +52,9 @@ impl Default for State {
             recent: Vec::new(),
             battery_policy: BatteryPolicy::default(),
             scraper_progress: None,
+            focus: Vec::new(),
+            focus_home: false,
+            kid_safe: false,
         }
     }
 }
@@ -112,6 +122,15 @@ fn valid_state(state: &State) -> bool {
         && state.favorites.iter().all(|id| valid_id(id))
         && state.recent.iter().all(|item| valid_id(&item.content_id))
         && state.battery_policy.validate().is_ok()
+        && state.focus.len() <= MAX_FOCUS
+        && state
+            .focus
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            == state.focus.len()
+        && state.focus.iter().all(|id| valid_id(id))
+        && (!state.kid_safe || !state.focus.is_empty())
         && state
             .scraper_progress
             .as_ref()

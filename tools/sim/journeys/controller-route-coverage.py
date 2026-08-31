@@ -20,6 +20,7 @@ CONTROL_TIMEOUT = 15
 START_TIMEOUT = 45
 ROUTE_TIMEOUT = 60
 PASS_TIMEOUT = 600
+CONTROLLER_ROUTE_COUNT = 66
 SMOKE_ROUTES = [
     "home-systems",
     "settings-display",
@@ -91,13 +92,15 @@ def load_graph():
     if graph.get("schema") != "controller-route-graph/v2" or not isinstance(routes, list):
         raise RuntimeError(f"invalid controller route graph: {GRAPH}")
     route_ids = [route.get("id") for route in routes]
+    expected = graph.get("expectedCount")
     if (
-        graph.get("expectedCount") != 64
-        or len(route_ids) != 64
-        or len(set(route_ids)) != 64
+        not isinstance(expected, int)
+        or expected < 1
+        or len(route_ids) != expected
+        or len(set(route_ids)) != expected
         or any(not route.get("buttons") for route in routes)
     ):
-        raise RuntimeError("controller route graph must contain 64 unique button journeys")
+        raise RuntimeError("controller route graph has invalid button journeys")
     return graph
 
 
@@ -490,6 +493,39 @@ def cleanup(container, run_dir, backend, display, shutdown_requested=False):
     return errors
 
 
+def validate_focus_flow(container, run_dir):
+    state = call(container, "state")
+    if state["focus"] != {
+        "entries": ["nebula-nes", "mirror-ps1"],
+        "defaultHome": True,
+        "kidSafe": True,
+        "missing": 0,
+    } or state["controllerRoute"]["currentId"] != "focus-home":
+        raise RuntimeError(f"Focus admin flow did not produce the restricted ordered home: {state['focus']!r}")
+    state = button(container, run_dir, "primary")
+    if state["activeSession"] is None:
+        raise RuntimeError("Focus launch did not create a session")
+    button(container, run_dir, "menu")
+    state = button(container, run_dir, "primary")
+    if state["activeSession"] is None:
+        raise RuntimeError("kid Continue did not keep the Focus session")
+    button(container, run_dir, "menu")
+    button(container, run_dir, "down")
+    button(container, run_dir, "down")
+    state = button(container, run_dir, "primary")
+    if state["activeSession"] is not None or state["controllerRoute"]["currentId"] != "focus-home":
+        raise RuntimeError("kid Exit did not return to Focus home")
+    for control in ("menu", "select"):
+        state = button(container, run_dir, control)
+        if state["controllerRoute"]["currentId"] != "focus-home" or not state["focus"]["kidSafe"]:
+            raise RuntimeError(f"restricted shortcut escaped Focus home: {control}")
+    for control in ("start", "select", "start", "select"):
+        state = button(container, run_dir, control)
+    if state["controllerRoute"]["currentId"] is not None or state["focus"]["kidSafe"]:
+        raise RuntimeError("parent gesture did not restore the full Home")
+
+
+
 def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
     run_dir.mkdir(parents=True)
     route_paths = paths()
@@ -530,7 +566,7 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
             presentation = state.get("presentation", {})
             if (
                 controller.get("navigatorVisible", True)
-                or controller.get("expectedCount") != 64
+                or controller.get("expectedCount") != CONTROLLER_ROUTE_COUNT
                 or controller.get("currentId") != route_id
             ):
                 raise RuntimeError(
@@ -557,7 +593,13 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
             if time.monotonic() >= pass_deadline:
                 raise RuntimeError(f"whole pass timed out after route {route_id}; output: {run_dir}")
         validate_visits(visits, route_ids)
+        if "focus-home" in route_ids:
+            validate_focus_flow(container, run_dir)
         home_state = button(container, run_dir, "menu")
+        if home_state["controllerRoute"]["currentId"] in {"focus-home", "focus-recovery", "kid-quick-menu"}:
+            for control in ("start", "select", "start", "select"):
+                home_state = button(container, run_dir, control)
+            home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] == "game-quick-menu":
             home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] is not None:
@@ -574,6 +616,10 @@ def one_pass(run_dir, route_ids, backend, display, smoke_routes=SMOKE_ROUTES):
                 f"state={cancelled.get('controllerRoute')!r}, exitStatus={(run_dir / 'exit-status.json').exists()}"
             )
         home_state = button(container, run_dir, "menu")
+        if home_state["controllerRoute"]["currentId"] in {"focus-home", "focus-recovery", "kid-quick-menu"}:
+            for control in ("start", "select", "start", "select"):
+                home_state = button(container, run_dir, control)
+            home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] == "game-quick-menu":
             home_state = button(container, run_dir, "menu")
         if home_state["controllerRoute"]["currentId"] is not None:

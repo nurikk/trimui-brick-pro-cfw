@@ -27,6 +27,9 @@
         "properties": { "contentId": { "type": "string", "maxLength": 128 }, "playtimeMs": { "type": "integer", "minimum": 0 } }
       }
     },
+    "focus": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$" } },
+    "focusHome": { "type": "boolean" },
+    "kidSafe": { "type": "boolean" },
     "scraperProgress": {
       "anyOf": [
         {"type": "null"},

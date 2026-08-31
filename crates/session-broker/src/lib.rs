@@ -145,6 +145,15 @@ pub trait SessionBrokerClient {
         Err(BrokerError::new("resume decision is unavailable"))
     }
 
+    fn resume_delete(
+        &mut self,
+        _request: BrokerRequest,
+        _generation: u64,
+        _confirmed: bool,
+    ) -> Result<(), BrokerError> {
+        Err(BrokerError::new("resume deletion is unavailable"))
+    }
+
     fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
         Err(BrokerError::new("save vault is unavailable"))
     }

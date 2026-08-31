@@ -213,6 +213,7 @@ pub struct ResumeProjection {
     pub content_id: String,
     pub label: String,
     pub status: String,
+    pub timestamp_ms: u64,
     pub screenshot: String,
     pub choices: Vec<String>,
 }
@@ -1481,7 +1482,7 @@ fn menu_for_route(route: &Route, state: &UiState) -> MenuState {
                     id: MenuId::new(resume.content_id.clone()),
                     label: resume.label.clone(),
                     command: MenuCommand::Resume(GameId::new(resume.content_id.clone())),
-                    enabled: resume.status == "available",
+                    enabled: resume.status != "unavailable",
                     disabled_reason: None,
                     selected: false,
                 })

@@ -150,6 +150,7 @@ fn command_args<'a>(
         }
         "autosave" => Ok(("autosave", autosave_args(args)?)),
         "resume" => Ok(("resume", resume_args(args)?)),
+        "resume.delete" => Ok(("resume.delete", resume_delete_args(args)?)),
         "clock" => Ok(("clock", clock_args(args)?)),
         "lifecycle" => Ok(("lifecycle", lifecycle_args(args)?)),
         _ => Err(("usage", "unknown command".into())),
@@ -505,6 +506,8 @@ fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {
             "resume",
             "retained-matching-core",
             "cold-start-sram",
+            "restore-previous",
+            "fresh-start",
             "cancel",
         ]
         .contains(&args[3].as_str())
@@ -528,6 +531,33 @@ fn resume_args(args: &[String]) -> Result<Value, (&'static str, String)> {
         index += 2;
     }
     Ok(value)
+}
+
+fn resume_delete_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    if args.len() != 6
+        || args[0] != "--content-id"
+        || args[2] != "--generation"
+        || args[4] != "--confirmed"
+        || ![
+            "nebula-nes",
+            "mirror-ps1",
+            "orbit-garden",
+            "signal-workshop",
+        ]
+        .contains(&args[1].as_str())
+        || args[3].parse::<u64>().is_err()
+        || !["true", "false"].contains(&args[5].as_str())
+    {
+        return Err((
+            "usage",
+            "--content-id ID --generation NUMBER --confirmed true|false is required".into(),
+        ));
+    }
+    Ok(json!({
+        "contentId": args[1],
+        "generation": args[3].parse::<u64>().expect("validated generation"),
+        "confirmed": args[5] == "true",
+    }))
 }
 
 fn valid_version(version: &str) -> bool {

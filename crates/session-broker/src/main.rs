@@ -248,7 +248,8 @@ fn resume_security_journey(
             fs::remove_dir_all(root.join(".staging")).map_err(|error| error.to_string())?;
             symlink(root.join("outside"), root.join(".staging"))
                 .map_err(|error| error.to_string())?;
-            if broker.resume.choices(request) != [ResumeDecision::Cancel]
+            if broker.resume.choices(request)
+                != [ResumeDecision::FreshStart, ResumeDecision::Cancel]
                 || current_generation(&root)? != prior_generation
             {
                 return Err("resume symlink boundary was not rejected".to_string());
@@ -260,7 +261,8 @@ fn resume_security_journey(
                 fs::Permissions::from_mode(0o700),
             )
             .map_err(|error| error.to_string())?;
-            if broker.resume.choices(request) != [ResumeDecision::Cancel]
+            if broker.resume.choices(request)
+                != [ResumeDecision::FreshStart, ResumeDecision::Cancel]
                 || current_generation(&root)? != prior_generation
             {
                 return Err("resume mode corruption was not rejected".to_string());
@@ -305,7 +307,7 @@ fn resume_security_journey(
             let Some(max_generation) = generations.iter().max().copied() else {
                 return Err("concurrent checkpoints produced no records".to_string());
             };
-            if !unique || current != max_generation || visible != 1 {
+            if !unique || current != max_generation || visible != 2 {
                 return Err("concurrent resume publication was not serialized".to_string());
             }
         }

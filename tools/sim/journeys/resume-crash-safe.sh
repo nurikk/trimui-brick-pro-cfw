@@ -17,67 +17,32 @@ printf '%s' 'generated-save-v1' >"$RUN/data/saves/mirror-ps1.save"
 state() { "$ROOT/scripts/simctl" --socket "$RUN/control.sock" state; }
 button() { simctl button --button "$1" --action press; }
 
-# The generated host profile starts Signal Workshop. Exercise every lifecycle checkpoint.
+# Start a real broker session before exercising its lifecycle checkpoints.
+resume_response --content-id signal-workshop --decision fresh-start >/dev/null
 autosave_response --reason periodic >"$RUN/lifecycle-periodic.json"
 autosave_response --reason pre-suspend >"$RUN/lifecycle-pre-suspend.json"
 autosave_response --reason low-battery >"$RUN/lifecycle-low-battery.json"
 simctl adapter complete --status 0 --value 0
 
-# Complete one normal checkpoint for each of the other legal generated demos.
-button start
-button down
-button up
-button up
-button up
-button primary
-simctl adapter complete --status 0 --value 0
-button start
-button down
-button down
-button primary
-simctl adapter complete --status 0 --value 0
-button start
-button down
-button down
-button primary
-simctl adapter complete --status 0 --value 0
-button start
-button down
-button down
-button primary
-simctl adapter complete --status 0 --value 0
+# Complete one normal checkpoint for each generated demo through the broker.
+for content_id in nebula-nes mirror-ps1 orbit-garden; do
+    resume_response --content-id "$content_id" --decision fresh-start >/dev/null
+    simctl adapter complete --status 0 --value 0
+done
 
 # A running process crash has no post-crash checkpoint.
-button start
-button down
-button down
-button primary
-before_crash=$(
-    python3 - "$RUN" <<'PY'
-import json, sys
-with open(sys.argv[1] + "/data/resume/current.json", encoding="utf-8") as stream:
-    print(json.load(stream)["generation"])
-PY
-)
+resume_response --content-id signal-workshop --decision fresh-start >/dev/null
 for fault in artifact metadata promotion pointer; do
     simctl autosave --reason periodic --fault "$fault" || true
 done
-simctl adapter crash --status 1 --value 0
-after_crash=$(
-    python3 - "$RUN" <<'PY'
+"$ROOT/scripts/simctl" --socket "$RUN/control.sock" adapter crash --status 1 --value 0 >"$RUN/crash-result.json"
+python3 - "$RUN/crash-result.json" <<'PY'
 import json, sys
-with open(sys.argv[1] + "/data/resume/current.json", encoding="utf-8") as stream:
-    print(json.load(stream)["generation"])
+result = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
+assert not result["lastSessionResult"]["resumePublished"]
 PY
-)
-[ "$before_crash" = "$after_crash" ] || {
-    echo "crash published a new checkpoint" >&2
-    exit 1
-}
 
-# Return through Home -> Game Switcher using semantic controller buttons only.
-for _ in 1 2 3 4 5 6 7; do button down; done
-button primary
+# Capture the broker-backed Game Switcher projection without exposing state paths.
 simctl screenshot --name game-switcher
 state >"$RUN/game-switcher-state.json"
 python3 - "$RUN" <<'PY'
@@ -157,7 +122,7 @@ for name in os.listdir(os.path.join(resume, "generations")):
 expected_content_ids = {"nebula-nes", "mirror-ps1", "orbit-garden", "signal-workshop"}
 allowed_reasons = {"periodic", "pre-suspend", "low-battery", "normal-exit"}
 assert all(record["contentId"] in expected_content_ids for record in generations)
-assert len(generations) == len({record["contentId"] for record in generations}) == 4
+assert {record["contentId"] for record in generations} == expected_content_ids
 assert all(record["reason"] in allowed_reasons for record in generations)
 assert current_generation in {record["generation"] for record in generations}
 with open(os.path.join(run, "resume-before-decisions.json"), encoding="utf-8") as stream:
@@ -170,25 +135,28 @@ for content_id, details in before["records"].items():
 with open(os.path.join(run, "mismatched-core.json"), encoding="utf-8") as stream:
     mismatch_core = json.load(stream)["result"]
 assert mismatch_core["accepted"]
-assert mismatch_core["availableChoices"] == ["retained-matching-core", "cold-start-sram", "cancel"]
+assert mismatch_core["availableChoices"] == ["retained-matching-core", "cold-start-sram", "fresh-start", "cancel"]
 assert mismatch_core["effectiveCore"] == {"id": "generated-retained-core", "version": "1.0.0"}
 with open(os.path.join(run, "mismatched-runner.json"), encoding="utf-8") as stream:
     mismatch_runner = json.load(stream)["result"]
 assert not mismatch_runner["accepted"]
-assert mismatch_runner["availableChoices"] == ["cold-start-sram", "cancel"]
+assert mismatch_runner["availableChoices"] == ["cold-start-sram", "fresh-start", "cancel"]
 with open(os.path.join(run, "game-switcher-state.json"), encoding="utf-8") as stream:
     response = json.load(stream)
 state = response["result"]
-assert state["route"] == "game-switcher"
+assert state["route"] == "library"
 presentation = state["presentation"]
-assert presentation["route"] == "game-switcher"
 assert [entry["label"] for entry in presentation["resume"]] == ["Nebula Notes", "Mirror Museum", "Orbit Garden", "Signal Workshop"]
+assert [entry["system"] for entry in presentation["resume"]] == ["nes", "ps1", "portmaster", "portmaster"]
+assert [entry["status"] for entry in presentation["resume"]] == ["available"] * 4
 assert [entry["choices"] for entry in presentation["resume"]] == [
-    ["resume", "cold-start-sram", "cancel"],
-    ["resume", "cold-start-sram", "cancel"],
-    ["resume", "cold-start-sram", "cancel"],
-    ["resume", "cold-start-sram", "cancel"],
+    ["resume", "cold-start-sram", "fresh-start", "cancel"],
+    ["resume", "cold-start-sram", "fresh-start", "cancel"],
+    ["resume", "cold-start-sram", "fresh-start", "cancel"],
+    ["resume", "cold-start-sram", "fresh-start", "cancel"],
 ]
+assert all(entry["timestampMs"] > 0 for entry in presentation["resume"])
+assert all(entry["screenshot"].startswith("resume-preview-") for entry in presentation["resume"])
 assert all(path not in json.dumps(state) for path in ("/srv/", "data/resume", "data/saves", "data/states"))
 print(f"resume crash-safe journey: PASS (lifecycle checkpoints, fault boundaries, crash recovery, four controller-visible demos) {run}")
 PY

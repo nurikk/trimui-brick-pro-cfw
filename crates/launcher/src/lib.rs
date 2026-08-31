@@ -1764,6 +1764,13 @@ fn run_session<P: Platform>(
         .map_err(|error| anyhow!(error.to_string()))?;
     refresh_resume_projection(&mut state, &catalog, &launch_catalog)
         .map_err(|error| anyhow!(error))?;
+    if !state.presentation.ui.resume_entries.is_empty() {
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::Navigate(ui_model::Route::GameSwitcher),
+        );
+        state.route = Route::GameSwitcher;
+    }
     refresh_presentation_affordances(&mut state.presentation, &platform)
         .map_err(|error| anyhow!(error))?;
     if let Ok(status) = state.broker.save_sync_status() {
@@ -2233,17 +2240,37 @@ fn refresh_resume_projection(
         .map_err(|error| error.to_string())?;
     let entries = summaries
         .into_iter()
-        .map(|summary| ui_model::ResumeProjection {
-            label: resume_label(&summary.content_id),
-            content_id: summary.content_id,
-            status: summary.status,
-            timestamp_ms: summary.timestamp_ms,
-            screenshot: format!("generated-resume-{}", summary.generation),
-            choices: summary
-                .choices
-                .into_iter()
-                .map(resume_decision_name)
-                .collect(),
+        .map(|summary| {
+            let catalog_entry = catalog
+                .entries
+                .iter()
+                .find(|entry| entry.id == summary.content_id);
+            ui_model::ResumeProjection {
+                label: catalog_entry.map_or_else(
+                    || resume_label(&summary.content_id),
+                    |entry| entry.title.clone(),
+                ),
+                system: catalog_entry
+                    .map_or_else(|| "Missing content".into(), |entry| entry.system.clone()),
+                content_id: summary.content_id,
+                status: summary.status,
+                timestamp_ms: summary.timestamp_ms,
+                screenshot: format!(
+                    "resume-preview-{}-{}",
+                    summary.generation,
+                    summary
+                        .screenshot
+                        .sha256
+                        .chars()
+                        .take(12)
+                        .collect::<String>()
+                ),
+                choices: summary
+                    .choices
+                    .into_iter()
+                    .map(resume_decision_name)
+                    .collect(),
+            }
         })
         .collect();
     state.presentation.ui = ui_model::reduce(
@@ -4441,7 +4468,7 @@ fn handle_semantic_action<P: Platform>(
                     ProductJourneyState::Session {
                         content, marker, ..
                     },
-                    Button::Secondary,
+                    Button::Select | Button::Secondary,
                 )
                 | (
                     ProductJourneyState::GameSwitcher {
@@ -4517,10 +4544,6 @@ fn handle_semantic_action<P: Platform>(
                 if let Some((content, marker)) = exiting_session {
                     state.resume_content = Some(content);
                     state.resume_marker = marker;
-                    state
-                        .broker
-                        .checkpoint(CheckpointReason::NormalExit, CommitFault::None)
-                        .map_err(|error| anyhow!(error.to_string()))?;
                     let result = state
                         .broker
                         .complete(0, 0)
@@ -4651,10 +4674,22 @@ fn handle_semantic_action<P: Platform>(
             state.selected_content_id = catalog.entries[index].id.clone();
             selection_changed = true;
         }
-        (Route::Games, input_profile::Action::Start)
-        | (Route::Session, input_profile::Action::Start) => {
+        (Route::Games, input_profile::Action::Start) => {
             state.route = Route::Library;
             state.power.game_exit();
+            route_changed = true;
+        }
+        (Route::Session, input_profile::Action::Start) => {
+            let result = state
+                .broker
+                .complete(0, 0)
+                .map_err(|error| anyhow!(error.to_string()))?;
+            state.active_session = None;
+            state.last_session = Some(result);
+            state.route = Route::Library;
+            state.power.game_exit();
+            refresh_resume_projection(state, catalog, launch_catalog)
+                .map_err(anyhow::Error::msg)?;
             route_changed = true;
         }
         (Route::Games, input_profile::Action::Primary)

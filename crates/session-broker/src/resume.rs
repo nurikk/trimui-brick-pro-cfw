@@ -444,26 +444,34 @@ impl ResumeStore {
             .flatten()
             .filter_map(|entry| {
                 let path = entry.path();
-                let verified = read_record(&path, self.mode.file_mode());
-                let record = verified.clone().or_else(|| read_record_metadata(&path))?;
-                (record.generation <= current).then_some((record, verified.is_none()))
+                let record = read_record_metadata(&path)?;
+                (record.generation <= current)
+                    .then_some((record, read_record(&path, self.mode.file_mode()).is_none()))
             })
             .map(|(record, corrupt)| {
-                let choices = if corrupt {
-                    vec![ResumeDecision::FreshStart, ResumeDecision::Cancel]
-                } else {
-                    requests
-                        .iter()
-                        .find(|request| request.content_id == record.content_id)
-                        .map(|request| self.choices_unlocked(request))
-                        .unwrap_or_else(|| vec![ResumeDecision::FreshStart, ResumeDecision::Cancel])
+                let request = requests
+                    .iter()
+                    .find(|request| request.content_id == record.content_id);
+                let choices = match (corrupt, request) {
+                    (true, Some(request)) => {
+                        let mut choices = Vec::new();
+                        if self.previous_record(request, record.generation).is_some() {
+                            choices.push(ResumeDecision::RestorePrevious);
+                        }
+                        choices.extend([ResumeDecision::FreshStart, ResumeDecision::Cancel]);
+                        choices
+                    }
+                    (false, Some(request)) => self.choices_unlocked(request),
+                    (_, None) => vec![ResumeDecision::FreshStart, ResumeDecision::Cancel],
                 };
                 let status = if corrupt {
                     "corrupt-state"
+                } else if request.is_none() {
+                    "missing-content"
                 } else if choices.contains(&ResumeDecision::Resume) {
                     "available"
                 } else {
-                    "safe-fallback"
+                    "incompatible-runtime"
                 };
                 ResumeSummary {
                     content_id: record.content_id,
@@ -495,27 +503,32 @@ impl ResumeStore {
         let Some(current) = read_current(&self.root, self.mode.file_mode()) else {
             return vec![ResumeDecision::FreshStart, ResumeDecision::Cancel];
         };
-        let Some(record) = read_record_for(
-            &self.root,
-            current,
-            &request.content_id,
-            self.mode.file_mode(),
-        ) else {
+        let Some(record) = read_record_metadata_for(&self.root, current, &request.content_id)
+        else {
             return vec![ResumeDecision::FreshStart, ResumeDecision::Cancel];
         };
+        let valid = read_record(
+            &self
+                .root
+                .join("generations")
+                .join(format!("generation-{}", record.generation)),
+            self.mode.file_mode(),
+        )
+        .is_some();
         let exact = record.content_sha256 == request.content_sha256
             && record.runner == request.runner
             && record.core == request.core;
         let mut choices = Vec::new();
-        if exact && record.capability != ResumeCapability::SramOnly {
-            choices.push(ResumeDecision::Resume);
-        } else if self.retained_core(request, &record).is_some() {
-            choices.push(ResumeDecision::RetainedMatchingCore);
-        }
-        if record.sram.size > 0 {
-            choices.push(ResumeDecision::ColdStartSram);
-        }
-        if self.previous_record(request, record.generation).is_some() {
+        if valid {
+            if exact && record.capability != ResumeCapability::SramOnly {
+                choices.push(ResumeDecision::Resume);
+            } else if self.retained_core(request, &record).is_some() {
+                choices.push(ResumeDecision::RetainedMatchingCore);
+            }
+            if record.sram.size > 0 {
+                choices.push(ResumeDecision::ColdStartSram);
+            }
+        } else if self.previous_record(request, record.generation).is_some() {
             choices.push(ResumeDecision::RestorePrevious);
         }
         choices.push(ResumeDecision::FreshStart);
@@ -532,12 +545,7 @@ impl ResumeStore {
         self.validate_layout()?;
         let current = read_current(&self.root, self.mode.file_mode());
         let record = current.and_then(|generation| {
-            read_record_for(
-                &self.root,
-                generation,
-                &request.content_id,
-                self.mode.file_mode(),
-            )
+            read_record_metadata_for(&self.root, generation, &request.content_id)
         });
         match decision {
             ResumeDecision::Cancel | ResumeDecision::FreshStart => Ok(ResumeResult {
@@ -550,6 +558,17 @@ impl ResumeStore {
             ResumeDecision::ColdStartSram => {
                 let record =
                     record.ok_or_else(|| ResumeError::new("SRAM cold start is unavailable"))?;
+                if read_record(
+                    &self
+                        .root
+                        .join("generations")
+                        .join(format!("generation-{}", record.generation)),
+                    self.mode.file_mode(),
+                )
+                .is_none()
+                {
+                    return Err(ResumeError::new("SRAM cold start is corrupt"));
+                }
                 if record.content_sha256 != request.content_sha256 || record.sram.size == 0 {
                     return Err(ResumeError::new("SRAM cold start is incompatible"));
                 }
@@ -567,20 +586,48 @@ impl ResumeStore {
                 let record = if decision == ResumeDecision::RestorePrevious {
                     let current = record
                         .ok_or_else(|| ResumeError::new("resume checkpoint is unavailable"))?;
+                    if read_record(
+                        &self
+                            .root
+                            .join("generations")
+                            .join(format!("generation-{}", current.generation)),
+                        self.mode.file_mode(),
+                    )
+                    .is_some()
+                    {
+                        return Err(ResumeError::new("resume state is not corrupt"));
+                    }
                     self.previous_record(request, current.generation)
                         .ok_or_else(|| ResumeError::new("previous checkpoint is unavailable"))?
                 } else {
                     record.ok_or_else(|| ResumeError::new("resume checkpoint is unavailable"))?
                 };
+                if decision != ResumeDecision::RestorePrevious
+                    && read_record(
+                        &self
+                            .root
+                            .join("generations")
+                            .join(format!("generation-{}", record.generation)),
+                        self.mode.file_mode(),
+                    )
+                    .is_none()
+                {
+                    return Err(ResumeError::new("resume state is corrupt"));
+                }
                 let exact = record.content_sha256 == request.content_sha256
                     && record.runner == request.runner
                     && record.core == request.core;
                 let retained_core = self.retained_core(request, &record);
-                if record.capability == ResumeCapability::SramOnly
-                    || (decision == ResumeDecision::Resume && !exact)
-                    || (decision == ResumeDecision::RetainedMatchingCore && retained_core.is_none())
-                    || (decision == ResumeDecision::RestorePrevious && !exact)
+                if record.capability == ResumeCapability::SramOnly {
+                    return Err(ResumeError::new("resume identity is incompatible"));
+                }
+                if (decision == ResumeDecision::Resume
+                    || decision == ResumeDecision::RestorePrevious)
+                    && std::ops::Not::not(exact)
                 {
+                    return Err(ResumeError::new("resume identity is incompatible"));
+                }
+                if decision == ResumeDecision::RetainedMatchingCore && retained_core.is_none() {
                     return Err(ResumeError::new("resume identity is incompatible"));
                 }
                 Ok(ResumeResult {
@@ -602,7 +649,7 @@ impl ResumeStore {
     ) -> Result<(), ResumeError> {
         let _guard = self.publication_guard()?;
         self.validate_layout()?;
-        if !confirmed {
+        if std::ops::Not::not(confirmed) {
             return Err(ResumeError::new(
                 "resume deletion requires explicit confirmation",
             ));
@@ -618,9 +665,10 @@ impl ResumeStore {
         if record.content_id != request.content_id {
             return Err(ResumeError::new("resume checkpoint does not match content"));
         }
-        if self.previous_record(request, generation).is_none()
-            && !self.records_after(request, generation)
-        {
+        if let (false, false) = (
+            self.previous_record(request, generation).is_some(),
+            self.records_after(request, generation),
+        ) {
             return Err(ResumeError::new("cannot delete the last valid checkpoint"));
         }
         if generation == current {
@@ -743,6 +791,8 @@ fn entries_valid(entries: &mut Vec<ResumeSummary>) {
             .then(left.content_id.cmp(&right.content_id))
             .then(right.generation.cmp(&left.generation))
     });
+    let mut seen = std::collections::HashSet::new();
+    entries.retain(|entry| seen.insert(entry.content_id.clone()));
     entries.truncate(32);
 }
 
@@ -756,18 +806,12 @@ fn content_rank(content_id: &str) -> usize {
     }
 }
 
-fn read_record_for(
-    root: &Path,
-    current: u64,
-    content_id: &str,
-    file_mode: u32,
-) -> Option<ResumeRecord> {
+fn read_record_metadata_for(root: &Path, current: u64, content_id: &str) -> Option<ResumeRecord> {
     (1..=current).rev().find_map(|generation| {
-        let record = read_record(
+        let record = read_record_metadata(
             &root
                 .join("generations")
                 .join(format!("generation-{generation}")),
-            file_mode,
         )?;
         (record.content_id == content_id).then_some(record)
     })

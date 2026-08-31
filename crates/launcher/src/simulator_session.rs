@@ -88,7 +88,7 @@ impl SimulatorSessionAdapter {
             )
             .expect("initial save snapshot");
         let sync_exchange = root.join("save-sync");
-        let exchange = Exchange::new(&sync_exchange).expect("save sync exchange");
+        let exchange = Exchange::for_simulator(&sync_exchange).expect("save sync exchange");
         let reconciler = SyncReconciler::new(
             &vault,
             exchange,
@@ -159,17 +159,6 @@ impl SimulatorSessionAdapter {
         reason: CheckpointReason,
         fault: CommitFault,
     ) -> Result<ResumeRecord, BrokerError> {
-        let record = self
-            .store
-            .checkpoint(
-                request,
-                reason,
-                format!("synthetic-state:{}", request.request_id).as_bytes(),
-                b"synthetic-sram-v1",
-                b"synthetic-resume-screenshot-v1",
-                fault,
-            )
-            .map_err(|error| BrokerError::new(error.to_string()))?;
         let files = [
             SnapshotFile {
                 kind: SaveKind::Save,
@@ -193,7 +182,19 @@ impl SimulatorSessionAdapter {
                 SnapshotReason::NormalExit,
             )
             .map_err(|error| BrokerError::new(error.to_string()))?;
-        Ok(record)
+        let state = format!("synthetic-state:{}", request.request_id);
+        let sram = "synthetic-sram-v1";
+        let screenshot = "synthetic-resume-screenshot-v1";
+        self.store
+            .checkpoint(
+                request,
+                reason,
+                state.as_bytes(),
+                sram.as_bytes(),
+                screenshot.as_bytes(),
+                fault,
+            )
+            .map_err(|error| BrokerError::new(error.to_string()))
     }
 }
 
@@ -401,7 +402,7 @@ impl SimulatorSessionAdapter {
     fn sync_reconciler(&self) -> Result<SyncReconciler<'_>, BrokerError> {
         SyncReconciler::new(
             &self.vault,
-            Exchange::new(&self.sync_exchange)
+            Exchange::for_simulator(&self.sync_exchange)
                 .map_err(|error| BrokerError::new(error.to_string()))?,
             SaveTarget {
                 logical_id: "generated-save".into(),

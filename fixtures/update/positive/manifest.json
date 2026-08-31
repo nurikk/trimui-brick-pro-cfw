@@ -63,6 +63,13 @@
         "path": "data/settings/services",
         "sourceSchema": 1,
         "targetSchema": 1
+      },
+      {
+        "class": "emulator-selections",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/settings/emulator-selections",
+        "sourceSchema": 1,
+        "targetSchema": 1
       }
     ],
     "format": "update-user-data-manifest",

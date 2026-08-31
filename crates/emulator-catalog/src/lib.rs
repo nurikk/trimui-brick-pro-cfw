@@ -1,9 +1,10 @@
+use launch_contract::{LaunchDiagnostic, LaunchDiagnosticCode};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fmt, fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -455,6 +456,306 @@ pub struct Catalog {
     pub channels: Vec<Channel>,
 }
 
+pub const USER_SELECTION_SCHEMA: &str = "brickpro-user-emulator-selections/v1";
+pub const USER_SELECTION_PATH: &str = ".brickpro/data/settings/emulator-selections/v1.json";
+
+/// Mutable user choices. Catalog documents remain the immutable system layer.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserSelections {
+    pub schema: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: u8,
+    #[serde(default)]
+    pub systems: BTreeMap<String, UserSelection>,
+    #[serde(default)]
+    pub games: BTreeMap<String, UserSelection>,
+    #[serde(default, rename = "lastKnownGoodSystems")]
+    pub last_known_good_systems: BTreeMap<String, RuntimeSelection>,
+}
+
+impl Default for UserSelections {
+    fn default() -> Self {
+        Self {
+            schema: USER_SELECTION_SCHEMA.into(),
+            schema_version: 1,
+            systems: BTreeMap::new(),
+            games: BTreeMap::new(),
+            last_known_good_systems: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserSelection {
+    #[serde(default)]
+    pub runner: Option<VersionedId>,
+    #[serde(default)]
+    pub core: Option<VersionedId>,
+    #[serde(default, rename = "inputRemap")]
+    pub input_remap: Option<String>,
+    #[serde(default)]
+    pub shader: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeSelection {
+    pub runner: VersionedId,
+    #[serde(default)]
+    pub core: Option<VersionedId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectionRequest {
+    #[serde(rename = "systemId")]
+    pub system_id: String,
+    #[serde(rename = "contentId")]
+    pub content_id: String,
+    pub extension: String,
+    #[serde(rename = "biosReady")]
+    pub bios_ready: bool,
+    #[serde(rename = "contentReady")]
+    pub content_ready: bool,
+    #[serde(rename = "installedRuntimes")]
+    pub installed_runtimes: Vec<VersionedId>,
+    #[serde(default, rename = "launchCrashed")]
+    pub launch_crashed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SelectionSource {
+    SystemDefault,
+    UserSystem,
+    UserGame,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectionResolution {
+    #[serde(rename = "systemId")]
+    pub system_id: String,
+    #[serde(rename = "contentId")]
+    pub content_id: String,
+    pub runner: Option<VersionedId>,
+    pub core: Option<VersionedId>,
+    pub source: Option<SelectionSource>,
+    #[serde(rename = "inputRemap")]
+    pub input_remap: Option<String>,
+    pub shader: Option<String>,
+    #[serde(rename = "fallbackReason")]
+    pub fallback_reason: Option<String>,
+    pub diagnostic: Option<LaunchDiagnostic>,
+}
+
+impl UserSelections {
+    pub fn load(root: impl AsRef<Path>) -> Result<Self> {
+        let path = root.as_ref().join(USER_SELECTION_PATH);
+        match fs::read(path) {
+            Ok(bytes) => {
+                let selections: Self = parse(&bytes, "user selections")?;
+                selections.validate()?;
+                Ok(selections)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(CatalogError::new(
+                "selection_io",
+                format!("read user selections: {error}"),
+            )),
+        }
+    }
+
+    pub fn save(&self, root: impl AsRef<Path>) -> Result<()> {
+        self.validate()?;
+        let path = root.as_ref().join(USER_SELECTION_PATH);
+        let parent = path.parent().ok_or_else(|| {
+            CatalogError::new("selection_io", "user selection path has no parent")
+        })?;
+        fs::create_dir_all(parent).map_err(|error| {
+            CatalogError::new(
+                "selection_io",
+                format!("create user selection directory: {error}"),
+            )
+        })?;
+        let temporary = parent.join(".v1.json.tmp");
+        let _ = fs::remove_file(&temporary);
+        let bytes = json(self)?.into_bytes();
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| {
+                CatalogError::new("selection_io", format!("create user selections: {error}"))
+            })?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|error| {
+                CatalogError::new("selection_io", format!("write user selections: {error}"))
+            })?;
+        drop(file);
+        fs::rename(&temporary, &path).map_err(|error| {
+            CatalogError::new("selection_io", format!("publish user selections: {error}"))
+        })?;
+        fs::File::open(parent)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| {
+                CatalogError::new("selection_io", format!("sync user selections: {error}"))
+            })
+    }
+
+    pub fn reset_system(&mut self, system_id: &str) -> Result<()> {
+        validate_id(system_id, "system")?;
+        self.systems.remove(system_id);
+        Ok(())
+    }
+
+    pub fn set_system_runtime(
+        &mut self,
+        system_id: &str,
+        runner: VersionedId,
+        core: Option<VersionedId>,
+    ) -> Result<()> {
+        validate_id(system_id, "system")?;
+        validate_ref(&runner, "selected runner")?;
+        if let Some(core) = &core {
+            validate_ref(core, "selected core")?;
+        }
+        let selection = self.systems.entry(system_id.into()).or_default();
+        selection.runner = Some(runner);
+        selection.core = core;
+        Ok(())
+    }
+
+    /// Retains the passed runtime pin or restores the last passed pin after a smoke regression.
+    /// Save and state paths are never part of this layer.
+    pub fn record_system_smoke(&mut self, system_id: &str, passed: bool) -> Result<bool> {
+        validate_id(system_id, "system")?;
+        if passed {
+            let selection = self.systems.get(system_id).ok_or_else(|| {
+                CatalogError::new(
+                    "selection_value",
+                    "system has no runtime pin to mark healthy",
+                )
+            })?;
+            let runner = selection.runner.clone().ok_or_else(|| {
+                CatalogError::new("selection_value", "system runtime pin has no runner")
+            })?;
+            self.last_known_good_systems.insert(
+                system_id.into(),
+                RuntimeSelection {
+                    runner,
+                    core: selection.core.clone(),
+                },
+            );
+            return Ok(false);
+        }
+        let prior = match self.last_known_good_systems.get(system_id).cloned() {
+            Some(prior) => prior,
+            None => return Ok(false),
+        };
+        self.set_system_runtime(system_id, prior.runner, prior.core)?;
+        Ok(true)
+    }
+
+    pub fn reset_game(&mut self, content_id: &str) -> Result<()> {
+        validate_content_id(content_id)?;
+        self.games.remove(content_id);
+        Ok(())
+    }
+
+    pub fn reset_all(root: impl AsRef<Path>) -> Result<()> {
+        let path = root.as_ref().join(USER_SELECTION_PATH);
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(CatalogError::new(
+                "selection_io",
+                format!("reset user selections: {error}"),
+            )),
+        }
+    }
+
+    fn validate(&self) -> Result<()> {
+        if self.schema != USER_SELECTION_SCHEMA || self.schema_version != 1 {
+            return Err(CatalogError::new(
+                "selection_schema",
+                "user selections have an unsupported schema",
+            ));
+        }
+        for (system_id, selection) in &self.systems {
+            validate_id(system_id, "system")?;
+            validate_user_selection(selection)?;
+        }
+        for (content_id, selection) in &self.games {
+            validate_content_id(content_id)?;
+            validate_user_selection(selection)?;
+        }
+        for (system_id, selection) in &self.last_known_good_systems {
+            validate_id(system_id, "system")?;
+            validate_ref(&selection.runner, "last known good runner")?;
+            if let Some(core) = &selection.core {
+                validate_ref(core, "last known good core")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_user_selection(selection: &UserSelection) -> Result<()> {
+    if let Some(runner) = &selection.runner {
+        validate_ref(runner, "selected runner")?;
+    }
+    if let Some(core) = &selection.core {
+        validate_ref(core, "selected core")?;
+    }
+    for value in [&selection.input_remap, &selection.shader]
+        .into_iter()
+        .flatten()
+    {
+        if value.is_empty()
+            || value.len() > MAX_ID
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        {
+            return Err(CatalogError::new(
+                "selection_value",
+                "input remap or shader is invalid",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn runtime_is_installed(
+    installed: &[VersionedId],
+    runner: &VersionedId,
+    core: Option<&VersionedId>,
+) -> bool {
+    installed.contains(runner) && core.is_none_or(|core| installed.contains(core))
+}
+
+fn selection_diagnostic(
+    request: &SelectionRequest,
+    code: LaunchDiagnosticCode,
+    reason: &str,
+) -> SelectionResolution {
+    SelectionResolution {
+        system_id: request.system_id.clone(),
+        content_id: request.content_id.clone(),
+        runner: None,
+        core: None,
+        source: None,
+        input_remap: None,
+        shader: None,
+        fallback_reason: None,
+        diagnostic: Some(LaunchDiagnostic::new(code, reason)),
+    }
+}
+
 fn parse<T: DeserializeOwned>(bytes: &[u8], kind: &str) -> Result<T> {
     serde_json::from_slice(bytes).map_err(|error| {
         let text = error.to_string();
@@ -867,6 +1168,153 @@ impl Catalog {
             .iter()
             .find(|e| e.id == id.id && e.version == id.version)
             .ok_or_else(|| CatalogError::new("cross_reference", "core reference is missing"))
+    }
+
+    /// Resolves immutable catalog defaults with the game layer taking precedence over the system layer.
+    /// Invalid or absent user runtimes fall back to the catalog default with a stable reason code.
+    pub fn resolve_user_selection(
+        &self,
+        selections: &UserSelections,
+        request: &SelectionRequest,
+    ) -> Result<SelectionResolution> {
+        selections.validate()?;
+        validate_content_id(&request.content_id)?;
+        let system = self.system(&request.system_id)?;
+        let extension = normalize_extension(&request.extension)?;
+        if !system.extensions.iter().any(|value| value == &extension) {
+            return Ok(selection_diagnostic(
+                request,
+                LaunchDiagnosticCode::UnsupportedFormat,
+                "format is not declared for this system",
+            ));
+        }
+        if !request.content_ready {
+            return Ok(selection_diagnostic(
+                request,
+                LaunchDiagnosticCode::MissingData,
+                "content or multi-disc data is unavailable",
+            ));
+        }
+        if !request.bios_ready && !system.bios_requirements.is_empty() {
+            return Ok(selection_diagnostic(
+                request,
+                LaunchDiagnosticCode::MissingBios,
+                "required BIOS is missing or mismatched",
+            ));
+        }
+
+        let game = selections.games.get(&request.content_id);
+        let system_override = selections.systems.get(&request.system_id);
+        let (override_selection, source, label) = if let Some(selection) = game {
+            (Some(selection), SelectionSource::UserGame, "game-override")
+        } else if let Some(selection) = system_override {
+            (
+                Some(selection),
+                SelectionSource::UserSystem,
+                "system-override",
+            )
+        } else {
+            (None, SelectionSource::SystemDefault, "system-default")
+        };
+        let runner = override_selection
+            .and_then(|selection| selection.runner.clone())
+            .unwrap_or_else(|| system.default_runner.clone());
+        let core = override_selection
+            .and_then(|selection| selection.core.clone())
+            .or_else(|| system.default_core.clone());
+        let mut fallback_reason = None;
+        let (runner, core, source) = if self
+            .selection_is_compatible(system, &extension, &runner, core.as_ref())
+            .is_ok()
+            && runtime_is_installed(&request.installed_runtimes, &runner, core.as_ref())
+        {
+            (runner, core, source)
+        } else if override_selection.is_some() {
+            fallback_reason = Some(format!("{label}-unavailable"));
+            (
+                system.default_runner.clone(),
+                system.default_core.clone(),
+                SelectionSource::SystemDefault,
+            )
+        } else {
+            (runner, core, source)
+        };
+        if self
+            .selection_is_compatible(system, &extension, &runner, core.as_ref())
+            .is_err()
+            || !runtime_is_installed(&request.installed_runtimes, &runner, core.as_ref())
+        {
+            let mut result = selection_diagnostic(
+                request,
+                LaunchDiagnosticCode::MissingRuntime,
+                "selected runner or core is not installed",
+            );
+            result.fallback_reason = fallback_reason;
+            return Ok(result);
+        }
+        let selection = override_selection.filter(|_| fallback_reason.is_none());
+        let mut result = SelectionResolution {
+            system_id: request.system_id.clone(),
+            content_id: request.content_id.clone(),
+            runner: Some(runner),
+            core,
+            source: Some(source),
+            input_remap: selection.and_then(|value| value.input_remap.clone()),
+            shader: selection.and_then(|value| value.shader.clone()),
+            fallback_reason,
+            diagnostic: None,
+        };
+        if request.launch_crashed {
+            result.diagnostic = Some(LaunchDiagnostic::new(
+                LaunchDiagnosticCode::LaunchCrash,
+                "runner exited before a playable session",
+            ));
+        }
+        Ok(result)
+    }
+
+    fn selection_is_compatible(
+        &self,
+        system: &System,
+        extension: &str,
+        runner_ref: &VersionedId,
+        core_ref: Option<&VersionedId>,
+    ) -> Result<()> {
+        let channel = self.channel(system.channel.clone())?;
+        let runner = self.runner(runner_ref)?;
+        if !channel.runners.iter().any(|entry| entry == runner_ref)
+            || !runner.supported_systems.contains(&system.id)
+            || !runner.supported_content.contains(&extension.to_string())
+        {
+            return Err(CatalogError::new(
+                "unavailable_runner",
+                "runner is unavailable for system or format",
+            ));
+        }
+        match core_ref {
+            Some(core_ref) => {
+                let core = self.core(core_ref)?;
+                if !channel.cores.iter().any(|entry| entry == core_ref)
+                    || core.runner_id != runner.id
+                    || core.runner_version != runner.version
+                    || !core.supported_systems.contains(&system.id)
+                    || !core.supported_content.contains(&extension.to_string())
+                {
+                    return Err(CatalogError::new(
+                        "incompatible_core",
+                        "core is unavailable for runner, system, or format",
+                    ));
+                }
+            }
+            None if system.default_core.is_some() => {
+                return Err(CatalogError::new(
+                    "incompatible_core",
+                    "libretro system requires a core",
+                ));
+            }
+            None => {}
+        }
+        Ok(())
     }
 
     pub fn resolve(&self, fixture: &ResolutionFixture) -> Result<Resolved> {
@@ -1862,8 +2310,123 @@ pub fn fixture_journey() -> Result<String> {
         }
         checked += 1;
     }
+    selection_journey(&catalog)?;
     fs::remove_dir_all(&bios_root).ok();
     Ok(format!("emulator-catalog fixture journey: precedence accepted; {checked} negative journeys rejected with stable reason codes"))
+}
+
+fn selection_journey(catalog: &Catalog) -> Result<()> {
+    let system = catalog.system("tg4040")?;
+    let request = SelectionRequest {
+        system_id: system.id.clone(),
+        content_id: "selection-fixture".into(),
+        extension: "gb".into(),
+        bios_ready: true,
+        content_ready: true,
+        installed_runtimes: vec![
+            system.default_runner.clone(),
+            system.default_core.clone().unwrap(),
+        ],
+        launch_crashed: false,
+    };
+    let mut selections = UserSelections::default();
+    selections.systems.insert(
+        system.id.clone(),
+        UserSelection {
+            runner: Some(system.default_runner.clone()),
+            core: system.default_core.clone(),
+            input_remap: Some("fixture-pad".into()),
+            shader: Some("fixture-shader".into()),
+        },
+    );
+    selections.record_system_smoke(&system.id, true)?;
+    let resolved = catalog.resolve_user_selection(&selections, &request)?;
+    if resolved.source != Some(SelectionSource::UserSystem)
+        || resolved.input_remap.as_deref() != Some("fixture-pad")
+        || resolved.shader.as_deref() != Some("fixture-shader")
+    {
+        return Err(CatalogError::new(
+            "journey",
+            "system selection did not resolve",
+        ));
+    }
+
+    let mut regressed = system.default_runner.clone();
+    regressed.version = "9.9.9".into();
+    selections.set_system_runtime(&system.id, regressed, system.default_core.clone())?;
+    if !selections.record_system_smoke(&system.id, false)?
+        || selections.systems[&system.id].runner.as_ref() != Some(&system.default_runner)
+    {
+        return Err(CatalogError::new(
+            "journey",
+            "smoke regression did not restore the pinned runtime",
+        ));
+    }
+    selections.games.insert(
+        request.content_id.clone(),
+        UserSelection {
+            runner: Some(VersionedId {
+                id: "clean-room-libretro".into(),
+                version: "9.9.9".into(),
+            }),
+            ..UserSelection::default()
+        },
+    );
+    let fallback = catalog.resolve_user_selection(&selections, &request)?;
+    if fallback.source != Some(SelectionSource::SystemDefault)
+        || fallback.fallback_reason.as_deref() != Some("game-override-unavailable")
+    {
+        return Err(CatalogError::new(
+            "journey",
+            "unavailable game override did not explain fallback",
+        ));
+    }
+    let diagnostics = [
+        ("zip", true, true, false, "unsupported-format"),
+        ("gb", false, true, false, "missing-data"),
+        ("gb", true, false, false, "missing-bios"),
+        ("gb", true, true, true, "launch-crash"),
+    ];
+    for (extension, content_ready, bios_ready, launch_crashed, code) in diagnostics {
+        let mut candidate = request.clone();
+        candidate.extension = extension.into();
+        candidate.content_ready = content_ready;
+        candidate.bios_ready = bios_ready;
+        candidate.launch_crashed = launch_crashed;
+        if catalog
+            .resolve_user_selection(&selections, &candidate)?
+            .diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.code.as_str())
+            != Some(code)
+        {
+            return Err(CatalogError::new(
+                "journey",
+                "launch diagnostic is not exact",
+            ));
+        }
+    }
+
+    let root = env::temp_dir().join(format!("emulator-selections-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    fs::create_dir_all(&root).map_err(|error| CatalogError::new("journey", error.to_string()))?;
+    fs::write(root.join("catalog-manifest.json"), b"immutable")
+        .map_err(|error| CatalogError::new("journey", error.to_string()))?;
+    selections.save(&root)?;
+    let mut reloaded = UserSelections::load(&root)?;
+    reloaded.reset_game(&request.content_id)?;
+    reloaded.save(&root)?;
+    UserSelections::reset_all(&root)?;
+    if root.join(USER_SELECTION_PATH).exists()
+        || fs::read(root.join("catalog-manifest.json")).ok().as_deref() != Some(b"immutable")
+    {
+        return Err(CatalogError::new(
+            "journey",
+            "reset mutated more than the user selection layer",
+        ));
+    }
+    fs::remove_dir_all(root).ok();
+    Ok(())
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

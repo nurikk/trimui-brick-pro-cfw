@@ -196,6 +196,7 @@ pub fn import_es_theme_dir(root: &Path) -> Result<ImportedTheme, ThemeError> {
         }),
         assets: Some(assets),
         components: Some(components),
+        upstream_contract: None,
     };
     let mut validated = validate_theme(theme)?;
     validated.theme.metadata = Metadata {
@@ -531,6 +532,7 @@ fn components(root: &Node, report: &mut CompatibilityReport) -> Result<Vec<Compo
                 text,
                 color,
                 font_size,
+                media_binding: None,
             });
             report.accepted.push(node.name.clone());
         }

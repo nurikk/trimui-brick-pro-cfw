@@ -302,7 +302,7 @@ fn build_catalog(catalog_path: &Path, state_root: &Path) -> Result {
 fn scan_roms(root: &Path, previous: &[Entry], cancelled: &AtomicBool) -> (Vec<Entry>, usize) {
     let mut files = Vec::new();
     let mut skipped = 0;
-    walk(root, root, &mut files, &mut skipped, cancelled);
+    walk(root, &mut files, &mut skipped, cancelled);
     files.sort();
     let playlist_members = files
         .iter()
@@ -388,13 +388,7 @@ fn scan_roms(root: &Path, previous: &[Entry], cancelled: &AtomicBool) -> (Vec<En
     (entries, skipped)
 }
 
-fn walk(
-    root: &Path,
-    current: &Path,
-    files: &mut Vec<PathBuf>,
-    skipped: &mut usize,
-    cancelled: &AtomicBool,
-) {
+fn walk(current: &Path, files: &mut Vec<PathBuf>, skipped: &mut usize, cancelled: &AtomicBool) {
     if cancelled.load(AtomicOrdering::Acquire) {
         return;
     }
@@ -430,7 +424,7 @@ fn walk(
             continue;
         }
         if kind.is_dir() {
-            walk(root, &path, files, skipped, cancelled);
+            walk(&path, files, skipped, cancelled);
             continue;
         }
         if kind.is_file() && is_rom(&path) {

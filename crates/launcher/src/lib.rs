@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use session_broker::{
     resume::{CheckpointReason, CommitFault, ResumeDecision},
-    LifecycleCheckpointPolicy, SessionBrokerClient, SessionHandle, SessionResult,
+    LifecycleCheckpointPolicy, SessionHandle, SessionResult,
 };
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
@@ -141,7 +141,7 @@ struct AppState {
     groups: rom_index::GroupIndex,
     input_profile: input_profile::Catalog,
     input_mappings: input_profile::InputMappings,
-    broker: Box<dyn SessionBrokerClient>,
+    broker: simulator_session::SimulatorSessionAdapter,
     save_vault: SaveVaultUi,
     save_sync: Option<launcher_presentation::SaveSyncView>,
     active_session: Option<SessionHandle>,
@@ -1819,7 +1819,6 @@ impl CompatibilityRecipeController {
         }
     }
 }
-
 #[cfg(feature = "simulator")]
 pub fn run<P, F>(
     catalog_path: &Path,
@@ -1832,30 +1831,9 @@ where
     P: Platform,
     F: FnOnce() -> PlatformResult<P>,
 {
-    run_with_broker(
-        catalog_path,
-        evidence_path,
-        keep_alive,
-        stop,
-        Box::new(simulator_session::SimulatorSessionAdapter::with_root(
-            evidence_path.join("data"),
-        )),
-        make_platform,
-    )
-}
-
-pub fn run_with_broker<P, F>(
-    catalog_path: &Path,
-    evidence_path: &Path,
-    keep_alive: bool,
-    stop: &AtomicBool,
-    broker: Box<dyn SessionBrokerClient>,
-    make_platform: F,
-) -> Result<()>
-where
-    P: Platform,
-    F: FnOnce() -> PlatformResult<P>,
-{
+    let broker = simulator_session::SimulatorSessionAdapter::with_root(
+        evidence_path.join("data"),
+    );
     let evidence = Evidence::new(evidence_path)?;
     let run_id = format!(
         "run-{}",
@@ -1918,7 +1896,7 @@ fn run_session<P: Platform>(
     evidence: &Evidence,
     log: &mut EventLog,
     server: &mut control::ControlServer,
-    broker: Box<dyn SessionBrokerClient>,
+    broker: simulator_session::SimulatorSessionAdapter,
     keep_alive: bool,
     stop: &AtomicBool,
 ) -> Result<()> {
@@ -3407,9 +3385,9 @@ mod tests {
             input_profile: input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
                 .expect("input profile"),
             input_mappings: input_profile::InputMappings::default(),
-            broker: Box::new(simulator_session::SimulatorSessionAdapter::with_root(
+            broker: simulator_session::SimulatorSessionAdapter::with_root(
                 broker_root.clone(),
-            )),
+            ),
             save_vault: SaveVaultUi::default(),
             save_sync: None,
             active_session: None,
@@ -4545,7 +4523,7 @@ fn power_control<P: Platform>(
 }
 
 struct BrokerCheckpoint<'a> {
-    broker: &'a mut dyn SessionBrokerClient,
+    broker: &'a mut simulator_session::SimulatorSessionAdapter,
     fault: CommitFault,
     active: bool,
 }
@@ -4592,7 +4570,7 @@ fn lifecycle_control<P: Platform>(
                 CommitFault::None
             };
             let mut checkpoint = BrokerCheckpoint {
-                broker: state.broker.as_mut(),
+                broker: &mut state.broker,
                 fault: checkpoint_fault,
                 active: state.active_session.is_some(),
             };

@@ -2,7 +2,7 @@ use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
 use launch_contract::{validate, Catalog, LaunchRequest};
 use save_sync::{
-    Candidate, CandidateStatus, Device, Exchange, Lineage, ResolutionAction, SaveTarget,
+    Candidate, CandidateStatus, Device, Exchange, Lineage, ResolutionAction, SaveTarget, SyncGate,
     SyncReconciler,
 };
 use save_vault::{
@@ -28,6 +28,7 @@ pub(crate) struct SimulatorSessionAdapter {
     vault: SaveVault,
     source_root: PathBuf,
     sync_exchange: PathBuf,
+    sync_gate: SyncGate,
 }
 
 impl Default for SimulatorSessionAdapter {
@@ -141,6 +142,7 @@ impl SimulatorSessionAdapter {
             vault,
             source_root,
             sync_exchange,
+            sync_gate: SyncGate::Ready,
         }
     }
 
@@ -199,6 +201,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             return Err(BrokerError::new("broker is busy"));
         }
         let handle = accepted_handle(&request);
+        self.sync_gate = SyncGate::Gameplay;
         self.active = Some((handle.clone(), request));
         Ok(handle)
     }
@@ -213,6 +216,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
                 .checkpoint_active(request, CheckpointReason::NormalExit, CommitFault::None)
                 .is_ok();
         let (_, request) = self.active.take().expect("active session checked");
+        self.sync_gate = SyncGate::Ready;
         Ok(SessionResult {
             result_type: "SessionResult",
             journey: "simulator".into(),
@@ -244,11 +248,18 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         reason: CheckpointReason,
         fault: CommitFault,
     ) -> Result<ResumeRecord, BrokerError> {
+        if reason == CheckpointReason::PreSuspend {
+            self.sync_gate = SyncGate::SaveFlush;
+        }
         let (_, request) = self
             .active
             .as_ref()
             .ok_or_else(|| BrokerError::new("no-active-session"))?;
-        self.checkpoint_active(request, reason, fault)
+        let result = self.checkpoint_active(request, reason, fault);
+        if reason == CheckpointReason::PreSuspend && result.is_ok() {
+            self.sync_gate = SyncGate::Ready;
+        }
+        result
     }
 
     fn resume_entries(
@@ -340,7 +351,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .next()
             .ok_or_else(|| BrokerError::new("no quarantined save candidate"))?;
         reconciler
-            .reconcile(&local, &remote, save_sync::SyncGate::Ready)
+            .reconcile(&local, &remote, self.sync_gate)
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 

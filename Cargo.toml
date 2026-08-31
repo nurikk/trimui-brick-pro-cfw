@@ -22,6 +22,7 @@ members = [
     "crates/virtual-keyboard",
     "crates/wifi-manager",
     "crates/wifi-settings-controller",
+    "crates/network-services",
     "crates/ui-model",
     "crates/media-cache",
     "crates/emulator-catalog",

@@ -311,6 +311,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "network-services"
+version = "0.1.0"
+dependencies = [
+ "save-sync",
+ "serde",
+ "serde_json",
+ "wifi-manager",
+]
+
+[[package]]
 name = "package-manager"
 version = "0.1.0"
 dependencies = [

@@ -185,7 +185,10 @@ fn strongest_radio_collapse() -> Result<(), String> {
 
     let mut manager = manager_from(fixture)?;
     scan(&mut manager, false)?;
-    require(manager.state().phase == WifiPhase::Lan, "scan preserves LAN-only status")?;
+    require(
+        manager.state().phase == WifiPhase::Lan,
+        "scan preserves LAN-only status",
+    )?;
     let results = &manager.state().scan_results;
     require(
         results

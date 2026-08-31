@@ -10,13 +10,18 @@
     "artifactUrl",
     "artifactName",
     "deviceId",
+    "targetSku",
+    "hardwareRevision",
+    "sourceRelease",
     "releaseId",
     "stockFirmware",
     "userspaceAbi",
     "dataSchema",
     "payloadType",
     "payloadSize",
-    "payloadSha256"
+    "payloadSha256",
+    "requiredFreeBytes",
+    "userDataManifest"
   ],
   "properties": {
     "$schema": {
@@ -28,6 +33,18 @@
     "deviceId": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "targetSku": {
+      "const": "TG4040"
+    },
+    "hardwareRevision": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "sourceRelease": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,46}[a-z0-9])?$",
+      "maxLength": 48
     },
     "releaseId": {
       "type": "string",
@@ -98,6 +115,37 @@
     "payloadSha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "requiredFreeBytes": {
+      "type": "integer",
+      "minimum": 3,
+      "maximum": 1610612736
+    },
+    "userDataManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "schemaVersion", "entries"],
+      "properties": {
+        "format": {"const": "update-user-data-manifest"},
+        "schemaVersion": {"const": 1},
+        "entries": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["class", "path", "sourceSchema", "targetSchema", "migration"],
+            "properties": {
+              "class": {"enum": ["saves", "credentials", "achievements", "mappings", "fn-led-settings", "service-settings"]},
+              "path": {"enum": ["data/saves", "data/credentials", "data/achievements", "data/mappings", "data/settings/fn-led", "data/settings/services"]},
+              "sourceSchema": {"type": "integer", "minimum": 1, "maximum": 1000},
+              "targetSchema": {"type": "integer", "minimum": 1, "maximum": 1000},
+              "migration": {"const": "shared-data-copy-on-write"}
+            }
+          }
+        }
+      }
     }
   }
 }

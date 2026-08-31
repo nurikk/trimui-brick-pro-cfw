@@ -1,6 +1,7 @@
 {
   "candidateStatus": "no-device-bootstrap-candidate",
   "deviceId": "tg4040",
+  "hardwareRevision": "synthetic-v1",
   "display": {
     "defaultTheme": "art-book-next-es",
     "expected": {

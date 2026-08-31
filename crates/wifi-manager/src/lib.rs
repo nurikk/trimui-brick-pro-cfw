@@ -354,6 +354,7 @@ pub enum ReconnectBlock {
     GameplayActive,
     CapabilityUnavailable,
     Disabled,
+    RadioOff,
     NoSavedNetwork,
     OpenNetworkNeedsConfirmation,
 }
@@ -712,11 +713,19 @@ impl<B: WifiBackend> WifiManager<B> {
             .iter()
             .find(|entry| entry.connected)
             .map(|entry| entry.network_id.clone());
-        if self.state.connected_network_id.is_some() {
-            self.set_phase(WifiPhase::Internet, None);
-        } else {
-            self.set_phase(WifiPhase::Idle, None);
-        }
+        let phase = self
+            .state
+            .connected_network_id
+            .as_ref()
+            .map(|network_id| {
+                if self.backend.internet_available(network_id) {
+                    WifiPhase::Internet
+                } else {
+                    WifiPhase::Lan
+                }
+            })
+            .unwrap_or(WifiPhase::Idle);
+        self.set_phase(phase, None);
         self.events.push(WifiEvent::ScanCompleted {
             count: self.state.scan_results.len(),
         });
@@ -930,7 +939,9 @@ impl<B: WifiBackend> WifiManager<B> {
     }
 
     pub fn auto_reconnect(&mut self, conditions: ReconnectConditions) -> AutoReconnectDecision {
-        let block = if !self.state.automatic_reconnect {
+        let block = if !self.state.enabled {
+            Some(ReconnectBlock::RadioOff)
+        } else if !self.state.automatic_reconnect {
             Some(ReconnectBlock::Disabled)
         } else if conditions.battery_percent < LOW_BATTERY_PERCENT {
             Some(ReconnectBlock::LowBattery)

@@ -178,8 +178,14 @@ fn strongest_radio_collapse() -> Result<(), String> {
             connected: true,
             hidden: false,
         });
+    fixture.connect_outcomes.insert(
+        id("net-home-strong")?,
+        wifi_manager::GeneratedConnectOutcome::LanOnly,
+    );
+
     let mut manager = manager_from(fixture)?;
     scan(&mut manager, false)?;
+    require(manager.state().phase == WifiPhase::Lan, "scan preserves LAN-only status")?;
     let results = &manager.state().scan_results;
     require(
         results
@@ -581,6 +587,11 @@ fn resilient_profiles() -> Result<(), String> {
             "priority reconnect is deterministic",
         )?;
         expect_ok(restarted.set_enabled(false), "cycle radio off")?;
+        require(
+            restarted.auto_reconnect(awake)
+                == AutoReconnectDecision::Blocked(ReconnectBlock::RadioOff),
+            "radio off blocks reconnect",
+        )?;
         expect_ok(restarted.set_enabled(true), "cycle radio on")?;
     }
     Ok(())

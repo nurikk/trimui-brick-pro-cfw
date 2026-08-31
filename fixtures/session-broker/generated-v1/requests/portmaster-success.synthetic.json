@@ -4,7 +4,7 @@
   "schemaVersion": 1,
   "requestId": "generated-port-success-1",
   "kind": "portmaster",
-  "contentId": "generated-content-success-1",
+  "contentId": "signal-workshop",
   "contentSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "contentPath": {"root": "roms", "relative": "generated/content.bin"},
   "savePath": {"root": "data/saves", "relative": "generated/content-success.sav"},

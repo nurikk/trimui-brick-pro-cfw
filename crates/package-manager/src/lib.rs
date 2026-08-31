@@ -54,6 +54,8 @@ pub struct PackageManifest {
     pub uninstall: UninstallRules,
     #[serde(rename = "corePack", default)]
     pub core_pack: Option<BlockedCorePack>,
+    #[serde(default)]
+    pub portmaster: Option<PortMasterRuntime>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -168,6 +170,38 @@ fn default_target_abi() -> String {
 
 fn default_enabled() -> bool {
     true
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PortMasterRuntime {
+    #[serde(rename = "architecture")]
+    pub architecture: PortArchitecture,
+    #[serde(rename = "runtimeVersion")]
+    pub runtime_version: String,
+    pub libraries: Vec<String>,
+    pub graphics: Vec<PortGraphics>,
+    pub network: bool,
+    #[serde(rename = "writablePaths")]
+    pub writable_paths: Vec<String>,
+    #[serde(rename = "minFreeBytes")]
+    pub min_free_bytes: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PortArchitecture {
+    Armv7,
+    Aarch64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PortGraphics {
+    Sdl,
+    Opengl,
+    Gl4es,
+    Weston,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -291,6 +325,13 @@ pub struct PortMasterActivation {
     pub runtime_root: PathBuf,
     pub library_root: PathBuf,
     pub entrypoint: PathBuf,
+    pub runtime: PortMasterRuntime,
+}
+
+#[derive(Clone, Debug)]
+pub struct PortMasterUserPaths {
+    pub imports: PathBuf,
+    pub logs: PathBuf,
 }
 
 pub fn load_manifest(path: &Path) -> Result<(PackageManifest, Vec<u8>)> {
@@ -344,6 +385,8 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     }
     if manifest.package_type == PackageType::Portmaster {
         validate_portmaster_layout(manifest)?;
+    } else if manifest.portmaster.is_some() {
+        bail!("PortMaster runtime metadata is only valid for PortMaster")
     } else if !manifest.entrypoints.is_empty() {
         bail!("executable entrypoints are only supported for PortMaster")
     } else if matches!(
@@ -758,8 +801,36 @@ pub fn upgrade(
         .join(&previous.id)
         .join(&previous.version);
     reject_symlink_path(&previous_root, "previous package version root")?;
-    fs::remove_dir_all(&previous_root).context("remove previous package version")?;
+    if installed.package_type != PackageType::Portmaster {
+        fs::remove_dir_all(&previous_root).context("remove previous package version")?;
+    }
     Ok(installed)
+}
+
+pub fn rollback_portmaster(
+    root: &Path,
+    id: &str,
+    package_version: &str,
+) -> Result<ActivationRecord> {
+    let root = root.canonicalize().context("resolve package root")?;
+    let activation = resolve_portmaster(&root, id, package_version)?;
+    let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
+    let mut record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
+    let manifest_path = activation.package_root.join("manifest.json");
+    let manifest_bytes = fs::read(&manifest_path)?;
+    let (manifest, _) = load_manifest(&manifest_path)?;
+    record.version = package_version.into();
+    record.manifest_length = manifest_bytes.len() as u64;
+    record.manifest_sha256 = hex::encode(Sha256::digest(&manifest_bytes));
+    record.immutable_root = format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable");
+    record.runtime_root = format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime");
+    record.cache_root = format!("{PACKAGE_ROOT}/{id}/{package_version}/cache");
+    record.runtime_path = manifest.runtime.path;
+    record.entrypoint_name = manifest.entrypoints[0].name.clone();
+    record.entrypoint_path = manifest.entrypoints[0].path.clone();
+    record.entrypoint_mode = manifest.entrypoints[0].mode.clone();
+    write_atomic(&state_path, &serde_json::to_vec_pretty(&record)?)?;
+    Ok(record)
 }
 
 pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<()> {
@@ -1054,14 +1125,53 @@ fn validate_portmaster_layout(manifest: &PackageManifest) -> Result<()> {
     if file.file_class != FileClass::Immutable {
         bail!("PortMaster entrypoint is not immutable")
     }
-    if !manifest.files.iter().any(|file| {
-        matches!(file.file_class, FileClass::Runtime) && file.path.starts_with("runtime/")
-    }) || !manifest.runtime.dependencies.is_empty()
-        || !manifest.capabilities.network.is_empty()
+    let runtime = manifest
+        .portmaster
+        .as_ref()
+        .context("PortMaster runtime metadata is missing")?;
+    if !version(&runtime.runtime_version)
+        || runtime.runtime_version != manifest.version
+        || runtime.libraries.is_empty()
+        || runtime.libraries.len() > 16
+        || runtime.libraries.iter().any(|library| !identifier(library))
+        || runtime
+            .libraries
+            .iter()
+            .enumerate()
+            .any(|(index, library)| runtime.libraries[..index].contains(library))
+        || runtime.graphics.is_empty()
+        || runtime.graphics.len() > 4
+        || runtime
+            .graphics
+            .iter()
+            .enumerate()
+            .any(|(index, graphics)| runtime.graphics[..index].contains(graphics))
+        || runtime.writable_paths != ["data/saves", "data/states"]
+        || runtime.min_free_bytes > MAX_EXPANDED_BYTES
+        || !manifest.files.iter().any(|file| {
+            matches!(file.file_class, FileClass::Runtime) && file.path.starts_with("runtime/")
+        })
+        || runtime.libraries.iter().any(|library| {
+            !manifest.files.iter().any(|file| {
+                file.file_class == FileClass::Runtime
+                    && file.path == format!("runtime/lib/{library}.library")
+            })
+        })
+        || !manifest.runtime.dependencies.is_empty()
+        || manifest.capabilities.network
+            != if runtime.network {
+                vec![NetworkCapability::Https]
+            } else {
+                vec![]
+            }
         || !manifest
             .capabilities
             .input
             .contains(&InputCapability::Buttons)
+        || !manifest
+            .capabilities
+            .audio
+            .contains(&AudioCapability::Playback)
         || !manifest
             .capabilities
             .display
@@ -1072,6 +1182,21 @@ fn validate_portmaster_layout(manifest: &PackageManifest) -> Result<()> {
         bail!("PortMaster runtime or capability projection is invalid")
     }
     Ok(())
+}
+
+pub fn portmaster_user_paths(root: &Path) -> Result<PortMasterUserPaths> {
+    let root = root
+        .canonicalize()
+        .context("resolve PortMaster data root")?;
+    let base = root.join("PortMaster");
+    let imports = base.join("Imports");
+    let logs = base.join("Logs");
+    reject_symlink_if_present(&base, "PortMaster user path")?;
+    reject_symlink_if_present(&imports, "PortMaster import path")?;
+    reject_symlink_if_present(&logs, "PortMaster log path")?;
+    fs::create_dir_all(&imports)?;
+    fs::create_dir_all(&logs)?;
+    Ok(PortMasterUserPaths { imports, logs })
 }
 
 pub fn resolve_portmaster(
@@ -1089,18 +1214,19 @@ pub fn resolve_portmaster(
     if record.format != "brickpro-package-activation"
         || record.schema_version != 1
         || record.id != id
-        || record.version != package_version
         || record.target_sku != "TG4040"
         || record.target_abi != default_target_abi()
         || record.package_type != PackageType::Portmaster
-        || record.immutable_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable")
-        || record.runtime_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime")
-        || record.cache_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/cache")
-        || record.runtime_path != "runtime"
-        || record.entrypoint_name != "launch"
-        || record.entrypoint_path != "immutable/port/launch.sh"
-        || record.entrypoint_mode != "0755"
         || record.preserve != PRESERVED
+        || (record.version == package_version
+            && (record.immutable_root
+                != format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable")
+                || record.runtime_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime")
+                || record.cache_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/cache")
+                || record.runtime_path != "runtime"
+                || record.entrypoint_name != "launch"
+                || record.entrypoint_path != "immutable/port/launch.sh"
+                || record.entrypoint_mode != "0755"))
     {
         bail!("PortMaster activation identity is invalid")
     }
@@ -1110,19 +1236,32 @@ pub fn resolve_portmaster(
     if manifest.id != id
         || manifest.version != package_version
         || manifest.package_type != PackageType::Portmaster
-        || hex::encode(Sha256::digest(&manifest_bytes)) != record.manifest_sha256
-        || manifest_bytes.len() as u64 != record.manifest_length
+        || (record.version == package_version
+            && (hex::encode(Sha256::digest(&manifest_bytes)) != record.manifest_sha256
+                || manifest_bytes.len() as u64 != record.manifest_length))
     {
         bail!("PortMaster manifest does not match activation")
     }
     for file in &manifest.files {
-        let path = private_path(&version_root, &file.path)?;
-        let bytes = fs::read(&path)?;
+        let path = private_path(&version_root, &file.path).with_context(|| {
+            if file.path.starts_with("runtime/lib/") {
+                format!("PortMaster library {} is missing", file.path)
+            } else {
+                format!("PortMaster file {} is missing", file.path)
+            }
+        })?;
+        let bytes = fs::read(&path).with_context(|| {
+            if file.path.starts_with("runtime/lib/") {
+                format!("PortMaster library {} is missing", file.path)
+            } else {
+                format!("PortMaster file {} is missing", file.path)
+            }
+        })?;
         verify_file(file, &bytes)?;
     }
     let runtime_root = private_path(&version_root, "runtime")?;
     let library_root = private_path(&version_root, "runtime/lib")?;
-    let entrypoint = private_path(&version_root, &record.entrypoint_path)?;
+    let entrypoint = private_path(&version_root, &manifest.entrypoints[0].path)?;
     if !runtime_root.is_dir() || !library_root.is_dir() || !entrypoint.is_file() {
         bail!("PortMaster private runtime or entrypoint is unavailable")
     }
@@ -1137,6 +1276,7 @@ pub fn resolve_portmaster(
         runtime_root,
         library_root,
         entrypoint,
+        runtime: manifest.portmaster.expect("validated PortMaster runtime"),
     })
 }
 
@@ -1312,6 +1452,42 @@ mod tests {
         )
         .unwrap();
         assert!(resolve_portmaster(&root, "generated-portmaster", "1.0.0").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn portmaster_versions_stay_pinned_and_can_roll_back() {
+        let root = temporary_root("rollback");
+        install(
+            &root,
+            Path::new(PORTMASTER_PAYLOAD)
+                .join("manifest.json")
+                .as_path(),
+            Path::new(PORTMASTER_PAYLOAD),
+            TransactionOptions::default(),
+        )
+        .unwrap();
+        let mut update: PackageManifest = serde_json::from_slice(PORTMASTER_MANIFEST).unwrap();
+        update.version = "1.1.0".into();
+        update.portmaster.as_mut().unwrap().runtime_version = "1.1.0".into();
+        let update_path = root.join("portmaster-update.json");
+        fs::write(&update_path, serde_json::to_vec(&update).unwrap()).unwrap();
+        upgrade(
+            &root,
+            &update_path,
+            Path::new(PORTMASTER_PAYLOAD),
+            TransactionOptions::default(),
+        )
+        .unwrap();
+        assert!(resolve_portmaster(&root, "generated-portmaster", "1.0.0").is_ok());
+        assert!(resolve_portmaster(&root, "generated-portmaster", "1.1.0").is_ok());
+        assert_eq!(
+            rollback_portmaster(&root, "generated-portmaster", "1.0.0")
+                .unwrap()
+                .version,
+            "1.0.0"
+        );
+        assert!(resolve_portmaster(&root, "generated-portmaster", "1.1.0").is_ok());
         fs::remove_dir_all(root).unwrap();
     }
 }

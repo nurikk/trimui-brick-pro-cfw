@@ -10,7 +10,9 @@
     "input": [
       "buttons"
     ],
-    "network": [],
+    "network": [
+      "https"
+    ],
     "save": [
       "read",
       "write"
@@ -41,6 +43,30 @@
       "length": 34,
       "path": "runtime/lib/README.txt",
       "sha256": "63c70b5b9af2db11e20bcb198e7f00c3c718c35affd017e762237c3dd65ee43f"
+    },
+    {
+      "class": "runtime",
+      "length": 33,
+      "path": "runtime/lib/sdl2.library",
+      "sha256": "4b0f2cbf664225b567e980b5efe03f0cbc256609130b3fe141fe0aeeadd788ad"
+    },
+    {
+      "class": "runtime",
+      "length": 35,
+      "path": "runtime/lib/opengl.library",
+      "sha256": "6b5a393d89fb5f0942b8da1c4b86469a6680f3fac7c85940a8fa7719b97487f6"
+    },
+    {
+      "class": "runtime",
+      "length": 34,
+      "path": "runtime/lib/gl4es.library",
+      "sha256": "e7a4854a70606e215afac75817d03b81841234f0983712a9b35b1883e9205126"
+    },
+    {
+      "class": "runtime",
+      "length": 35,
+      "path": "runtime/lib/weston.library",
+      "sha256": "c44d6a0be3120a92103fa1dbb795ea6998725cde58a12497718e349a0579a9e0"
     }
   ],
   "format": "brickpro-package",
@@ -65,5 +91,27 @@
       "staging"
     ]
   },
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "portmaster": {
+    "architecture": "aarch64",
+    "runtimeVersion": "1.0.0",
+    "libraries": [
+      "sdl2",
+      "opengl",
+      "gl4es",
+      "weston"
+    ],
+    "graphics": [
+      "sdl",
+      "opengl",
+      "gl4es",
+      "weston"
+    ],
+    "network": true,
+    "writablePaths": [
+      "data/saves",
+      "data/states"
+    ],
+    "minFreeBytes": 1
+  }
 }

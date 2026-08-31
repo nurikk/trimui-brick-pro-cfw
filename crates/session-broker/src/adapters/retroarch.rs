@@ -63,5 +63,6 @@ pub fn plan(
         env: Vec::new(),
         adapter: "retroarch",
         confirms_usable_save: true,
+        log_path: None,
     })
 }

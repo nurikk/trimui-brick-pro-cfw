@@ -41,6 +41,12 @@
       "length": 21,
       "path": "runtime/lib/README.txt",
       "sha256": "a14eee6bee029c6d8512fb2d1a1745cd943f717610343b600ee78a1c888994dc"
+    },
+    {
+      "class": "runtime",
+      "length": 33,
+      "path": "runtime/lib/sdl2.library",
+      "sha256": "4b0f2cbf664225b567e980b5efe03f0cbc256609130b3fe141fe0aeeadd788ad"
     }
   ],
   "format": "brickpro-package",
@@ -65,5 +71,21 @@
       "staging"
     ]
   },
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "portmaster": {
+    "architecture": "armv7",
+    "runtimeVersion": "1.0.0",
+    "libraries": [
+      "sdl2"
+    ],
+    "graphics": [
+      "sdl"
+    ],
+    "network": false,
+    "writablePaths": [
+      "data/saves",
+      "data/states"
+    ],
+    "minFreeBytes": 1
+  }
 }

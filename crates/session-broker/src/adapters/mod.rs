@@ -44,6 +44,7 @@ pub struct LaunchPlan {
     pub env: Vec<(String, String)>,
     pub adapter: &'static str,
     pub confirms_usable_save: bool,
+    pub log_path: Option<PathBuf>,
 }
 
 pub fn build_plan(

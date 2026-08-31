@@ -1106,15 +1106,19 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             page: PortmasterPage::Catalog,
         } => vec![
             "PortMaster catalog".into(),
-            "Orbit Garden · not installed".into(),
-            "Signal Workshop · not installed".into(),
+            "Orbit Garden · 32-bit SDL · not installed".into(),
+            "Signal Workshop · 64-bit OpenGL / GL4ES / Weston · not installed".into(),
+            "Ready checks: runtime, libraries, audio, input, writable space, network".into(),
+            "Not ready: missing game data · missing library · incompatible architecture · launch crash".into(),
+            "USB/network imports: PortMaster/Imports · per-launch logs: PortMaster/Logs".into(),
         ],
         Portmaster {
             page: PortmasterPage::Install,
         } => vec![
             "Package install".into(),
-            "Orbit Garden · signature verified".into(),
-            "Signal Workshop · signature verified".into(),
+            "Orbit Garden · signature verified · 32-bit SDL ready".into(),
+            "Signal Workshop · signature verified · 64-bit GL4ES / Weston ready".into(),
+            "Pinned runtime versions stay with each installed port; rollback is available".into(),
         ],
         Portmaster {
             page: PortmasterPage::UninstallProtected,
@@ -4588,6 +4592,7 @@ fn current_group(state: &AppState, catalog: &UiCatalog) -> String {
 fn apply_portmaster_route(state: &mut AppState, route_id: &str) -> Result<()> {
     fs::create_dir_all(state.package_root.join("data/saves"))?;
     fs::create_dir_all(state.package_root.join("data/states"))?;
+    package_manager::portmaster_user_paths(&state.package_root)?;
     let fixture = |id: &str| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/demo-content")

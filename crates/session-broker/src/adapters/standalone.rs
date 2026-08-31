@@ -45,5 +45,6 @@ pub fn plan(
         env: Vec::new(),
         adapter: "standalone",
         confirms_usable_save: true,
+        log_path: None,
     })
 }

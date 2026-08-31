@@ -42,6 +42,14 @@ The declared filesystem capabilities are part of `data/meta/layout.json`. Valida
 
 Writes are copy-on-write, checksum-verified, and journaled below `/data/meta/migrations`. A migration cannot activate unless the previous release is proven able to read the new form. Source data is not deleted until both releases can read it.
 
+## First-run simulator contract
+
+`storage-layout simulate-onboard` consumes a caller-owned, generated inventory and creates only the approved logical trees. It fails closed before mutation for an unsupported partition table or FAT32/exFAT declaration, less than 32 GiB capacity, invalid free space, read-only media, suspected counterfeit media, or a dirty filesystem. Dirty media produces a visible read-only recovery diagnostic; it never attempts repair or writes a recovery marker.
+
+A two-card request stores SD2's stable UUID in SD1's `data/meta/layout.json`. If that UUID is absent or its fixture root is unavailable, onboarding returns recovery without creating `roms` on SD1. In a healthy two-card setup, `roms/BIOS` is created only on SD2; in a healthy one-card setup it is created on SD1. ROMs and BIOS remain user supplied and are never bundled or copied.
+
+Formatting is simulation-only: `--format-device UUID --confirm-device UUID --confirm-format` must name the exact SD1 UUID twice and the inventory must report a remount. It then writes, syncs, reads, and CRC32-verifies a bounded fixture file before removing it. This models the confirmation and verification protocol without partitioning or formatting a block device. The inventory also models USB export: active users must be quiesced, local unmount and eject acknowledgement are required, and the resulting mode is MTP rather than unsafe simultaneous mounted mass storage. A bundle supplies only redistributable runtime, configuration, and theme files to fixed CFW-owned targets.
+
 ## Evidence boundary
 
 The simulator consumes only generated fixture data. Its output is bounded and sanitized: it does not print per-ROM paths, names, contents, or hashes. Physical FAT/exFAT power-loss evidence, eMMC behavior, stock ABI/loader/runtime behavior, and hardware compatibility remain deferred; this is not a TG4040 device claim.

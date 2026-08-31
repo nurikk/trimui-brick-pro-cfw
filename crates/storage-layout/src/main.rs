@@ -35,9 +35,11 @@ struct Layout {
     filesystem: Filesystem,
     #[serde(rename = "migrationDescriptor")]
     migration_descriptor: String,
+    #[serde(rename = "sd2Uuid", default, skip_serializing_if = "Option::is_none")]
+    sd2_uuid: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Filesystem {
     kind: FilesystemKind,
@@ -63,7 +65,7 @@ struct Filesystem {
     supports_posix_modes: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum FilesystemKind {
     Fat32,
@@ -128,6 +130,78 @@ struct Journal {
     checksums_verified: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Onboarding {
+    schema: String,
+    #[serde(rename = "twoCardRequested")]
+    two_card_requested: bool,
+    sd1: Card,
+    sd2: Option<Card>,
+    usb: UsbExport,
+    bundle: Bundle,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Card {
+    uuid: String,
+    root: String,
+    #[serde(rename = "partitionTable")]
+    partition_table: String,
+    filesystem: Filesystem,
+    #[serde(rename = "capacityBytes")]
+    capacity_bytes: u64,
+    #[serde(rename = "freeBytes")]
+    free_bytes: u64,
+    #[serde(rename = "readOnly")]
+    read_only: bool,
+    #[serde(rename = "counterfeitSuspected")]
+    counterfeit_suspected: bool,
+    dirty: bool,
+    #[serde(rename = "verificationFileBytes")]
+    verification_file_bytes: u64,
+    #[serde(rename = "remountedAfterFormat")]
+    remounted_after_format: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UsbExport {
+    requested: bool,
+    #[serde(rename = "activeUsers")]
+    active_users: u32,
+    #[serde(rename = "locallyUnmounted")]
+    locally_unmounted: bool,
+    #[serde(rename = "ejectAcknowledged")]
+    eject_acknowledged: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Bundle {
+    root: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OnboardingReport {
+    schema: &'static str,
+    status: &'static str,
+    mode: &'static str,
+    diagnostic: &'static str,
+    sd1_uuid: String,
+    sd2_uuid: Option<String>,
+    usb_mode: Option<&'static str>,
+}
+
+#[derive(Default)]
+struct FormatConfirmation {
+    device: Option<String>,
+    confirmation: Option<String>,
+    erase: bool,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("storage-layout failed: {error}");
@@ -173,9 +247,361 @@ fn run() -> Result<()> {
             }
             simulate_rollback(&PathBuf::from(root))?;
         }
+        "simulate-onboard" => {
+            let root = PathBuf::from(required_option(&mut args, "--root")?);
+            let inventory = PathBuf::from(required_option(&mut args, "--inventory")?);
+            let mut confirmation = FormatConfirmation::default();
+            while let Some(argument) = args.next() {
+                match argument.as_str() {
+                    "--format-device" => confirmation.device = args.next(),
+                    "--confirm-device" => confirmation.confirmation = args.next(),
+                    "--confirm-format" => confirmation.erase = true,
+                    _ => bail!("unexpected argument"),
+                }
+            }
+            println!(
+                "{}",
+                serde_json::to_string(&simulate_onboard(&root, &inventory, confirmation)?)?
+            );
+        }
         _ => bail!("unknown command"),
     }
     Ok(())
+}
+
+fn simulate_onboard(
+    root: &Path,
+    inventory: &Path,
+    confirmation: FormatConfirmation,
+) -> Result<OnboardingReport> {
+    let onboarding = read_json::<Onboarding>(inventory).context("read onboarding inventory")?;
+    if onboarding.schema != "brickpro-storage-onboarding/v1" {
+        bail!("unsupported onboarding inventory")
+    }
+    let recovery = |diagnostic, sd2_uuid| OnboardingReport {
+        schema: "brickpro-storage-onboarding-report/v1",
+        status: "recovery",
+        mode: "read-only",
+        diagnostic,
+        sd1_uuid: onboarding.sd1.uuid.clone(),
+        sd2_uuid,
+        usb_mode: None,
+    };
+    if !valid_uuid(&onboarding.sd1.uuid) || !card_root(root, &onboarding.sd1)?.is_dir() {
+        return Ok(recovery("sd1-unavailable", None));
+    }
+    if onboarding.two_card_requested && onboarding.sd2.is_none() {
+        return Ok(recovery(
+            "sd2-missing: insert the registered card; SD1 was not changed",
+            None,
+        ));
+    }
+    if let Some(sd2) = &onboarding.sd2 {
+        if !valid_uuid(&sd2.uuid) || !card_root(root, sd2)?.is_dir() {
+            return Ok(recovery(
+                "sd2-unavailable: SD1 was not changed",
+                Some(sd2.uuid.clone()),
+            ));
+        }
+    }
+    if let Some(diagnostic) = card_diagnostic(&onboarding.sd1) {
+        return Ok(recovery(
+            diagnostic,
+            onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+        ));
+    }
+    if let Some(sd2) = &onboarding.sd2 {
+        if let Some(diagnostic) = card_diagnostic(sd2) {
+            return Ok(recovery(diagnostic, Some(sd2.uuid.clone())));
+        }
+    }
+    if let Some(diagnostic) = stored_identity_diagnostic(root, &onboarding)? {
+        return Ok(recovery(
+            diagnostic,
+            onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+        ));
+    }
+
+    if confirmation.device.is_some() || confirmation.confirmation.is_some() || confirmation.erase {
+        if !format_confirmed(&confirmation, &onboarding.sd1) {
+            return Ok(recovery(
+                "format-requires-exact-device-and-two-confirmations",
+                onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+            ));
+        }
+        if !onboarding.sd1.remounted_after_format {
+            return Ok(recovery(
+                "format-remount-required",
+                onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+            ));
+        }
+        verify_format(
+            card_root(root, &onboarding.sd1)?,
+            onboarding.sd1.verification_file_bytes,
+        )?;
+    }
+    if onboarding.usb.requested {
+        if onboarding.usb.active_users != 0 {
+            return Ok(recovery(
+                "usb-export-blocked: active users must quiesce",
+                onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+            ));
+        }
+        if !onboarding.usb.locally_unmounted {
+            return Ok(recovery(
+                "usb-export-blocked: local unmount required",
+                onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+            ));
+        }
+        if !onboarding.usb.eject_acknowledged {
+            return Ok(recovery(
+                "usb-eject-required",
+                onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+            ));
+        }
+    }
+    provision_onboarding(root, &onboarding)?;
+    Ok(OnboardingReport {
+        schema: "brickpro-storage-onboarding-report/v1",
+        status: "ready",
+        mode: if onboarding.two_card_requested {
+            "two-card"
+        } else {
+            "single-card"
+        },
+        diagnostic: "ready: ROMs and BIOS are user supplied; no ROM or BIOS content is bundled",
+        sd1_uuid: onboarding.sd1.uuid,
+        sd2_uuid: onboarding.sd2.map(|card| card.uuid),
+        usb_mode: onboarding.usb.requested.then_some("mtp"),
+    })
+}
+
+fn card_root(root: &Path, card: &Card) -> Result<PathBuf> {
+    validate_relative(&card.root)?;
+    let path = root.join(&card.root);
+    if fs::symlink_metadata(&path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        bail!("card root must not be a symlink")
+    }
+    Ok(path)
+}
+
+fn stored_identity_diagnostic(
+    root: &Path,
+    onboarding: &Onboarding,
+) -> Result<Option<&'static str>> {
+    let layout_path = card_root(root, &onboarding.sd1)?.join("data/meta/layout.json");
+    if !layout_path.exists() {
+        return Ok(None);
+    }
+    let existing = match read_json::<Layout>(&layout_path) {
+        Ok(layout) => layout,
+        Err(_) => return Ok(Some("storage-metadata-invalid: read-only recovery")),
+    };
+    if existing.installation_uuid != onboarding.sd1.uuid {
+        return Ok(Some("sd1-identity-mismatch: read-only recovery"));
+    }
+    if existing.sd2_uuid != onboarding.sd2.as_ref().map(|card| card.uuid.clone()) {
+        return Ok(Some("sd2-identity-mismatch: SD1 was not changed"));
+    }
+    Ok(None)
+}
+
+fn card_diagnostic(card: &Card) -> Option<&'static str> {
+    if card.read_only {
+        return Some("card-read-only: unlock or replace the card");
+    }
+    if card.counterfeit_suspected {
+        return Some("counterfeit-suspected: replace the card after a full-capacity test");
+    }
+    if card.dirty {
+        return Some("filesystem-dirty: read-only recovery; repair on a host before retrying");
+    }
+    if !matches!(card.partition_table.as_str(), "mbr" | "gpt") {
+        return Some("partition-table-unsupported");
+    }
+    if card.capacity_bytes < 32 * 1024 * 1024 * 1024 {
+        return Some("capacity-too-small");
+    }
+    if card.free_bytes < 64 * 1024 * 1024 || card.free_bytes > card.capacity_bytes {
+        return Some("free-space-insufficient-or-invalid");
+    }
+    if validate_filesystem(&card.filesystem).is_err() {
+        return Some("filesystem-unsupported");
+    }
+    if card.verification_file_bytes == 0 || card.verification_file_bytes > card.free_bytes {
+        return Some("verification-file-does-not-fit");
+    }
+    if card.filesystem.kind == FilesystemKind::Fat32
+        && card.verification_file_bytes > MAX_FAT32_FILE
+    {
+        return Some("fat32-file-limit-exceeded");
+    }
+    if card.filesystem.kind == FilesystemKind::Exfat
+        && card.verification_file_bytes <= MAX_FAT32_FILE
+    {
+        return Some("exfat-verification-must-exceed-4gib");
+    }
+    None
+}
+
+fn format_confirmed(confirmation: &FormatConfirmation, card: &Card) -> bool {
+    confirmation.erase
+        && confirmation.device.as_deref() == Some(card.uuid.as_str())
+        && confirmation.confirmation.as_deref() == Some(card.uuid.as_str())
+}
+
+fn verify_format(root: PathBuf, requested_bytes: u64) -> Result<()> {
+    let path = root.join(".brickpro-format-verify");
+    if path.exists() {
+        bail!("format verification path already exists")
+    }
+    let bytes = vec![0xa5; requested_bytes.min(4096) as usize];
+    let written_crc = crc32(&bytes);
+    {
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+    }
+    let read = fs::read(&path)?;
+    fs::remove_file(&path)?;
+    sync_directory(Some(&root))?;
+    if read != bytes || crc32(&read) != written_crc {
+        bail!("format write/read/CRC verification failed")
+    }
+    Ok(())
+}
+
+fn provision_onboarding(root: &Path, onboarding: &Onboarding) -> Result<()> {
+    let sd1 = card_root(root, &onboarding.sd1)?;
+    let sd2 = onboarding
+        .sd2
+        .as_ref()
+        .map(|card| card_root(root, card))
+        .transpose()?;
+    for relative in [
+        "data/activity",
+        "data/cache",
+        "data/calibration",
+        "data/config",
+        "data/credentials",
+        "data/index",
+        "data/logs",
+        "data/meta/migrations",
+        "data/resume",
+        "data/saves",
+        "data/settings",
+        "data/states",
+        "data/themes",
+        "data/update",
+        ".brickpro/system/slots/A",
+        ".brickpro/system/slots/B",
+        ".brickpro/save-vault",
+    ] {
+        fs::create_dir_all(sd1.join(relative))?;
+    }
+    let rom_card = sd2.as_ref().unwrap_or(&sd1);
+    fs::create_dir_all(rom_card.join("roms/BIOS"))?;
+    copy_bundle(root, &onboarding.bundle, &sd1)?;
+    let layout = Layout {
+        schema: LAYOUT_SCHEMA.into(),
+        format: "brickpro-storage-layout".into(),
+        schema_version: 1,
+        installation_uuid: onboarding.sd1.uuid.clone(),
+        active_data_version: 1,
+        completed_migrations: vec![],
+        filesystem: onboarding.sd1.filesystem.clone(),
+        migration_descriptor: "data/meta/migrations/storage-v1-to-v2.json".into(),
+        sd2_uuid: onboarding.sd2.as_ref().map(|card| card.uuid.clone()),
+    };
+    write_json_atomic(&sd1.join("data/meta/layout.json"), &layout)?;
+    write_json_atomic(
+        &sd1.join("data/meta/migrations/storage-v1-to-v2.json"),
+        &default_migration(),
+    )?;
+    Ok(())
+}
+
+fn copy_bundle(root: &Path, bundle: &Bundle, sd1: &Path) -> Result<()> {
+    validate_relative(&bundle.root)?;
+    let source = root.join(&bundle.root);
+    for (name, target) in [
+        ("runtime", ".brickpro/system/slots/A/runtime"),
+        ("config", "data/config"),
+        ("themes", "data/themes"),
+    ] {
+        let input = source.join(name);
+        fs::create_dir_all(sd1.join(target))?;
+        if !input.is_dir() {
+            bail!("onboarding bundle is incomplete")
+        }
+        copy_bundle_tree(&input, &sd1.join(target))?;
+    }
+    let config = sd1.join("data/config/synthetic-config.json");
+    if !config.is_file() || sha256_file(&config)? != default_migration().steps[0].sha256 {
+        bail!("bundled configuration does not satisfy the storage migration")
+    }
+    Ok(())
+}
+
+fn copy_bundle_tree(source: &Path, target: &Path) -> Result<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let input = entry.path();
+        let output = target.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&input)?;
+        if metadata.file_type().is_symlink() {
+            bail!("onboarding bundle symlinks are forbidden")
+        }
+        if metadata.is_dir() {
+            fs::create_dir_all(&output)?;
+            copy_bundle_tree(&input, &output)?;
+        } else if metadata.is_file() {
+            if !output.exists() {
+                copy_synced(&input, &output)?;
+            }
+        } else {
+            bail!("onboarding bundle contains unsupported entry")
+        }
+    }
+    Ok(())
+}
+
+fn default_migration() -> Migration {
+    Migration {
+        format: MIGRATION_FORMAT.into(),
+        schema_version: 1,
+        id: MIGRATION_ID.into(),
+        from: Version {
+            data_version: 1,
+            release: "storage-v1".into(),
+        },
+        to: Version {
+            data_version: 2,
+            release: "storage-v2".into(),
+        },
+        steps: vec![Step {
+            id: "copy-generated-config".into(),
+            source: "data/config/synthetic-config.json".into(),
+            target: "data/config/v2/synthetic-config.json".into(),
+            sha256: "78c4ce27f0e0d640046d71b2bda25d845a3a828f1e31ae997f37440d1f6ad236".into(),
+        }],
+        prior_release_readable: true,
+        activation: "blocked-unless-prior-release-readable".into(),
+    }
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(!0u32, |crc, byte| {
+        (0..8).fold(crc ^ u32::from(*byte), |value, _| {
+            (value >> 1) ^ (0xedb8_8320 & (0u32.wrapping_sub(value & 1)))
+        })
+    }) ^ !0
 }
 
 fn required_option(args: &mut impl Iterator<Item = String>, name: &str) -> Result<String> {
@@ -243,14 +669,24 @@ fn validate_layout(layout: &Layout, root: &Path) -> Result<Migration> {
     }
     inspect_tree(root, &layout.filesystem)?;
     verify_migration_sources(root, &migration)?;
-    for protected in [
-        "roms",
+    let mut protected = vec![
         "data/saves",
         "data/states",
         "data/resume",
         "data/settings",
         ".brickpro/save-vault",
-    ] {
+    ];
+    if layout.sd2_uuid.is_none() {
+        protected.push("roms");
+    }
+    if layout
+        .sd2_uuid
+        .as_ref()
+        .is_some_and(|uuid| !valid_uuid(uuid))
+    {
+        bail!("sd2 UUID is not a bounded UUID")
+    }
+    for protected in protected {
         if !root.join(protected).is_dir() {
             bail!("required synthetic storage tree is missing")
         }
@@ -507,7 +943,10 @@ fn protected_snapshot(root: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>> {
         "data/resume",
         "data/settings",
     ] {
-        collect_files(&root.join(tree), Path::new(tree), &mut snapshot)?;
+        let path = root.join(tree);
+        if path.is_dir() {
+            collect_files(&path, Path::new(tree), &mut snapshot)?;
+        }
     }
     let vault = root.join(".brickpro/save-vault");
     if vault.exists() {

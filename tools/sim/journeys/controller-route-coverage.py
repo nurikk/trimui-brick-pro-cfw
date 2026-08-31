@@ -495,13 +495,27 @@ def cleanup(container, run_dir, backend, display, shutdown_requested=False):
 
 def validate_focus_flow(container, run_dir):
     state = call(container, "state")
+    approved = ["nebula-nes", "mirror-ps1"]
     if state["focus"] != {
-        "entries": ["nebula-nes", "mirror-ps1"],
+        "entries": approved,
         "defaultHome": True,
         "kidSafe": True,
         "missing": 0,
     } or state["controllerRoute"]["currentId"] != "focus-home":
         raise RuntimeError(f"Focus admin flow did not produce the restricted ordered home: {state['focus']!r}")
+    presentation = state["presentation"]
+    for field in ("menu", "gameRows"):
+        rows = presentation.get(field, [])
+        if [row.get("id") for row in rows] != approved:
+            raise RuntimeError(f"Focus {field} leaked a non-approved stable ID: {rows!r}")
+        if any(
+            title in row.get("label", "")
+            for row in rows
+            for title in ("Orbit Garden", "Signal Workshop")
+        ):
+            raise RuntimeError(f"Focus {field} leaked an unapproved title: {rows!r}")
+        if [row.get("id") for row in rows if row.get("selected")] != [state["selectedContentId"]]:
+            raise RuntimeError(f"Focus {field} selection diverged from controller state: {rows!r}")
     state = button(container, run_dir, "primary")
     if state["activeSession"] is None:
         raise RuntimeError("Focus launch did not create a session")

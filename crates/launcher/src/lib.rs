@@ -770,9 +770,16 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
     if matches!(state.route, Route::Games | Route::Session)
         && state.presentation.ui.route != ui_model::Route::Systems
     {
-        let selected_index = selected_catalog_index(state, catalog);
-        screen.game_rows = catalog
-            .entries
+        let entries = if matches!(state.journey, ProductJourneyState::FocusHome { .. }) {
+            focus_catalog_entries(state, catalog)
+        } else {
+            catalog.entries.iter().collect()
+        };
+        let selected_index = entries
+            .iter()
+            .position(|entry| entry.id == state.selected_content_id)
+            .unwrap_or(0);
+        screen.game_rows = entries
             .iter()
             .skip(selected_index)
             .take(rom_index::MAX_VISIBLE_ROWS)
@@ -783,7 +790,7 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
                 enabled: true,
             })
             .collect();
-        let entry = &catalog.entries[selected_index];
+        let entry = entries[selected_index];
         screen.selected_label = entry.title.clone();
         screen.selected_game =
             launcher_presentation::catalog_game_details(&entry.id, &entry.title, &entry.system);
@@ -3545,6 +3552,120 @@ mod tests {
             "tg4040",
         )
         .expect("controller input");
+    }
+
+    #[test]
+    fn focus_home_filters_rendered_rows_and_controller_selection() {
+        let (mut state, catalog, broker_root) = test_state(Route::Library, ui_model::Route::Home);
+        let unrestricted_rows = screen_for_state(&state, &catalog)
+            .expect("unrestricted Home screen")
+            .game_rows
+            .into_iter()
+            .map(|row| row.id)
+            .collect::<Vec<_>>();
+        let approved = ["nebula-nes", "mirror-ps1"];
+        state.persisted.focus = approved.iter().map(|id| (*id).into()).collect();
+        state.persisted.focus_home = true;
+        state.persisted.kid_safe = true;
+        enter_focus_home(&mut state, &catalog);
+
+        let focus_screen = screen_for_state(&state, &catalog).expect("Focus home screen");
+        for rows in [&focus_screen.menu, &focus_screen.game_rows] {
+            assert_eq!(
+                rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+                approved,
+                "Focus rows must use the approved stable IDs"
+            );
+            assert!(rows.iter().all(|row| {
+                !row.label.contains("Orbit Garden") && !row.label.contains("Signal Workshop")
+            }));
+        }
+
+        let evidence_root = broker_root.join("evidence");
+        let evidence = Evidence::new(&evidence_root).expect("evidence");
+        let mut log = EventLog::new(&evidence.root, "focus-filter").expect("event log");
+        let launch_catalog =
+            launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
+        let mut platform = TestPlatform;
+        for button in [Button::Down, Button::Up] {
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                button,
+            );
+            assert!(approved.contains(&state.selected_content_id.as_str()));
+        }
+        press_controller_button(
+            &mut state,
+            &catalog,
+            &launch_catalog,
+            &evidence,
+            &mut log,
+            &mut platform,
+            Button::Primary,
+        );
+        assert!(matches!(
+            state.journey,
+            ProductJourneyState::Session {
+                content: DemoContent::Nebula | DemoContent::Mirror,
+                ..
+            }
+        ));
+
+        state.active_session = None;
+        state.persisted.focus = vec!["missing-entry".into()];
+        state.persisted.focus_home = true;
+        state.persisted.kid_safe = true;
+        enter_focus_home(&mut state, &catalog);
+        assert!(matches!(state.journey, ProductJourneyState::FocusRecovery));
+        for button in PARENT_GESTURE {
+            press_controller_button(
+                &mut state,
+                &catalog,
+                &launch_catalog,
+                &evidence,
+                &mut log,
+                &mut platform,
+                button,
+            );
+        }
+        assert!(!state.persisted.kid_safe);
+        assert!(matches!(state.journey, ProductJourneyState::Home { .. }));
+        let full_home = screen_for_state(&state, &catalog).expect("full Home screen");
+        assert_eq!(
+            full_home
+                .game_rows
+                .iter()
+                .map(|row| row.id.clone())
+                .collect::<Vec<_>>(),
+            unrestricted_rows
+        );
+
+        state.persisted.focus = approved.iter().map(|id| (*id).into()).collect();
+        state.selected_content_id = "orbit-garden".into();
+        state.journey = ProductJourneyState::FocusAdmin {
+            selected: FocusAdminItem::Add,
+        };
+        assert!(handle_focus_controller(
+            &mut state,
+            &catalog,
+            &launch_catalog,
+            Button::Primary
+        ));
+        assert_eq!(
+            state.persisted.focus,
+            ["nebula-nes", "mirror-ps1", "orbit-garden"]
+        );
+
+        drop(log);
+        drop(evidence);
+        drop(platform);
+        drop(state);
+        fs::remove_dir_all(broker_root).expect("test broker cleanup");
     }
 
     #[test]

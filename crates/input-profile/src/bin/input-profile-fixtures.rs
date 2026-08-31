@@ -5,9 +5,11 @@ use std::{
 };
 
 use input_profile::{
-    apply_transform, calibrate, load, normalize, save, Action, Capture, Catalog, CurveTransform,
-    DpadPair, RawAxis, RawControl, RawSample, SamplePhase, StickPair, SyntheticIdentity,
-    TransformOutput,
+    apply_transform, calibrate, export_adapter_input, load, load_mappings, normalize, save,
+    save_mappings, Action, Binding, Capture, Catalog, ControllerDescriptor, ControllerTransport,
+    CurveTransform, DangerousActionPolicy, DpadPair, InputMappings, InputTester, LogicalAction,
+    MappingScope, PhysicalControl, PlayerAssignments, RawAxis, RawControl, RawSample, SamplePhase,
+    StickPair, SyntheticIdentity, TransformOutput,
 };
 use serde_json::Value;
 
@@ -46,6 +48,7 @@ fn run() -> Result<(), String> {
     )?;
     resolution(&catalog)?;
     transforms(&catalog)?;
+    mappings(&catalog, &root)?;
     calibration(&root)?;
     Ok(())
 }
@@ -288,6 +291,198 @@ fn transforms(catalog: &Catalog) -> Result<(), String> {
             .transform
             == CurveTransform::StickToDpad,
         "stick catalog profile",
+    )?;
+    Ok(())
+}
+
+fn mappings(catalog: &Catalog, root: &Path) -> Result<(), String> {
+    let profile = catalog
+        .profile("default")
+        .map_err(|error| error.to_string())?;
+    let mut mappings = InputMappings::default();
+    mappings
+        .set_binding(
+            MappingScope::Global,
+            Binding {
+                control: PhysicalControl::F1,
+                action: LogicalAction::Menu,
+                policy: DangerousActionPolicy::Immediate,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    mappings
+        .set_binding(
+            MappingScope::System("n64"),
+            Binding {
+                control: PhysicalControl::Slider,
+                action: LogicalAction::BrightnessUp,
+                policy: DangerousActionPolicy::Immediate,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    mappings
+        .set_binding(
+            MappingScope::Game {
+                system_id: "n64",
+                game_id: "fixture-n64",
+            },
+            Binding {
+                control: PhysicalControl::F2,
+                action: LogicalAction::LoadState,
+                policy: DangerousActionPolicy::Hold,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    rejected(
+        mappings.set_binding(
+            MappingScope::Game {
+                system_id: "n64",
+                game_id: "fixture-n64",
+            },
+            Binding {
+                control: PhysicalControl::Home,
+                action: LogicalAction::Quit,
+                policy: DangerousActionPolicy::Immediate,
+            },
+        ),
+        "dangerous action safety",
+    )?;
+    let resolved = mappings
+        .resolve(profile, Some("n64"), Some("fixture-n64"))
+        .map_err(|error| error.to_string())?;
+    require(
+        resolved.bindings.iter().any(|binding| {
+            binding.control == PhysicalControl::F1 && binding.action == LogicalAction::Menu
+        }) && resolved.bindings.iter().any(|binding| {
+            binding.control == PhysicalControl::Slider
+                && binding.action == LogicalAction::BrightnessUp
+        }) && resolved.bindings.iter().any(|binding| {
+            binding.control == PhysicalControl::F2
+                && binding.action == LogicalAction::LoadState
+                && binding.policy == DangerousActionPolicy::Hold
+        }),
+        "mapping precedence",
+    )?;
+    require(
+        resolved.hotkeys.iter().any(|hotkey| {
+            hotkey.controls == vec![PhysicalControl::Fn, PhysicalControl::Select]
+                && hotkey.action == LogicalAction::Escape
+        }),
+        "guaranteed escape combo",
+    )?;
+    for (system_id, game_id) in [("ps1", "fixture-ps1"), ("dreamcast", "fixture-dreamcast")] {
+        mappings
+            .set_binding(
+                MappingScope::Game { system_id, game_id },
+                Binding {
+                    control: PhysicalControl::Slider,
+                    action: LogicalAction::VolumeUp,
+                    policy: DangerousActionPolicy::Immediate,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    let path = root.join("input-mappings.json");
+    save_mappings(&path, &mappings).map_err(|error| error.to_string())?;
+    let loaded = load_mappings(&path).map_err(|error| error.to_string())?;
+    require(
+        loaded == mappings
+            && ["n64", "ps1", "dreamcast"].iter().all(|system_id| {
+                loaded
+                    .systems
+                    .iter()
+                    .any(|entry| entry.system_id == *system_id)
+                    || loaded
+                        .games
+                        .iter()
+                        .any(|entry| entry.system_id == *system_id)
+            }),
+        "per-game mapping persistence",
+    )?;
+    mappings
+        .reset(MappingScope::Game {
+            system_id: "n64",
+            game_id: "fixture-n64",
+        })
+        .map_err(|error| error.to_string())?;
+    require(
+        !mappings
+            .resolve(profile, Some("n64"), Some("fixture-n64"))
+            .map_err(|error| error.to_string())?
+            .bindings
+            .iter()
+            .any(|binding| binding.action == LogicalAction::LoadState),
+        "mapping reset restores baseline",
+    )?;
+    let mut players = PlayerAssignments::default();
+    players
+        .assign(1, "usb-xbox")
+        .map_err(|error| error.to_string())?;
+    players.disconnect("usb-xbox");
+    require(
+        players.players[0].as_deref() == Some("built-in"),
+        "P1 fallback after disconnect",
+    )?;
+    let calibration = calibrate(&identity(), &capture()).map_err(|error| error.to_string())?;
+    let tester = InputTester::new(calibration.axes, vec![false, true, false, true])
+        .map_err(|error| error.to_string())?;
+    let tested = tester
+        .sample([0.2, 0.2, -0.8, 0.8], DpadPair { x: -1, y: 1 })
+        .map_err(|error| error.to_string())?;
+    require(
+        tested.left.len() == 2
+            && tested.right.len() == 2
+            && tested.left[0].raw == 0.2
+            && tested.left[1].inverted
+            && tested.dpad == DpadPair { x: -1, y: 1 },
+        "dual-stick tester and dpad isolation",
+    )?;
+    for (id, transport) in [
+        ("built-in", ControllerTransport::BuiltIn),
+        ("usb-xbox", ControllerTransport::Usb),
+        ("bt-dualsense", ControllerTransport::Bluetooth),
+        ("generic-pad", ControllerTransport::Usb),
+    ] {
+        require(
+            input_profile::input_tester_accepts(&ControllerDescriptor {
+                id: id.into(),
+                transport,
+                controls: vec![
+                    PhysicalControl::A,
+                    PhysicalControl::B,
+                    PhysicalControl::Start,
+                    PhysicalControl::Select,
+                ],
+                axes: vec![
+                    RawAxis::LeftX,
+                    RawAxis::LeftY,
+                    RawAxis::RightX,
+                    RawAxis::RightY,
+                ],
+            }),
+            "representative controller descriptor",
+        )?;
+    }
+
+    for adapter in ["retroarch", "standalone", "portmaster"] {
+        let export = export_adapter_input(adapter, &resolved).map_err(|error| error.to_string())?;
+        require(
+            export.contains(adapter) && export.contains("escape"),
+            "adapter export",
+        )?;
+    }
+    let fallback = export_adapter_input(
+        "retroarch",
+        &input_profile::ResolvedMappings {
+            bindings: Vec::new(),
+            hotkeys: Vec::new(),
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    require(
+        fallback.contains("escape") && fallback.contains("fn") && fallback.contains("select"),
+        "adapter fallback escape combo",
     )?;
     Ok(())
 }

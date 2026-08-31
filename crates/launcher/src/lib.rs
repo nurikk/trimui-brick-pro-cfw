@@ -132,6 +132,7 @@ struct AppState {
     selected_content_id: String,
     groups: rom_index::GroupIndex,
     input_profile: input_profile::Catalog,
+    input_mappings: input_profile::InputMappings,
     broker: Box<dyn SessionBrokerClient>,
     save_vault: SaveVaultUi,
     save_sync: Option<launcher_presentation::SaveSyncView>,
@@ -1660,6 +1661,15 @@ fn run_session<P: Platform>(
     let input_profile = input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
         .map_err(|error| anyhow!(error.to_string()))?;
     let state_root = evidence.root.join("data");
+    let input_mappings_path = state_root.join("input-mappings.json");
+    let input_mappings = match fs::symlink_metadata(&input_mappings_path) {
+        Ok(_) => input_profile::load_mappings(&input_mappings_path)
+            .map_err(|error| anyhow!(error.to_string()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            input_profile::InputMappings::default()
+        }
+        Err(error) => return Err(anyhow!("read input mappings: {error}")),
+    };
     fs::create_dir_all(&state_root)?;
     // Simulator evidence is mounted from the caller; keep its state directory caller-cleanable.
     fs::set_permissions(&state_root, fs::Permissions::from_mode(0o777))?;
@@ -1728,6 +1738,7 @@ fn run_session<P: Platform>(
         selected_content_id: catalog.entries[0].id.clone(),
         groups: catalog_groups,
         input_profile,
+        input_mappings,
         broker,
         save_vault: SaveVaultUi::default(),
         save_sync: None,
@@ -1983,6 +1994,7 @@ fn handle_request<P: Platform>(
                 args.action,
                 args.phase.unwrap_or(ButtonAction::Press),
                 None,
+                None,
                 at_ms,
                 target_sku,
             )
@@ -2205,7 +2217,15 @@ fn refresh_resume_projection(
     let requests = catalog
         .entries
         .iter()
-        .filter_map(|entry| launch_request(entry, launch_catalog).ok())
+        .filter_map(|entry| {
+            launch_request(
+                entry,
+                launch_catalog,
+                &state.input_profile,
+                &state.input_mappings,
+            )
+            .ok()
+        })
         .collect::<Vec<_>>();
     let summaries = state
         .broker
@@ -2692,7 +2712,13 @@ fn resume_delete_control(
         .iter()
         .find(|entry| entry.id == args.content_id)
         .ok_or_else(|| "resume content is not allowlisted".to_string())?;
-    let request = launch_request(entry, launch_catalog).map_err(|error| error.to_string())?;
+    let request = launch_request(
+        entry,
+        launch_catalog,
+        &state.input_profile,
+        &state.input_mappings,
+    )
+    .map_err(|error| error.to_string())?;
     state
         .broker
         .resume_delete(request, args.generation, true)
@@ -2722,7 +2748,13 @@ fn resume_control(
         .iter()
         .find(|entry| entry.id == args.content_id)
         .ok_or_else(|| "resume content is not allowlisted".to_string())?;
-    let mut request = launch_request(entry, launch_catalog).map_err(|error| error.to_string())?;
+    let mut request = launch_request(
+        entry,
+        launch_catalog,
+        &state.input_profile,
+        &state.input_mappings,
+    )
+    .map_err(|error| error.to_string())?;
     if let Some(runner_id) = args.runner_id {
         request.runner.id = runner_id;
     }
@@ -2976,6 +3008,7 @@ mod tests {
             groups: rom_index::GroupIndex::from_catalog(&catalog),
             input_profile: input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
                 .expect("input profile"),
+            input_mappings: input_profile::InputMappings::default(),
             broker: Box::new(simulator_session::SimulatorSessionAdapter::with_root(
                 broker_root.clone(),
             )),
@@ -3000,6 +3033,42 @@ mod tests {
             exit_requested: false,
         };
         (state, catalog, broker_root)
+    }
+
+    #[test]
+    fn launch_request_applies_game_input_override() {
+        let catalog: UiCatalog =
+            serde_json::from_slice(include_bytes!("../../../sim/fixtures/catalog.json"))
+                .expect("generated catalog");
+        let launch_catalog =
+            launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
+        let input_catalog =
+            input_profile::Catalog::from_json(INPUT_PROFILE_BYTES).expect("input profile");
+        let mut mappings = input_profile::InputMappings::default();
+        mappings
+            .set_binding(
+                input_profile::MappingScope::Game {
+                    system_id: "nes",
+                    game_id: "nebula-nes",
+                },
+                input_profile::Binding {
+                    control: input_profile::PhysicalControl::A,
+                    action: input_profile::LogicalAction::Menu,
+                    policy: input_profile::DangerousActionPolicy::Immediate,
+                },
+            )
+            .expect("game override");
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "nebula-nes")
+            .expect("nebula entry");
+        let request = launch_request(entry, &launch_catalog, &input_catalog, &mappings)
+            .expect("launch request");
+        assert!(request.input.bindings.iter().any(|binding| {
+            binding.control == input_profile::PhysicalControl::A
+                && binding.action == input_profile::LogicalAction::Menu
+        }));
     }
 
     fn press_controller_button(
@@ -4254,9 +4323,26 @@ fn handle_button<P: Platform>(
     event: ButtonEvent,
     target_sku: &str,
 ) -> Result<()> {
-    let action = raw_control(event.button)
-        .and_then(|control| state.input_profile.action_for_control(control).ok())
-        .ok_or_else(|| anyhow!("input profile has no action for {:?}", event.button))?;
+    let selected = &catalog.entries[selected_catalog_index(state, catalog)];
+    let mappings = state
+        .input_profile
+        .launch_mappings_with(
+            &state.input_mappings,
+            Some(&selected.system),
+            Some(&selected.id),
+        )
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let action = mappings
+        .bindings
+        .iter()
+        .find(|binding| binding.control == physical_control(event.button))
+        .and_then(|binding| frontend_action(binding.action))
+        .ok_or_else(|| {
+            anyhow!(
+                "input mapping has no frontend action for {:?}",
+                event.button
+            )
+        })?;
     handle_semantic_action(
         platform,
         evidence,
@@ -4267,6 +4353,7 @@ fn handle_button<P: Platform>(
         action,
         event.action,
         Some(event.button),
+        frontend_button(action),
         event.at_ms,
         target_sku,
     )
@@ -4283,6 +4370,7 @@ fn handle_semantic_action<P: Platform>(
     action: input_profile::Action,
     phase: ButtonAction,
     raw_button: Option<Button>,
+    frontend_button: Option<Button>,
     at_ms: u64,
     target_sku: &str,
 ) -> Result<()> {
@@ -4309,7 +4397,7 @@ fn handle_semantic_action<P: Platform>(
         return Ok(());
     }
     if phase == ButtonAction::Release
-        && raw_button == Some(Button::Primary)
+        && frontend_button == Some(Button::Primary)
         && state.shutdown_pressed
     {
         lifecycle_control(
@@ -4335,7 +4423,7 @@ fn handle_semantic_action<P: Platform>(
         return Ok(());
     }
 
-    if raw_button == Some(Button::Primary)
+    if frontend_button == Some(Button::Primary)
         && canonical_route_id(&state.journey) == Some("shutdown-confirm")
     {
         state.shutdown_pressed = true;
@@ -4343,7 +4431,7 @@ fn handle_semantic_action<P: Platform>(
     }
 
     if state.controller_routes {
-        if let Some(button) = raw_button {
+        if let Some(button) = frontend_button {
             let before = canonical_route_id(&state.journey);
             if button == Button::Secondary && before == Some("shutdown-confirm") {
                 state.shutdown_pressed = false;
@@ -4483,7 +4571,7 @@ fn handle_semantic_action<P: Platform>(
     );
     let route_before_presentation = state.route.clone();
     exit_theme_garden(state, action);
-    let vault_button = match raw_button {
+    let vault_button = match frontend_button {
         Some(button) => handle_save_vault_button(state, button)?,
         None => false,
     };
@@ -4574,7 +4662,13 @@ fn handle_semantic_action<P: Platform>(
                 && state.presentation.ui.route == ui_model::Route::Games =>
         {
             let entry = &catalog.entries[selected_catalog_index(state, catalog)];
-            let request = launch_request(entry, launch_catalog).map_err(|error| anyhow!(error))?;
+            let request = launch_request(
+                entry,
+                launch_catalog,
+                &state.input_profile,
+                &state.input_mappings,
+            )
+            .map_err(|error| anyhow!(error))?;
             let bytes = launch_contract::request_json(&request)
                 .map_err(|error| anyhow!(error.to_string()))?
                 .into_bytes();
@@ -5349,7 +5443,13 @@ fn launch_product_session(
         .iter()
         .find(|entry| entry.id == content_id)
         .ok_or_else(|| anyhow!("demo content is absent from catalog"))?;
-    let request = launch_request(entry, launch_catalog).map_err(|error| anyhow!(error))?;
+    let request = launch_request(
+        entry,
+        launch_catalog,
+        &state.input_profile,
+        &state.input_mappings,
+    )
+    .map_err(|error| anyhow!(error))?;
     if restored {
         let choices = state
             .broker
@@ -5379,19 +5479,71 @@ fn launch_product_session(
     Ok(())
 }
 
-fn raw_control(button: Button) -> Option<input_profile::RawControl> {
-    Some(match button {
-        Button::Up => input_profile::RawControl::Up,
-        Button::Down => input_profile::RawControl::Down,
-        Button::Left => input_profile::RawControl::Left,
-        Button::Right => input_profile::RawControl::Right,
-        Button::Primary => input_profile::RawControl::A,
-        Button::Secondary => input_profile::RawControl::B,
-        Button::Start => input_profile::RawControl::Start,
-        Button::Select => input_profile::RawControl::Select,
-        Button::L1 => input_profile::RawControl::L1,
-        Button::R1 => input_profile::RawControl::R1,
-        Button::Menu => input_profile::RawControl::Home,
+fn physical_control(button: Button) -> input_profile::PhysicalControl {
+    match button {
+        Button::Up => input_profile::PhysicalControl::Up,
+        Button::Down => input_profile::PhysicalControl::Down,
+        Button::Left => input_profile::PhysicalControl::Left,
+        Button::Right => input_profile::PhysicalControl::Right,
+        Button::Primary => input_profile::PhysicalControl::A,
+        Button::Secondary => input_profile::PhysicalControl::B,
+        Button::Start => input_profile::PhysicalControl::Start,
+        Button::Select => input_profile::PhysicalControl::Select,
+        Button::L1 => input_profile::PhysicalControl::L1,
+        Button::R1 => input_profile::PhysicalControl::R1,
+        Button::Menu => input_profile::PhysicalControl::Home,
+    }
+}
+
+fn frontend_action(action: input_profile::LogicalAction) -> Option<input_profile::Action> {
+    Some(match action {
+        input_profile::LogicalAction::MoveUp => input_profile::Action::MoveUp,
+        input_profile::LogicalAction::MoveDown => input_profile::Action::MoveDown,
+        input_profile::LogicalAction::MoveLeft => input_profile::Action::MoveLeft,
+        input_profile::LogicalAction::MoveRight => input_profile::Action::MoveRight,
+        input_profile::LogicalAction::Primary => input_profile::Action::Primary,
+        input_profile::LogicalAction::Secondary | input_profile::LogicalAction::Escape => {
+            input_profile::Action::Secondary
+        }
+        input_profile::LogicalAction::Start => input_profile::Action::Start,
+        input_profile::LogicalAction::Select | input_profile::LogicalAction::Menu => {
+            input_profile::Action::Select
+        }
+        input_profile::LogicalAction::LeftStickClick => input_profile::Action::LeftStickClick,
+        input_profile::LogicalAction::RightStickClick => input_profile::Action::RightStickClick,
+        input_profile::LogicalAction::JumpNextGroup => input_profile::Action::JumpNextGroup,
+        input_profile::LogicalAction::JumpPreviousGroup => input_profile::Action::JumpPreviousGroup,
+        input_profile::LogicalAction::F1 => input_profile::Action::F1,
+        input_profile::LogicalAction::F2 => input_profile::Action::F2,
+        input_profile::LogicalAction::Fn => input_profile::Action::Fn,
+        input_profile::LogicalAction::Home => input_profile::Action::Home,
+        input_profile::LogicalAction::VolumeUp
+        | input_profile::LogicalAction::VolumeDown
+        | input_profile::LogicalAction::BrightnessUp
+        | input_profile::LogicalAction::BrightnessDown
+        | input_profile::LogicalAction::LoadState
+        | input_profile::LogicalAction::Quit => return None,
+    })
+}
+
+fn frontend_button(action: input_profile::Action) -> Option<Button> {
+    Some(match action {
+        input_profile::Action::MoveUp => Button::Up,
+        input_profile::Action::MoveDown => Button::Down,
+        input_profile::Action::MoveLeft => Button::Left,
+        input_profile::Action::MoveRight => Button::Right,
+        input_profile::Action::Primary => Button::Primary,
+        input_profile::Action::Secondary => Button::Secondary,
+        input_profile::Action::Start => Button::Start,
+        input_profile::Action::Select => Button::Select,
+        input_profile::Action::Home => Button::Menu,
+        input_profile::Action::JumpNextGroup
+        | input_profile::Action::JumpPreviousGroup
+        | input_profile::Action::LeftStickClick
+        | input_profile::Action::RightStickClick
+        | input_profile::Action::F1
+        | input_profile::Action::F2
+        | input_profile::Action::Fn => return None,
     })
 }
 
@@ -5679,6 +5831,8 @@ fn emit_route_selection(
 fn launch_request(
     entry: &sim_domain::CatalogEntry,
     catalog: &LaunchCatalog,
+    input_catalog: &input_profile::Catalog,
+    input_mappings: &input_profile::InputMappings,
 ) -> Result<LaunchRequest, String> {
     let (request_id, content_sha256, kind, package_id, core_id, profile_id) =
         match (entry.id.as_str(), entry.system.as_str()) {
@@ -5735,6 +5889,10 @@ fn launch_request(
         .iter()
         .find(|profile| profile.id == profile_id)
         .ok_or_else(|| "catalog has no selected profile".to_string())?;
+    let mappings = input_catalog
+        .launch_mappings_with(input_mappings, Some(&entry.system), Some(&entry.id))
+        .map_err(|error| error.to_string())?;
+
     Ok(LaunchRequest {
         schema: launch_contract::REQUEST_SCHEMA.to_string(),
         format: "brickpro-launch-request".to_string(),
@@ -5778,6 +5936,8 @@ fn launch_request(
         input: InputSettings {
             layout: InputLayout::Standard,
             rumble: false,
+            bindings: mappings.bindings,
+            hotkeys: mappings.hotkeys,
         },
         power: PowerSettings {
             suspend: SuspendMode::Allowed,

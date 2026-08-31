@@ -89,9 +89,31 @@
       "required": ["layout", "rumble"],
       "properties": {
         "layout": {"enum": ["standard", "arcade"]},
-        "rumble": {"type": "boolean"}
+        "rumble": {"type": "boolean"},
+        "bindings": {"type": "array", "items": {"$ref": "#/$defs/binding"}},
+        "hotkeys": {"type": "array", "items": {"$ref": "#/$defs/hotkey"}}
       }
     },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["control", "action", "policy"],
+      "properties": {
+        "control": {"$ref": "#/$defs/physicalControl"},
+        "action": {"$ref": "#/$defs/logicalAction"},
+        "policy": {"enum": ["immediate", "hold", "confirm"]}
+      }
+    },
+    "hotkey": {
+      "type": "object", "additionalProperties": false,
+      "required": ["controls", "action", "policy"],
+      "properties": {
+        "controls": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/physicalControl"}},
+        "action": {"$ref": "#/$defs/logicalAction"},
+        "policy": {"enum": ["immediate", "hold", "confirm"]}
+      }
+    },
+    "physicalControl": {"enum": ["up", "down", "left", "right", "a", "b", "start", "select", "l1", "r1", "l3", "r3", "f1", "f2", "slider", "fn", "home"]},
+    "logicalAction": {"enum": ["move-up", "move-down", "move-left", "move-right", "primary", "secondary", "start", "select", "left-stick-click", "right-stick-click", "jump-next-group", "jump-previous-group", "f1", "f2", "fn", "home", "menu", "escape", "volume-up", "volume-down", "brightness-up", "brightness-down", "load-state", "quit"]},
     "power": {
       "type": "object",
       "additionalProperties": false,

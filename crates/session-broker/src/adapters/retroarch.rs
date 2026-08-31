@@ -60,7 +60,7 @@ pub fn plan(
             paths.content.display().to_string(),
         ],
         cwd: fixture_root.to_path_buf(),
-        env: Vec::new(),
+        env: super::input_environment(request, "retroarch")?,
         adapter: "retroarch",
         confirms_usable_save: true,
         log_path: None,

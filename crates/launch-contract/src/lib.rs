@@ -167,6 +167,10 @@ pub enum Scaling {
 pub struct InputSettings {
     pub layout: InputLayout,
     pub rumble: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<input_profile::Binding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hotkeys: Vec<input_profile::Hotkey>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -472,6 +476,10 @@ fn validate_request_fields(request: &LaunchRequest) -> Result<()> {
     validate_logical_path(&request.content_path, PathRoot::Roms)?;
     validate_logical_path(&request.save_path, PathRoot::DataSaves)?;
     validate_logical_path(&request.state_path, PathRoot::DataStates)?;
+    if !request.input.bindings.is_empty() || !request.input.hotkeys.is_empty() {
+        input_profile::validate_input_bindings(&request.input.bindings, &request.input.hotkeys)
+            .map_err(|error| ContractError::new(format!("input mappings are invalid: {error}")))?;
+    }
     Ok(())
 }
 

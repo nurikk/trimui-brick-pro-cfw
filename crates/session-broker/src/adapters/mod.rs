@@ -47,6 +47,19 @@ pub struct LaunchPlan {
     pub log_path: Option<PathBuf>,
 }
 
+pub fn input_environment(
+    request: &LaunchRequest,
+    adapter: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let mappings = input_profile::ResolvedMappings {
+        bindings: request.input.bindings.clone(),
+        hotkeys: request.input.hotkeys.clone(),
+    };
+    let mapping = input_profile::export_adapter_input(adapter, &mappings)
+        .map_err(|error| format!("input mapping export rejected: {error}"))?;
+    Ok(vec![("TRIMUI_INPUT_MAPPING".into(), mapping)])
+}
+
 pub fn build_plan(
     request: &LaunchRequest,
     catalog: &Catalog,

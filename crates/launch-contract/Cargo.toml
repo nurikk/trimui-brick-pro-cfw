@@ -8,5 +8,6 @@ name = "launch-contract-fixtures"
 path = "src/main.rs"
 
 [dependencies]
+input-profile = { path = "../input-profile" }
 serde.workspace = true
 serde_json.workspace = true

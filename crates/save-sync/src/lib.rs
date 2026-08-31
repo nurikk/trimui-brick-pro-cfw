@@ -163,11 +163,24 @@ fn error(message: impl Into<String>) -> SyncError {
 #[derive(Clone)]
 pub struct Exchange {
     root: PathBuf,
+    directory_mode: u32,
+    file_mode: u32,
 }
 
 impl Exchange {
     pub fn new(root: impl Into<PathBuf>) -> Result<Self, SyncError> {
-        let root = root.into();
+        Self::new_with_modes(root.into(), 0o700, 0o600)
+    }
+
+    pub fn for_simulator(root: impl Into<PathBuf>) -> Result<Self, SyncError> {
+        Self::new_with_modes(root.into(), 0o777, 0o644)
+    }
+
+    fn new_with_modes(
+        root: PathBuf,
+        directory_mode: u32,
+        file_mode: u32,
+    ) -> Result<Self, SyncError> {
         if !root.is_absolute() || root == Path::new("/") {
             return Err(error("exchange root must be absolute and non-root"));
         }
@@ -186,10 +199,16 @@ impl Exchange {
             if !path.exists() {
                 fs::create_dir(&path).map_err(storage_error)?;
             }
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).map_err(storage_error)?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(directory_mode))
+                .map_err(storage_error)?;
         }
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).map_err(storage_error)?;
-        Ok(Self { root })
+        fs::set_permissions(&root, fs::Permissions::from_mode(directory_mode))
+            .map_err(storage_error)?;
+        Ok(Self {
+            root,
+            directory_mode,
+            file_mode,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -257,16 +276,21 @@ impl Exchange {
             return Err(error("exchange candidate already exists"));
         }
         fs::create_dir(&directory).map_err(storage_error)?;
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+        fs::set_permissions(&directory, fs::Permissions::from_mode(self.directory_mode))
             .map_err(storage_error)?;
         let result = (|| {
             write_new(
                 &directory.join("candidate.json"),
                 &serde_json::to_vec_pretty(candidate).map_err(storage_error)?,
+                self.file_mode,
             )?;
-            write_new(&directory.join("payload.bin"), payload)?;
+            write_new(&directory.join("payload.bin"), payload, self.file_mode)?;
             if conflict_copy {
-                write_new(&directory.join("syncthing-conflict"), b"conflict-copy\n")?;
+                write_new(
+                    &directory.join("syncthing-conflict"),
+                    b"conflict-copy\n",
+                    self.file_mode,
+                )?;
             }
             sync_dir(&directory)?;
             sync_dir(
@@ -703,7 +727,7 @@ fn validate_hash(value: &str) -> Result<(), SyncError> {
 }
 
 fn prefix(hash: &str) -> String {
-    hash[..12].to_owned()
+    hash.get(..12).unwrap_or_default().to_owned()
 }
 
 fn digest(bytes: &[u8]) -> String {
@@ -742,11 +766,11 @@ fn reject_symlink_components(path: &Path) -> Result<(), SyncError> {
     }
     Ok(())
 }
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), SyncError> {
+fn write_new(path: &Path, bytes: &[u8], mode: u32) -> Result<(), SyncError> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o600)
+        .mode(mode)
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)
         .map_err(storage_error)?;
@@ -763,7 +787,7 @@ fn count_dirs(path: &Path) -> Result<usize, SyncError> {
     Ok(fs::read_dir(path)
         .map_err(storage_error)?
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().is_dir() && !symlink(&entry.path()))
+        .filter(|entry| entry.path().is_dir() && std::ops::Not::not(symlink(&entry.path())))
         .count())
 }
 
@@ -811,7 +835,7 @@ impl SecretRef {
         fs::set_permissions(base, fs::Permissions::from_mode(0o700)).map_err(storage_error)?;
         let path = base.join(file_name);
         if !path.exists() {
-            write_new(&path, &[])?;
+            write_new(&path, &[], 0o600)?;
         }
         Self::new(path)
     }
@@ -864,7 +888,7 @@ mod tests {
                 name: "Brick A".into(),
             },
             generation: 1,
-            hash: digest(b"a"),
+            hash: digest("a".as_bytes()),
             lineage: Lineage {
                 parent_hash: None,
                 ancestry: vec![],

@@ -212,6 +212,7 @@ pub struct GameSummary {
 pub struct ResumeProjection {
     pub content_id: String,
     pub label: String,
+    pub system: String,
     pub status: String,
     pub timestamp_ms: u64,
     pub screenshot: String,

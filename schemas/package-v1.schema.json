@@ -25,7 +25,12 @@
       "maxLength": 32
     },
     "targetSku": {
-      "const": "TG4040"
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "maxLength": 64
+    },
+    "targetAbi": {
+      "const": "aarch64-unknown-linux-musl"
     },
     "type": {
       "enum": [
@@ -33,8 +38,44 @@
         "theme",
         "recipe",
         "core",
-        "portmaster"
+        "portmaster",
+        "module",
+        "application",
+        "utility"
       ]
+    },
+    "builtinEntrypoint": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "dependencies": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+          "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredBytes", "userData"],
+      "properties": {
+        "requiredBytes": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "userData": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^writable/(?!.*\\\\)(?!.*(^|/)\\.\\.?(/|$)).+$"}
+        }
+      }
     },
     "files": {
       "type": "array",
@@ -262,6 +303,11 @@
               "write"
             ]
           }
+        },
+        "filesystem": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["package-data"]}
         }
       },
       "required": [

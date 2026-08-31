@@ -216,6 +216,7 @@ install -m 0755 "$WORK/payload/session-broker-helper" "$STAGE/usr/bin/session-br
 install -m 0755 "$WORK/payload/package-manager" "$STAGE/usr/bin/package-manager"
 install -m 0755 "$WORK/payload/network-services-journey" "$STAGE/usr/bin/brickpro-network-services-journey"
 install -m 0755 "$WORK/payload/aarch64-semantic-journey" "$STAGE/usr/bin/brickpro-launcher-aarch64-journey"
+install -m 0644 "$ROOT/catalog/packages/optional-modules.json" "$STAGE/usr/share/trimui/optional-packages.json"
 install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
     "$STAGE/config/platform/tg4040/compatibility.json"
 install -m 0644 "$ROOT/config/platform/tg4040/power-policies.json" \

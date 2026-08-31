@@ -9,7 +9,8 @@
     "input": { "type": "array", "uniqueItems": true, "items": { "enum": ["buttons"] } },
     "audio": { "type": "array", "uniqueItems": true, "items": { "enum": ["playback"] } },
     "display": { "type": "array", "uniqueItems": true, "items": { "enum": ["read", "overlay"] } },
-    "save": { "type": "array", "uniqueItems": true, "items": { "enum": ["read", "write"] } }
+    "save": { "type": "array", "uniqueItems": true, "items": { "enum": ["read", "write"] } },
+    "filesystem": { "type": "array", "uniqueItems": true, "items": { "enum": ["package-data"] } }
   },
   "required": ["network", "input", "audio", "display", "save"]
 }

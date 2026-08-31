@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
@@ -36,10 +37,18 @@ pub struct PackageManifest {
     pub version: String,
     #[serde(rename = "targetSku")]
     pub target_sku: String,
+    #[serde(rename = "targetAbi", default = "default_target_abi")]
+    pub target_abi: String,
     #[serde(rename = "type")]
     pub package_type: PackageType,
     pub files: Vec<ManifestFile>,
     pub entrypoints: Vec<Entrypoint>,
+    #[serde(rename = "builtinEntrypoint", default)]
+    pub builtin_entrypoint: Option<String>,
+    #[serde(default)]
+    pub dependencies: Vec<Dependency>,
+    #[serde(default)]
+    pub storage: Storage,
     pub runtime: Runtime,
     pub capabilities: Capabilities,
     pub uninstall: UninstallRules,
@@ -55,6 +64,9 @@ pub enum PackageType {
     Recipe,
     Core,
     Portmaster,
+    Module,
+    Application,
+    Utility,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -82,6 +94,82 @@ pub struct Runtime {
     pub dependencies: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Dependency {
+    pub id: String,
+    pub version: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Storage {
+    #[serde(rename = "requiredBytes")]
+    pub required_bytes: u64,
+    #[serde(rename = "userData")]
+    pub user_data: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeviceProfile {
+    pub sku: String,
+    pub abi: String,
+    pub libraries: BTreeMap<String, String>,
+    pub free_bytes: u64,
+}
+
+impl DeviceProfile {
+    pub fn brick_pro() -> Self {
+        Self {
+            sku: "TG4040".into(),
+            abi: default_target_abi(),
+            libraries: BTreeMap::new(),
+            free_bytes: u64::MAX,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Preflight {
+    pub missing_dependencies: Vec<String>,
+    pub required_bytes: u64,
+    pub available_bytes: u64,
+    pub compatibility_error: Option<String>,
+}
+
+impl Preflight {
+    pub fn ready(&self) -> bool {
+        self.compatibility_error.is_none()
+            && self.missing_dependencies.is_empty()
+            && self.available_bytes >= self.required_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageStatus {
+    Available,
+    Installed,
+    UpdateAvailable,
+    Incompatible,
+    Broken,
+}
+
+pub fn bounded_log(lines: impl IntoIterator<Item = String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .take(32)
+        .map(|line| line.chars().take(160).collect())
+        .collect()
+}
+
+fn default_target_abi() -> String {
+    "aarch64-unknown-linux-musl".into()
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capabilities {
@@ -90,6 +178,8 @@ pub struct Capabilities {
     pub audio: Vec<AudioCapability>,
     pub display: Vec<DisplayCapability>,
     pub save: Vec<SaveCapability>,
+    #[serde(default)]
+    pub filesystem: Vec<FilesystemCapability>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -122,6 +212,12 @@ pub enum DisplayCapability {
 pub enum SaveCapability {
     Read,
     Write,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FilesystemCapability {
+    PackageData,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -169,6 +265,10 @@ pub struct ActivationRecord {
     pub id: String,
     pub version: String,
     pub target_sku: String,
+    #[serde(default = "default_target_abi")]
+    pub target_abi: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     pub package_type: PackageType,
     #[serde(rename = "manifestLength")]
     pub manifest_length: u64,
@@ -205,9 +305,10 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     if manifest.schema_url != "https://example.invalid/trimui-brick-package-v1.schema.json"
         || manifest.format != "brickpro-package"
         || manifest.schema_version != 1
-        || manifest.target_sku != "TG4040"
+        || !sku(&manifest.target_sku)
+        || manifest.target_abi != default_target_abi()
     {
-        bail!("unsupported package schema or target")
+        bail!("unsupported package schema, SKU, or ABI")
     }
     reject_core_pack(manifest)?;
     if !identifier(&manifest.id) || !version(&manifest.version) {
@@ -216,10 +317,46 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     if manifest.files.is_empty() || manifest.files.len() > MAX_FILES {
         bail!("package file count is outside bounds")
     }
+    let mut dependencies = BTreeSet::new();
+    if manifest.dependencies.len() > 32
+        || manifest.dependencies.iter().any(|dependency| {
+            !identifier(&dependency.id)
+                || !version(&dependency.version)
+                || !dependencies.insert(&dependency.id)
+        })
+    {
+        bail!("package dependency is invalid")
+    }
+    let mut user_data = BTreeSet::new();
+    if manifest.storage.required_bytes > MAX_EXPANDED_BYTES
+        || manifest.storage.user_data.len() > MAX_FILES
+        || manifest.storage.user_data.iter().any(|path| {
+            validate_relative_path(path).is_err()
+                || !path.starts_with("writable/")
+                || !user_data.insert(path)
+                || !manifest
+                    .files
+                    .iter()
+                    .any(|file| file.file_class == FileClass::Writable && file.path == *path)
+        })
+    {
+        bail!("package storage declaration is invalid")
+    }
     if manifest.package_type == PackageType::Portmaster {
         validate_portmaster_layout(manifest)?;
     } else if !manifest.entrypoints.is_empty() {
         bail!("executable entrypoints are only supported for PortMaster")
+    } else if matches!(
+        manifest.package_type,
+        PackageType::Module | PackageType::Application | PackageType::Utility
+    ) && manifest
+        .builtin_entrypoint
+        .as_deref()
+        .is_none_or(|entrypoint| !identifier(entrypoint))
+    {
+        bail!("optional package requires a fixed builtin entrypoint")
+    } else if manifest.builtin_entrypoint.is_some() {
+        bail!("builtin entrypoint is only valid for an optional package")
     }
     if manifest.runtime.path != "runtime"
         || manifest.runtime.dependencies.len() > 32
@@ -288,6 +425,113 @@ pub fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     Ok(())
 }
 
+pub fn preflight(manifest: &PackageManifest, device: &DeviceProfile) -> Preflight {
+    let required_bytes = manifest
+        .files
+        .iter()
+        .map(|file| file.length)
+        .sum::<u64>()
+        .max(manifest.storage.required_bytes);
+    let compatibility_error = if manifest.target_sku != device.sku {
+        Some("wrong SKU".into())
+    } else if manifest.target_abi != device.abi {
+        Some("wrong ABI".into())
+    } else {
+        None
+    };
+    let missing_dependencies = manifest
+        .dependencies
+        .iter()
+        .filter(|dependency| device.libraries.get(&dependency.id) != Some(&dependency.version))
+        .map(|dependency| format!("{} {}", dependency.id, dependency.version))
+        .collect();
+    Preflight {
+        missing_dependencies,
+        required_bytes,
+        available_bytes: device.free_bytes,
+        compatibility_error,
+    }
+}
+
+fn require_preflight(manifest: &PackageManifest, device: &DeviceProfile) -> Result<()> {
+    let preflight = preflight(manifest, device);
+    if let Some(error) = preflight.compatibility_error {
+        bail!("package preflight failed: {error}")
+    }
+    if !preflight.missing_dependencies.is_empty() {
+        bail!(
+            "package preflight missing dependency: {}",
+            preflight.missing_dependencies.join(", ")
+        )
+    }
+    if preflight.available_bytes < preflight.required_bytes {
+        bail!(
+            "package preflight insufficient space: need {}, have {}",
+            preflight.required_bytes,
+            preflight.available_bytes
+        )
+    }
+    Ok(())
+}
+
+pub fn package_status(
+    root: &Path,
+    manifest: &PackageManifest,
+    device: &DeviceProfile,
+) -> PackageStatus {
+    if !preflight(manifest, device).ready() {
+        return PackageStatus::Incompatible;
+    }
+    let state_path = root
+        .join(PACKAGE_STATE)
+        .join(format!("{}.json", manifest.id));
+    let Ok(bytes) = fs::read(state_path) else {
+        return PackageStatus::Available;
+    };
+    let Ok(record) = serde_json::from_slice::<ActivationRecord>(&bytes) else {
+        return PackageStatus::Broken;
+    };
+    if validate_activation_record(&record, &manifest.id).is_err() {
+        return PackageStatus::Broken;
+    }
+    if !root
+        .join(PACKAGE_ROOT)
+        .join(&record.id)
+        .join(&record.version)
+        .is_dir()
+    {
+        PackageStatus::Broken
+    } else if record.version == manifest.version {
+        PackageStatus::Installed
+    } else {
+        PackageStatus::UpdateAvailable
+    }
+}
+
+pub fn set_enabled(root: &Path, id: &str, enabled: bool) -> Result<()> {
+    if !identifier(id) {
+        bail!("invalid package id")
+    }
+    let root = root.canonicalize().context("resolve package root")?;
+    let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
+    reject_symlink_if_present(&state_path, "activation record")?;
+    let mut record: ActivationRecord = serde_json::from_slice(&fs::read(&state_path)?)?;
+    validate_activation_record(&record, id)?;
+    record.enabled = enabled;
+    write_atomic(&state_path, &serde_json::to_vec_pretty(&record)?)
+}
+
+pub fn simple_launcher_visible(root: &Path, id: &str) -> bool {
+    let state_path = root.join(PACKAGE_STATE).join(format!("{id}.json"));
+    let Ok(bytes) = fs::read(state_path) else {
+        return false;
+    };
+    let Ok(record) = serde_json::from_slice::<ActivationRecord>(&bytes) else {
+        return false;
+    };
+    validate_activation_record(&record, id).is_ok() && record.enabled
+}
+
 pub fn install(
     root: &Path,
     manifest_path: &Path,
@@ -295,6 +539,23 @@ pub fn install(
     options: TransactionOptions,
 ) -> Result<ActivationRecord> {
     install_with_validation(root, manifest_path, payload_root, options, |_, _| Ok(()))
+}
+
+pub fn install_for_device(
+    root: &Path,
+    manifest_path: &Path,
+    payload_root: &Path,
+    device: &DeviceProfile,
+    options: TransactionOptions,
+) -> Result<ActivationRecord> {
+    install_with_validation_for_device(
+        root,
+        manifest_path,
+        payload_root,
+        device,
+        options,
+        |_, _| Ok(()),
+    )
 }
 
 pub fn install_with_validation<F>(
@@ -307,7 +568,29 @@ pub fn install_with_validation<F>(
 where
     F: FnOnce(&PackageManifest, &Path) -> Result<()>,
 {
+    install_with_validation_for_device(
+        root,
+        manifest_path,
+        payload_root,
+        &DeviceProfile::brick_pro(),
+        options,
+        validate_staging,
+    )
+}
+
+pub fn install_with_validation_for_device<F>(
+    root: &Path,
+    manifest_path: &Path,
+    payload_root: &Path,
+    device: &DeviceProfile,
+    options: TransactionOptions,
+    validate_staging: F,
+) -> Result<ActivationRecord>
+where
+    F: FnOnce(&PackageManifest, &Path) -> Result<()>,
+{
     let (manifest, manifest_bytes) = load_manifest(manifest_path)?;
+    require_preflight(&manifest, device)?;
     let root = root.canonicalize().context("resolve package root")?;
     reject_symlink_if_present(&root.join(".brickpro"), "package control root")?;
     save_vault::SaveVault::snapshot_standard(&root, save_vault::SnapshotReason::PrePackage)
@@ -324,14 +607,17 @@ where
     reject_symlink_if_present(&private_root, "package private root")?;
     let state_path = state_root.join(format!("{}.json", manifest.id));
     reject_symlink_if_present(&state_path, "current activation record")?;
-    if state_path.exists() {
+    let current = if state_path.exists() {
         let current: ActivationRecord =
             serde_json::from_slice(&fs::read(&state_path)?).context("read current activation")?;
         validate_activation_record(&current, &manifest.id)?;
         if current.package_type != manifest.package_type {
             bail!("package type cannot change during update")
         }
-    }
+        Some(current)
+    } else {
+        None
+    };
     let version_root = private_root.join(&manifest.id).join(&manifest.version);
     reject_symlink_if_present(&private_root.join(&manifest.id), "package identity root")?;
     reject_symlink_if_present(&version_root, "package version root")?;
@@ -387,6 +673,7 @@ where
                 bail!("simulated interrupted install")
             }
         }
+        carry_user_data(&root, current.as_ref(), &manifest, &staging)?;
         validate_staging(&manifest, &staging)?;
         fs::create_dir_all(
             version_root
@@ -402,6 +689,8 @@ where
             id: manifest.id.clone(),
             version: manifest.version.clone(),
             target_sku: manifest.target_sku.clone(),
+            target_abi: manifest.target_abi.clone(),
+            enabled: current.as_ref().is_none_or(|record| record.enabled),
             package_type: manifest.package_type.clone(),
             manifest_length: manifest_bytes.len() as u64,
             manifest_sha256: hex::encode(Sha256::digest(&manifest_bytes)),
@@ -504,6 +793,7 @@ pub fn uninstall(root: &Path, id: &str, options: TransactionOptions) -> Result<(
     if !version_root.canonicalize()?.starts_with(&canonical_root) {
         bail!("package version root escapes private root")
     }
+    retain_user_data(&root, id, &version_root)?;
     if let Ok(entries) = fs::read_dir(&staging_root) {
         for entry in entries {
             let entry = entry?;
@@ -590,7 +880,8 @@ fn validate_activation_record(record: &ActivationRecord, id: &str) -> Result<()>
         || record.schema_version != 1
         || record.id != id
         || !version(&record.version)
-        || record.target_sku != "TG4040"
+        || !sku(&record.target_sku)
+        || record.target_abi != default_target_abi()
         || record.preserve != PRESERVED
         || record.immutable_root != format!("{PACKAGE_ROOT}/{}/{}/immutable", id, record.version)
         || record.runtime_root != format!("{PACKAGE_ROOT}/{}/{}/runtime", id, record.version)
@@ -678,6 +969,54 @@ fn reject_theme_fields(value: &Value) -> Result<()> {
     Ok(())
 }
 
+fn carry_user_data(
+    root: &Path,
+    current: Option<&ActivationRecord>,
+    manifest: &PackageManifest,
+    staging: &Path,
+) -> Result<()> {
+    let Some(current) = current else {
+        return Ok(());
+    };
+    let previous_root = root
+        .join(PACKAGE_ROOT)
+        .join(&current.id)
+        .join(&current.version);
+    for relative in &manifest.storage.user_data {
+        let source = previous_root.join(relative);
+        if !source.exists() {
+            continue;
+        }
+        let source = private_path(&previous_root, relative)?;
+        let destination = staging.join(relative);
+        fs::create_dir_all(
+            destination
+                .parent()
+                .context("user data path has no parent")?,
+        )?;
+        fs::copy(source, destination)?;
+    }
+    Ok(())
+}
+
+fn retain_user_data(root: &Path, id: &str, version_root: &Path) -> Result<()> {
+    let (manifest, _) = load_manifest(&version_root.join("manifest.json"))?;
+    for relative in &manifest.storage.user_data {
+        let source = private_path(version_root, relative)?;
+        let relative = relative
+            .strip_prefix("writable/")
+            .context("user data is outside writable storage")?;
+        let destination = root.join("data/packages").join(id).join(relative);
+        fs::create_dir_all(
+            destination
+                .parent()
+                .context("retained data has no parent")?,
+        )?;
+        fs::copy(source, destination)?;
+    }
+    Ok(())
+}
+
 fn safe_source(root: &Path, relative: &str) -> Result<PathBuf> {
     validate_relative_path(relative)?;
     let source = root.join(relative);
@@ -752,6 +1091,7 @@ pub fn resolve_portmaster(
         || record.id != id
         || record.version != package_version
         || record.target_sku != "TG4040"
+        || record.target_abi != default_target_abi()
         || record.package_type != PackageType::Portmaster
         || record.immutable_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/immutable")
         || record.runtime_root != format!("{PACKAGE_ROOT}/{id}/{package_version}/runtime")
@@ -834,6 +1174,14 @@ fn validate_relative_path(path: &str) -> Result<()> {
         bail!("path is not normalized relative POSIX")
     }
     Ok(())
+}
+
+fn sku(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 fn identifier(value: &str) -> bool {

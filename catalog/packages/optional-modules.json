@@ -1,0 +1,64 @@
+{
+  "$schema": "https://example.invalid/trimui-brick-package-catalog-v1.schema.json",
+  "format": "brickpro-package-catalog",
+  "schemaVersion": 1,
+  "targetSku": "TG4040",
+  "targetAbi": "aarch64-unknown-linux-musl",
+  "entries": [
+    {
+      "id": "file-transfer",
+      "type": "application",
+      "version": "1.0.0",
+      "builtinEntrypoint": "file-transfer",
+      "dependencies": [{"id": "libcurl", "version": "8.7.1"}],
+      "capabilities": {"network": ["https"], "input": ["buttons"], "audio": [], "display": ["read"], "save": [], "filesystem": ["package-data"]},
+      "storage": {"requiredBytes": 262144, "userData": ["writable/file-transfer.json"]},
+      "uninstallOwnedPaths": ["immutable", "runtime", "cache", "staging"],
+      "simpleLauncher": true
+    },
+    {
+      "id": "retro-achievements",
+      "type": "module",
+      "version": "1.0.0",
+      "builtinEntrypoint": "retro-achievements",
+      "dependencies": [{"id": "libcurl", "version": "8.7.1"}],
+      "capabilities": {"network": ["https"], "input": [], "audio": [], "display": ["overlay"], "save": ["read"], "filesystem": ["package-data"]},
+      "storage": {"requiredBytes": 131072, "userData": ["writable/achievements.json"]},
+      "uninstallOwnedPaths": ["immutable", "runtime", "cache", "staging"],
+      "simpleLauncher": false
+    },
+    {
+      "id": "pico8-splore",
+      "type": "module",
+      "version": "1.0.0",
+      "builtinEntrypoint": "pico8-splore",
+      "dependencies": [],
+      "capabilities": {"network": ["https"], "input": ["buttons"], "audio": ["playback"], "display": ["read"], "save": ["read", "write"], "filesystem": ["package-data"]},
+      "storage": {"requiredBytes": 524288, "userData": ["writable/splore.json"]},
+      "uninstallOwnedPaths": ["immutable", "runtime", "cache", "staging"],
+      "simpleLauncher": true
+    },
+    {
+      "id": "media-tools",
+      "type": "utility",
+      "version": "1.0.0",
+      "builtinEntrypoint": "media-tools",
+      "dependencies": [],
+      "capabilities": {"network": [], "input": ["buttons"], "audio": ["playback"], "display": ["read"], "save": [], "filesystem": ["package-data"]},
+      "storage": {"requiredBytes": 262144, "userData": ["writable/media-tools.json"]},
+      "uninstallOwnedPaths": ["immutable", "runtime", "cache", "staging"],
+      "simpleLauncher": true
+    },
+    {
+      "id": "expert-utilities",
+      "type": "utility",
+      "version": "1.0.0",
+      "builtinEntrypoint": "expert-utilities",
+      "dependencies": [],
+      "capabilities": {"network": [], "input": ["buttons"], "audio": [], "display": ["read"], "save": [], "filesystem": ["package-data"]},
+      "storage": {"requiredBytes": 131072, "userData": ["writable/expert-utilities.json"]},
+      "uninstallOwnedPaths": ["immutable", "runtime", "cache", "staging"],
+      "simpleLauncher": false
+    }
+  ]
+}

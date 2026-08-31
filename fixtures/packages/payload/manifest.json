@@ -5,6 +5,9 @@
     "display": [
       "read"
     ],
+    "filesystem": [
+      "package-data"
+    ],
     "input": [],
     "network": [],
     "save": [
@@ -12,6 +15,7 @@
       "write"
     ]
   },
+  "dependencies": [],
   "entrypoints": [],
   "files": [
     {
@@ -34,6 +38,13 @@
     "path": "runtime"
   },
   "schemaVersion": 1,
+  "storage": {
+    "requiredBytes": 80,
+    "userData": [
+      "writable/preferences.json"
+    ]
+  },
+  "targetAbi": "aarch64-unknown-linux-musl",
   "targetSku": "TG4040",
   "type": "theme",
   "uninstall": {

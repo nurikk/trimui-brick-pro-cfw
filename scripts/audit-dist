@@ -18,6 +18,7 @@ EXPECTED = {
     "usr/bin/session-broker-helper",
     "usr/bin/package-manager",
     "usr/bin/brickpro-launcher-aarch64-journey",
+    "usr/share/trimui/optional-packages.json",
     "bootstrap/boot.sh",
     "bootstrap/recovery.sh",
     "THIRD_PARTY_NOTICES.md",

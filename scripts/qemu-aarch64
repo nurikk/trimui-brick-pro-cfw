@@ -313,9 +313,10 @@ package_lines = (results / "package-manager.txt").read_text().splitlines()
 package_checks = [
     "PASS safe install promoted demo-theme 1.0.0",
     "PASS blocked core-pack rejected before installation",
-    "PASS uninstall preserves protected data",
+    "PASS uninstall preserves protected and declared user data",
     "PASS interrupted install leaves no activation",
     "PASS interrupted uninstall preserves protected data",
+    "PASS preflight rejects SKU ABI dependency space and traversal; disabled package hides safely",
 ]
 if any(check not in package_lines for check in package_checks):
     raise SystemExit("package-manager semantic boundary is incomplete")

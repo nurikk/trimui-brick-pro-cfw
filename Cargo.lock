@@ -685,6 +685,7 @@ dependencies = [
  "anyhow",
  "boot-state",
  "device-profile",
+ "libc",
  "save-vault",
  "serde",
  "serde_json",

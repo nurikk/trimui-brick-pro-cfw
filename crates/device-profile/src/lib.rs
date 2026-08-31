@@ -21,6 +21,8 @@ struct CompatibilityDocument {
     device_id: String,
     #[serde(rename = "targetSku")]
     target_sku: String,
+    #[serde(default, rename = "hardwareRevision")]
+    hardware_revision: Option<String>,
     display: CompatibilityDisplay,
     #[serde(flatten)]
     _other: BTreeMap<String, serde_json::Value>,
@@ -105,6 +107,7 @@ pub struct PhysicalPanel {
 pub struct DeviceProfile {
     device_id: String,
     target_sku: String,
+    hardware_revision: Option<String>,
     logical_width: u16,
     logical_height: u16,
     theme_aspect: &'static str,
@@ -200,9 +203,19 @@ impl DeviceProfile {
                 ));
             }
         }
+        if document.hardware_revision.as_ref().is_some_and(|value| {
+            value.is_empty()
+                || value.len() > 64
+                || !value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        }) {
+            return Err(DeviceProfileError("hardwareRevision is invalid".into()));
+        }
         Ok(Self {
             device_id: document.device_id,
             target_sku: document.target_sku,
+            hardware_revision: document.hardware_revision,
             logical_width: display.expected.width,
             logical_height: display.expected.height,
             theme_aspect: display.theme_aspect.as_str(),
@@ -217,6 +230,9 @@ impl DeviceProfile {
     }
     pub fn target_sku(&self) -> &str {
         &self.target_sku
+    }
+    pub fn hardware_revision(&self) -> Option<&str> {
+        self.hardware_revision.as_deref()
     }
     pub const fn logical_size(&self) -> (u16, u16) {
         (self.logical_width, self.logical_height)
@@ -301,14 +317,14 @@ mod tests {
 
     #[test]
     fn automatic_scale_falls_back_and_accepts_active_dimensions() {
-        let missing = DeviceProfile::from_json(include_bytes!(
-            "../../../config/platform/tg4040/compatibility.json"
-        ))
+        let missing = DeviceProfile::from_json(
+            include_bytes!("../../../config/platform/tg4040/compatibility.json").as_slice(),
+        )
         .unwrap();
         assert_eq!(missing.automatic_scale_percent(), 120);
 
         let json = br#"{"schemaVersion":"1.0.0","deviceId":"density-mm","targetSku":"DENSITY","display":{"expected":{"format":"rgba8888","height":768,"strideBytes":4096,"width":1024},"orientation":"landscape","themeAspect":"4:3","physicalPanel":{"activeWidthMm":81.28,"activeHeightMm":60.96}}}"#;
-        let profile = DeviceProfile::from_json(json).unwrap();
+        let profile = DeviceProfile::from_json(json.as_slice()).unwrap();
         assert_eq!(profile.automatic_scale_percent(), 150);
         assert!(profile.physical_panel().is_some());
     }
@@ -356,7 +372,8 @@ mod tests {
                     "physicalPanel":{"activeWidthMm":142.24,"activeHeightMm":106.68}
                 },
                 "schemaVersion":"1.0.0","targetSku":"UI-DENSITY-ACTIVE-MM-7"
-            }"#,
+            }"#
+            .as_slice(),
         )
         .unwrap();
         assert_eq!(profile.automatic_scale_percent(), 115);
@@ -370,6 +387,7 @@ mod tests {
         .expect("Brick Pro device profile parses");
         assert_eq!(profile.device_id(), "tg4040");
         assert_eq!(profile.target_sku(), "TG4040");
+        assert_eq!(profile.hardware_revision(), Some("synthetic-v1"));
         assert_eq!(profile.logical_size(), (1024, 768));
         assert_eq!(profile.theme_aspect(), "4:3");
         assert_eq!(profile.theme_layout_file(), "aspect-ratio-4-3.xml");
@@ -395,7 +413,10 @@ mod tests {
 
     #[test]
     fn zero_width_is_rejected() {
-        let error = DeviceProfile::from_json(br#"{"schemaVersion":"1.0.0","deviceId":"bad","targetSku":"BAD","display":{"expected":{"format":"rgba8888","height":720,"strideBytes":1,"width":0},"orientation":"landscape","themeAspect":"16:9"}}"#)
+        let error = DeviceProfile::from_json(
+            br#"{"schemaVersion":"1.0.0","deviceId":"bad","targetSku":"BAD","display":{"expected":{"format":"rgba8888","height":720,"strideBytes":1,"width":0},"orientation":"landscape","themeAspect":"16:9"}}"#
+                .as_slice(),
+        )
             .expect_err("zero width must reject");
         assert!(error.to_string().contains("display width"));
     }

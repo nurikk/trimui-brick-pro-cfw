@@ -6,15 +6,67 @@
     "max": 1,
     "min": 1
   },
-  "deviceId": "TG4040",
+  "deviceId": "tg4040",
+  "hardwareRevision": "synthetic-v1",
   "manifestVersion": 1,
   "payloadSha256": "62852ae4f589b1dde793637a22dcb3ea61b25f57dfb286197f90d7c03bfeeb6c",
   "payloadSize": 4096,
   "payloadType": "awimg",
   "releaseId": "release-20260827",
+  "requiredFreeBytes": 12288,
+  "sourceRelease": "base",
   "stockFirmware": {
     "max": "9.9.9",
     "min": "1.0.0"
+  },
+  "targetSku": "TG4040",
+  "userDataManifest": {
+    "entries": [
+      {
+        "class": "saves",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/saves",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      },
+      {
+        "class": "credentials",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/credentials",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      },
+      {
+        "class": "achievements",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/achievements",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      },
+      {
+        "class": "mappings",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/mappings",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      },
+      {
+        "class": "fn-led-settings",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/settings/fn-led",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      },
+      {
+        "class": "service-settings",
+        "migration": "shared-data-copy-on-write",
+        "path": "data/settings/services",
+        "sourceSchema": 1,
+        "targetSchema": 1
+      }
+    ],
+    "format": "update-user-data-manifest",
+    "schemaVersion": 1
   },
   "userspaceAbi": "tg4040-userspace-v1"
 }

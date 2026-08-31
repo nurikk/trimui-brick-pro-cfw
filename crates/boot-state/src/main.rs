@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf, process};
 
 use anyhow::{anyhow, bail, Result};
-use boot_state::{mark_healthy, prepare_pending, select, Slot};
+use boot_state::{load_update_status, mark_healthy, prepare_pending, rollback, select, Slot};
 
 fn main() {
     if let Err(error) = run() {
@@ -49,6 +49,22 @@ fn run() -> Result<()> {
                 state.last_known_good.as_str()
             );
         }
+        Some("rollback") => {
+            let root = root(&mut args)?;
+            reject_extra(&mut args)?;
+            let state = rollback(&root)?;
+            println!(
+                "current={} previous={} reason=manual-rollback",
+                state.current.as_str(),
+                state.previous.as_str()
+            );
+        }
+        Some("status") => {
+            let root = root(&mut args)?;
+            reject_extra(&mut args)?;
+            println!("{}", serde_json::to_string(&load_update_status(&root)?)?);
+        }
+
         Some("journey") => {
             let root = root(&mut args)?;
             reject_extra(&mut args)?;
@@ -77,7 +93,7 @@ fn run() -> Result<()> {
             );
         }
         _ => bail!(
-            "usage: boot-state select|mark-healthy|journey|healthy-journey --root FIXTURE_ROOT"
+            "usage: boot-state select|mark-healthy|rollback|status|journey|healthy-journey --root FIXTURE_ROOT"
         ),
     }
     Ok(())

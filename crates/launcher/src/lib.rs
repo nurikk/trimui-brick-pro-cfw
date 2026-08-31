@@ -667,6 +667,68 @@ impl PresentationState {
         })
     }
 
+    fn restore_visual_preferences(&mut self, preferences: &ui_model::UiPreferences) -> Result<()> {
+        self.settings
+            .set_value(
+                "core.display.visual-preset",
+                settings_schema::SettingValue::EnumSingle(
+                    visual_preset_name(preferences.visual_preset).into(),
+                ),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?;
+        self.settings
+            .set_value(
+                "core.display.night-schedule",
+                settings_schema::SettingValue::EnumSingle(
+                    night_schedule_name(preferences.night_schedule).into(),
+                ),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?;
+        for change in [
+            ui_model::PreferenceChange::VisualPreset(preferences.visual_preset),
+            ui_model::PreferenceChange::NightSchedule(preferences.night_schedule),
+        ] {
+            self.ui = ui_model::reduce(&self.ui, UiAction::SetPreference(change));
+        }
+        Ok(())
+    }
+
+    fn sync_visual_preferences(&mut self) -> Result<()> {
+        let scene = self
+            .settings
+            .scene()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let value = |id: &str| {
+            scene
+                .sections
+                .iter()
+                .flat_map(|section| &section.groups)
+                .flat_map(|group| &group.controls)
+                .find(|control| control.setting_id == id)
+                .and_then(|control| match &control.value {
+                    settings_ui::SemanticValue::EnumSingle(value) => Some(value.as_str()),
+                    _ => None,
+                })
+        };
+        if let Some(preset) = value("core.display.visual-preset").and_then(visual_preset) {
+            self.ui = ui_model::reduce(
+                &self.ui,
+                UiAction::SetPreference(ui_model::PreferenceChange::VisualPreset(preset)),
+            );
+        }
+        if let Some(schedule) = value("core.display.night-schedule").and_then(night_schedule) {
+            self.ui = ui_model::reduce(
+                &self.ui,
+                UiAction::SetPreference(ui_model::PreferenceChange::NightSchedule(schedule)),
+            );
+        }
+        Ok(())
+    }
+
+    fn reset_visual_preferences(&mut self) -> Result<()> {
+        self.restore_visual_preferences(&ui_model::UiPreferences::default())
+    }
+
     fn screen(&self) -> Result<PresentationScreen> {
         let settings = self
             .settings
@@ -1929,6 +1991,7 @@ fn run_session<P: Platform>(
         .map(|item| item.content_id.clone())
         .collect();
     let preferences = persisted.preferences.clone();
+    presentation.restore_visual_preferences(&preferences)?;
     for change in [
         ui_model::PreferenceChange::ArtworkMode(preferences.artwork_mode),
         ui_model::PreferenceChange::MetadataVisibility(preferences.metadata_visibility),
@@ -1937,6 +2000,12 @@ fn run_session<P: Platform>(
     ] {
         presentation.ui = ui_model::reduce(&presentation.ui, UiAction::SetPreference(change));
     }
+    presentation.ui = ui_model::reduce(
+        &presentation.ui,
+        UiAction::SetVisualClock {
+            wall_clock_ms: platform.wall_clock_ms(),
+        },
+    );
     for favorite in &persisted.favorites {
         let game_id = presentation
             .ui
@@ -2278,6 +2347,10 @@ fn handle_request<P: Platform>(
             platform
                 .semantic_clock(monotonic_ms, wall_clock_ms)
                 .map_err(|error| error.to_string())?;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                UiAction::SetVisualClock { wall_clock_ms },
+            );
             if state.lifecycle.deadline_due(LifecycleClock {
                 monotonic_ms: platform.logical_time_ms(),
                 boot_time_ms: platform.wall_clock_ms(),
@@ -3144,6 +3217,42 @@ fn synthetic_progress(slots: u8, completed: u16) -> ui_model::ScraperProgress {
     }
 }
 
+fn visual_preset_name(preset: ui_model::VisualPreset) -> &'static str {
+    match preset {
+        ui_model::VisualPreset::Default => "default",
+        ui_model::VisualPreset::NightWarm => "night-warm",
+        ui_model::VisualPreset::LowBrightness => "low-brightness",
+        ui_model::VisualPreset::PixelAccurate => "pixel-accurate",
+        ui_model::VisualPreset::DenseList => "dense-list",
+    }
+}
+
+fn visual_preset(value: &str) -> Option<ui_model::VisualPreset> {
+    Some(match value {
+        "default" => ui_model::VisualPreset::Default,
+        "night-warm" => ui_model::VisualPreset::NightWarm,
+        "low-brightness" => ui_model::VisualPreset::LowBrightness,
+        "pixel-accurate" => ui_model::VisualPreset::PixelAccurate,
+        "dense-list" => ui_model::VisualPreset::DenseList,
+        _ => return None,
+    })
+}
+
+fn night_schedule_name(schedule: ui_model::NightSchedule) -> &'static str {
+    match schedule {
+        ui_model::NightSchedule::Manual => "manual",
+        ui_model::NightSchedule::LocalTime => "local-time",
+    }
+}
+
+fn night_schedule(value: &str) -> Option<ui_model::NightSchedule> {
+    Some(match value {
+        "manual" => ui_model::NightSchedule::Manual,
+        "local-time" => ui_model::NightSchedule::LocalTime,
+        _ => return None,
+    })
+}
+
 fn sync_settings_ui_size(
     state: &mut PresentationState,
     action: input_profile::Action,
@@ -3165,6 +3274,7 @@ fn sync_settings_ui_size(
         let value = match value {
             "automatic" => ui_model::UiSize::Automatic,
             "compact" => ui_model::UiSize::Compact,
+            "normal" => ui_model::UiSize::Normal,
             "comfortable" => ui_model::UiSize::Comfortable,
             "large" => ui_model::UiSize::Large,
             "extra-large" => ui_model::UiSize::ExtraLarge,
@@ -3296,6 +3406,81 @@ mod tests {
             parent_gesture: 0,
         };
         (state, catalog, broker_root)
+    }
+
+    #[test]
+    fn visual_preferences_survive_reload_and_reset_to_safe_default() {
+        let root = std::env::temp_dir().join(format!(
+            "trimui-visual-preferences-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("test clock")
+                .as_nanos()
+        ));
+        let preferences = ui_model::UiPreferences {
+            visual_preset: ui_model::VisualPreset::DenseList,
+            night_schedule: ui_model::NightSchedule::LocalTime,
+            ..Default::default()
+        };
+        launcher_state::save(
+            &root,
+            &launcher_state::State {
+                preferences: preferences.clone(),
+                ..Default::default()
+            },
+        )
+        .expect("save visual preferences");
+        let restored = launcher_state::load(&root).preferences;
+        assert_eq!(restored, preferences);
+
+        let mut presentation = PresentationState::new("tg4040").expect("presentation state");
+        presentation
+            .restore_visual_preferences(&restored)
+            .expect("restore visual settings");
+        assert_eq!(
+            presentation
+                .screen()
+                .expect("visual presentation")
+                .visual_profile
+                .preset,
+            ui_model::VisualPreset::DenseList
+        );
+
+        presentation
+            .reset_visual_preferences()
+            .expect("safe visual reset");
+        assert_eq!(
+            presentation.ui.preferences.visual_preset,
+            ui_model::VisualPreset::Default
+        );
+        assert_eq!(
+            presentation.ui.preferences.night_schedule,
+            ui_model::NightSchedule::Manual
+        );
+        let scene = presentation.settings.scene().expect("settings readback");
+        let controls = scene
+            .sections
+            .iter()
+            .flat_map(|section| &section.groups)
+            .flat_map(|group| &group.controls)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            controls
+                .iter()
+                .find(|control| control.setting_id == "core.display.visual-preset")
+                .expect("visual preset readback")
+                .value,
+            settings_ui::SemanticValue::EnumSingle("default".into())
+        );
+        assert_eq!(
+            controls
+                .iter()
+                .find(|control| control.setting_id == "core.display.night-schedule")
+                .expect("night schedule readback")
+                .value,
+            settings_ui::SemanticValue::EnumSingle("manual".into())
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -4417,6 +4602,12 @@ fn lifecycle_control<P: Platform>(
         _ => return Err("lifecycle operation must be suspend, resume, or shutdown".into()),
     };
     sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
+    state.presentation.ui = ui_model::reduce(
+        &state.presentation.ui,
+        UiAction::SetVisualClock {
+            wall_clock_ms: platform.wall_clock_ms(),
+        },
+    );
     let phase = state.lifecycle.phase();
     if matches!(
         phase,
@@ -5190,6 +5381,10 @@ fn handle_semantic_action<P: Platform>(
                 }
                 if canonical_route_id(&state.journey) == Some("diagnostics-safe-mode") {
                     state.power.safe_mode_reset();
+                    state.presentation.reset_visual_preferences()?;
+                    state.persisted.preferences = state.presentation.ui.preferences.clone();
+                    launcher_state::save(&evidence.root.join("data"), &state.persisted)
+                        .map_err(|error| anyhow!(error.to_string()))?;
                     state.route = Route::Library;
                 }
                 if matches!(state.journey, ProductJourneyState::Session { .. })
@@ -6740,6 +6935,7 @@ fn handle_presentation_action(
                 .press(button)
                 .map_err(|error| anyhow!(error.to_string()))?;
             sync_settings_ui_size(state, action)?;
+            state.sync_visual_preferences()?;
             if action == input_profile::Action::Secondary
                 && surface == settings_ui::Surface::SectionList
             {

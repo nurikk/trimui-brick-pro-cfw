@@ -14,8 +14,10 @@
       "properties": {
         "artworkMode": { "enum": ["large", "compact", "off"] },
         "metadataVisibility": { "enum": ["full", "compact", "hidden"] },
-        "uiSize": { "enum": ["automatic", "compact", "comfortable", "large", "extra-large"] },
-        "colorScheme": { "enum": ["ink", "paper", "high-contrast"] }
+        "uiSize": { "enum": ["automatic", "compact", "normal", "comfortable", "large", "extra-large"] },
+        "colorScheme": { "enum": ["ink", "paper", "high-contrast"] },
+        "visualPreset": { "enum": ["default", "night-warm", "low-brightness", "pixel-accurate", "dense-list"] },
+        "nightSchedule": { "enum": ["manual", "local-time"] }
       }
     },
     "favorites": { "type": "array", "maxItems": 512, "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },

@@ -20,7 +20,7 @@
       "default": {"kind": "integer", "value": 50}, "current": {"kind": "integer", "value": 60}, "pending": {"kind": "integer", "value": 70},
       "constraints": {"range": {"min": 0, "max": 100, "step": 10}, "text": null, "options": []},
       "units": "percent", "display": {"unit": "percent", "format": "slider", "redact": false}, "scope": "system", "apply": ["immediate"],
-      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "requiresCapabilities": ["cap.display.brightness"], "unsupportedReason": "Brightness control is unavailable until TG4040 panel support is measured", "visibility": null, "enabledIf": null, "redacted": false,
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {
@@ -30,6 +30,7 @@
       "constraints": {"range": null, "text": null, "options": [
         {"value": "automatic", "labelKey": "settings.display.uiSize.automatic"},
         {"value": "compact", "labelKey": "settings.display.uiSize.compact"},
+        {"value": "normal", "labelKey": "settings.display.uiSize.normal"},
         {"value": "comfortable", "labelKey": "settings.display.uiSize.comfortable"},
         {"value": "large", "labelKey": "settings.display.uiSize.large"},
         {"value": "extra-large", "labelKey": "settings.display.uiSize.extraLarge"}
@@ -44,7 +45,7 @@
       "default": {"kind": "decimal", "value": 1.0}, "current": {"kind": "decimal", "value": 1.2}, "pending": null,
       "constraints": {"range": {"min": 0.5, "max": 2.0, "step": 0.1}, "text": null, "options": []},
       "units": null, "display": {"unit": null, "format": "decimal", "redact": false}, "scope": "user", "apply": ["on-confirm"],
-      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "requiresCapabilities": ["cap.display.gamma"], "unsupportedReason": "Gamma control is unavailable until TG4040 panel support is measured", "visibility": null, "enabledIf": null, "redacted": false,
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {
@@ -52,6 +53,33 @@
       "labelKey": "settings.display.nightMode.label", "descriptionKey": "settings.display.nightMode.description", "kind": "boolean",
       "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": true}, "pending": null,
       "constraints": null, "units": null, "display": {"unit": null, "format": "toggle", "redact": false}, "scope": "theme", "apply": ["restart-launcher"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.display.visual-preset", "namespace": "core", "section": "display", "group": "screen", "order": 50,
+      "labelKey": "settings.display.visualPreset.label", "descriptionKey": "settings.display.visualPreset.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "default"}, "current": {"kind": "enum-single", "value": "default"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "default", "labelKey": "settings.display.visualPreset.default"},
+        {"value": "night-warm", "labelKey": "settings.display.visualPreset.nightWarm"},
+        {"value": "low-brightness", "labelKey": "settings.display.visualPreset.lowBrightness"},
+        {"value": "pixel-accurate", "labelKey": "settings.display.visualPreset.pixelAccurate"},
+        {"value": "dense-list", "labelKey": "settings.display.visualPreset.denseList"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "user", "apply": ["immediate"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
+      "id": "core.display.night-schedule", "namespace": "core", "section": "display", "group": "screen", "order": 60,
+      "labelKey": "settings.display.nightSchedule.label", "descriptionKey": "settings.display.nightSchedule.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "manual"}, "current": {"kind": "enum-single", "value": "manual"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "manual", "labelKey": "settings.display.nightSchedule.manual"},
+        {"value": "local-time", "labelKey": "settings.display.nightSchedule.localTime"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "user", "apply": ["immediate"],
       "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },

@@ -1,6 +1,8 @@
 use launcher_theme::{scene as theme_scene, Reason as ThemeReason, ValidatedTheme};
 use serde::Serialize;
-use ui_model::{AssetKind, GeneratedAssetRef, Route, UiSize, UiState};
+use ui_model::{
+    AssetKind, GeneratedAssetRef, ListDensity, Route, UiSize, UiState, VisualPreset, VisualProfile,
+};
 
 pub const SCHEMA: &str = "launcher-presentation/v1";
 
@@ -217,6 +219,31 @@ impl LayoutGeometry {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RowMetrics {
+    pub scale_percent: u16,
+    pub row_height: u32,
+    pub row_step: u32,
+}
+
+pub fn row_metrics(screen: &Screen, automatic_scale_percent: u16) -> RowMetrics {
+    let scale_percent = screen
+        .ui_size
+        .preset_scale_percent()
+        .unwrap_or(automatic_scale_percent);
+    let density_percent = match screen.visual_profile.list_density {
+        ListDensity::Normal => 100,
+        ListDensity::Dense => 80,
+    };
+    let row_height = (26 * u32::from(scale_percent) * density_percent / 10_000).max(18);
+    let spacing = (12 * u32::from(scale_percent) * density_percent / 10_000).max(6);
+    RowMetrics {
+        scale_percent,
+        row_height,
+        row_step: row_height + spacing,
+    }
+}
+
 pub fn layout_geometry(
     screen: &Screen,
     viewport_width: u32,
@@ -245,12 +272,9 @@ pub fn layout_geometry(
             )
         })
         .collect::<Vec<_>>();
-    let scale = screen
-        .ui_size
-        .preset_scale_percent()
-        .unwrap_or(automatic_scale_percent);
-    let row_height = (26 * u32::from(scale) / 100).max(18);
-    let row_step = row_height + (12 * u32::from(scale) / 100).max(6);
+    let rows = row_metrics(screen, automatic_scale_percent);
+    let row_height = rows.row_height;
+    let row_step = rows.row_step;
     let menu = reflow("route-content", 32, 72, 960, 576);
     let items = if screen.focus == "game-list" {
         &screen.game_rows
@@ -328,6 +352,7 @@ pub struct Screen {
     pub system_media: Option<ScreenMedia>,
     pub regions: Vec<ScreenRegion>,
     pub palette: Palette,
+    pub visual_profile: VisualProfile,
     pub theme: launcher_theme::Scene,
     pub theme_fallback: Option<String>,
     pub generated_assets: Vec<GeneratedAssetRef>,
@@ -441,15 +466,19 @@ pub fn build_with_recent(
                 favorite: game.favorite,
             })
     });
+    let visual_profile = state.preferences.visual_profile(state.visual_clock_ms);
     let theme_data = theme.theme();
-    let palette = Palette {
-        background: color(&theme_data.colors.background),
-        surface: color(&theme_data.colors.surface),
-        accent: color(&theme_data.colors.accent),
-        text: color(&theme_data.colors.text),
-        muted: color(&theme_data.colors.muted),
-        highlight: color(&theme_data.colors.highlight),
-    };
+    let palette = visual_palette(
+        Palette {
+            background: color(&theme_data.colors.background),
+            surface: color(&theme_data.colors.surface),
+            accent: color(&theme_data.colors.accent),
+            text: color(&theme_data.colors.text),
+            muted: color(&theme_data.colors.muted),
+            highlight: color(&theme_data.colors.highlight),
+        },
+        &visual_profile,
+    );
     let scene = theme_scene(theme);
     let game_media = state
         .games
@@ -500,10 +529,15 @@ pub fn build_with_recent(
                 y: region.bounds.y,
                 width: region.bounds.width,
                 height: region.bounds.height,
-                visible: true,
+                visible: visual_profile.status_bar_visible
+                    || !matches!(
+                        region.kind,
+                        launcher_theme::RegionKind::Clock | launcher_theme::RegionKind::Battery
+                    ),
             })
             .collect(),
         palette,
+        visual_profile,
         theme: scene,
         theme_fallback: theme_fallback.map(format_reason),
         generated_assets,
@@ -548,6 +582,29 @@ pub fn build_with_recent(
         },
         save_sync: None,
     }
+}
+
+fn visual_palette(mut palette: Palette, profile: &VisualProfile) -> Palette {
+    let brightness = profile
+        .requested_brightness_percent
+        .max(profile.brightness_floor_percent);
+    for color in [
+        &mut palette.background,
+        &mut palette.surface,
+        &mut palette.accent,
+        &mut palette.text,
+        &mut palette.muted,
+        &mut palette.highlight,
+    ] {
+        if profile.preset == VisualPreset::NightWarm {
+            color[0] = color[0].saturating_add(16);
+            color[2] = color[2].saturating_sub(24);
+        }
+        for channel in &mut color[..3] {
+            *channel = (*channel as u16 * u16::from(brightness) / 100) as u8;
+        }
+    }
+    palette
 }
 
 pub fn media_for_content(content_id: &str) -> Vec<ScreenMedia> {
@@ -939,6 +996,26 @@ mod tests {
         assert!(media[1].path.contains("games/nebula-screen.png"));
         assert_eq!((media[0].width, media[0].height), (1024, 1536));
         assert_eq!((media[1].width, media[1].height), (1536, 1024));
+    }
+
+    #[test]
+    fn low_brightness_palette_is_dimmed() {
+        let preferences = ui_model::UiPreferences {
+            visual_preset: VisualPreset::LowBrightness,
+            ..Default::default()
+        };
+        let palette = visual_palette(
+            Palette {
+                background: [100, 100, 100, 255],
+                surface: [100, 100, 100, 255],
+                accent: [100, 100, 100, 255],
+                text: [100, 100, 100, 255],
+                muted: [100, 100, 100, 255],
+                highlight: [100, 100, 100, 255],
+            },
+            &preferences.visual_profile(0),
+        );
+        assert_eq!(palette.background, [20, 20, 20, 255]);
     }
 
     #[test]

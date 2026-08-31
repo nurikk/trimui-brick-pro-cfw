@@ -320,6 +320,7 @@ pub enum MetadataVisibility {
 pub enum UiSize {
     Automatic,
     Compact,
+    Normal,
     Comfortable,
     Large,
     ExtraLarge,
@@ -330,6 +331,7 @@ impl UiSize {
         match self {
             Self::Automatic => None,
             Self::Compact => Some(90),
+            Self::Normal => Some(100),
             Self::Comfortable => Some(110),
             Self::Large => Some(125),
             Self::ExtraLarge => Some(150),
@@ -345,6 +347,46 @@ pub enum ColorScheme {
     HighContrast,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VisualPreset {
+    #[default]
+    Default,
+    NightWarm,
+    LowBrightness,
+    PixelAccurate,
+    DenseList,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NightSchedule {
+    #[default]
+    Manual,
+    LocalTime,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ListDensity {
+    Normal,
+    Dense,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualProfile {
+    pub preset: VisualPreset,
+    pub requested_brightness_percent: u8,
+    pub brightness_floor_percent: u8,
+    pub gamma: Option<u8>,
+    pub color_temperature_kelvin: Option<u16>,
+    pub list_density: ListDensity,
+    pub artwork_mode: ArtworkMode,
+    pub status_bar_visible: bool,
+    pub pixel_accurate: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UiPreferences {
@@ -352,6 +394,85 @@ pub struct UiPreferences {
     pub metadata_visibility: MetadataVisibility,
     pub ui_size: UiSize,
     pub color_scheme: ColorScheme,
+    #[serde(default)]
+    pub visual_preset: VisualPreset,
+    #[serde(default)]
+    pub night_schedule: NightSchedule,
+}
+
+impl UiPreferences {
+    pub fn visual_profile(&self, wall_clock_ms: u64) -> VisualProfile {
+        let preset = match (self.visual_preset, self.night_schedule) {
+            (VisualPreset::NightWarm, NightSchedule::LocalTime)
+                if !is_night_local_time(wall_clock_ms) =>
+            {
+                VisualPreset::Default
+            }
+            (preset, _) => preset,
+        };
+        match preset {
+            VisualPreset::Default => VisualProfile {
+                preset,
+                requested_brightness_percent: 100,
+                brightness_floor_percent: 20,
+                gamma: None,
+                color_temperature_kelvin: None,
+                list_density: ListDensity::Normal,
+                artwork_mode: ArtworkMode::Large,
+                status_bar_visible: true,
+                pixel_accurate: false,
+            },
+            VisualPreset::NightWarm => VisualProfile {
+                preset,
+                requested_brightness_percent: 35,
+                brightness_floor_percent: 20,
+                gamma: None,
+                color_temperature_kelvin: None,
+                list_density: ListDensity::Normal,
+                artwork_mode: ArtworkMode::Large,
+                status_bar_visible: true,
+                pixel_accurate: false,
+            },
+            VisualPreset::LowBrightness => VisualProfile {
+                preset,
+                requested_brightness_percent: 20,
+                brightness_floor_percent: 20,
+                gamma: None,
+                color_temperature_kelvin: None,
+                list_density: ListDensity::Normal,
+                artwork_mode: ArtworkMode::Large,
+                status_bar_visible: true,
+                pixel_accurate: false,
+            },
+            VisualPreset::PixelAccurate => VisualProfile {
+                preset,
+                requested_brightness_percent: 100,
+                brightness_floor_percent: 20,
+                gamma: None,
+                color_temperature_kelvin: None,
+                list_density: ListDensity::Normal,
+                artwork_mode: ArtworkMode::Compact,
+                status_bar_visible: true,
+                pixel_accurate: true,
+            },
+            VisualPreset::DenseList => VisualProfile {
+                preset,
+                requested_brightness_percent: 100,
+                brightness_floor_percent: 20,
+                gamma: None,
+                color_temperature_kelvin: None,
+                list_density: ListDensity::Dense,
+                artwork_mode: ArtworkMode::Compact,
+                status_bar_visible: false,
+                pixel_accurate: false,
+            },
+        }
+    }
+}
+
+fn is_night_local_time(wall_clock_ms: u64) -> bool {
+    let minute = (wall_clock_ms / 60_000 % (24 * 60)) as u16;
+    !(420..1260).contains(&minute)
 }
 
 impl Default for UiPreferences {
@@ -361,6 +482,8 @@ impl Default for UiPreferences {
             metadata_visibility: MetadataVisibility::Full,
             ui_size: UiSize::Automatic,
             color_scheme: ColorScheme::Ink,
+            visual_preset: VisualPreset::Default,
+            night_schedule: NightSchedule::Manual,
         }
     }
 }
@@ -372,6 +495,8 @@ pub enum PreferenceChange {
     MetadataVisibility(MetadataVisibility),
     UiSize(UiSize),
     ColorScheme(ColorScheme),
+    VisualPreset(VisualPreset),
+    NightSchedule(NightSchedule),
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -612,6 +737,8 @@ pub struct UiState {
     pub selected_system: Option<SystemId>,
     pub search_query: String,
     pub preferences: UiPreferences,
+    #[serde(default)]
+    pub visual_clock_ms: u64,
     pub preview_ui_size: Option<UiSize>,
     pub layout: LayoutContract,
     pub view: ViewContract,
@@ -645,6 +772,7 @@ impl UiState {
             selected_system: None,
             search_query: String::new(),
             preferences: UiPreferences::default(),
+            visual_clock_ms: 0,
             preview_ui_size: None,
             layout: LayoutContract::default(),
             view: ViewContract::default(),
@@ -854,6 +982,7 @@ pub enum Action {
     ConfirmUiSizePreview,
     CancelUiSizePreview,
     TimeoutUiSizePreview,
+    SetVisualClock { wall_clock_ms: u64 },
     SetAffordances(PlatformAffordances),
     SetCapabilities(PlatformCapabilities),
     SetGroupJump(GroupJumpState),
@@ -984,6 +1113,7 @@ pub fn reduce(state: &UiState, action: Action) -> UiState {
         Action::CancelUiSizePreview | Action::TimeoutUiSizePreview => {
             next.preview_ui_size = None;
         }
+        Action::SetVisualClock { wall_clock_ms } => next.visual_clock_ms = wall_clock_ms,
         Action::SetAffordances(affordances) => next.affordances = affordances,
         Action::SetResumeEntries { entries } => {
             next.resume_entries = entries;
@@ -1128,6 +1258,8 @@ fn set_preference(state: &mut UiState, change: PreferenceChange) {
         }
         PreferenceChange::UiSize(value) => state.preferences.ui_size = value,
         PreferenceChange::ColorScheme(value) => state.preferences.color_scheme = value,
+        PreferenceChange::VisualPreset(value) => state.preferences.visual_preset = value,
+        PreferenceChange::NightSchedule(value) => state.preferences.night_schedule = value,
     }
     state.feedback = UiFeedback::PreferenceChanged;
 }

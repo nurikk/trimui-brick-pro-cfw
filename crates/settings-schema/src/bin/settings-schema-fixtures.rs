@@ -162,11 +162,11 @@ fn check_rejected_cases(registry: &Registry) -> Result<(), String> {
     expect_rejected("circular predicate", cycle.validate())?;
 
     let mut secret_without_redaction = registry.clone();
-    secret_without_redaction.settings[8].redacted = false;
+    secret_without_redaction.settings[10].redacted = false;
     expect_rejected("unredacted secret", secret_without_redaction.validate())?;
 
     let mut secret_bytes = registry.clone();
-    secret_bytes.settings[8].default = Some(SettingValue::Text("secret-bytes".into()));
+    secret_bytes.settings[10].default = Some(SettingValue::Text("secret-bytes".into()));
     expect_rejected("secret bytes", secret_bytes.validate())?;
 
     let mut executable = FIXTURE[..FIXTURE.len() - 2].to_vec();

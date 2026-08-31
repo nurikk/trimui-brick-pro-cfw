@@ -516,6 +516,15 @@ def validate_focus_flow(container, run_dir):
             raise RuntimeError(f"Focus {field} leaked an unapproved title: {rows!r}")
         if [row.get("id") for row in rows if row.get("selected")] != [state["selectedContentId"]]:
             raise RuntimeError(f"Focus {field} selection diverged from controller state: {rows!r}")
+    resume = presentation.get("resume", [])
+    if [entry.get("contentId") for entry in resume] != approved:
+        raise RuntimeError(f"Focus resume leaked a non-approved stable ID: {resume!r}")
+    if any(
+        title in entry.get("label", "")
+        for entry in resume
+        for title in ("Orbit Garden", "Signal Workshop")
+    ):
+        raise RuntimeError(f"Focus resume leaked an unapproved title: {resume!r}")
     state = button(container, run_dir, "primary")
     if state["activeSession"] is None:
         raise RuntimeError("Focus launch did not create a session")

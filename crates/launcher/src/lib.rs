@@ -820,6 +820,12 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
         screen.title = entry.title.clone();
         screen.modal = Some(format!("{} FRAME {}", entry.title, state.session_step));
     }
+    if matches!(state.journey, ProductJourneyState::FocusHome { .. }) {
+        let entries = focus_catalog_entries(state, catalog);
+        screen
+            .resume
+            .retain(|resume| entries.iter().any(|entry| entry.id == resume.content_id));
+    }
     if state.presentation.theme_garden {
         screen.selected_game = None;
         screen.game_media.clear();
@@ -2526,8 +2532,12 @@ fn refresh_resume_projection(
     catalog: &UiCatalog,
     launch_catalog: &LaunchCatalog,
 ) -> Result<(), String> {
-    let requests = catalog
-        .entries
+    let entries = if matches!(state.journey, ProductJourneyState::FocusHome { .. }) {
+        focus_catalog_entries(state, catalog)
+    } else {
+        catalog.entries.iter().collect()
+    };
+    let requests = entries
         .iter()
         .filter_map(|entry| {
             launch_request(
@@ -2539,10 +2549,13 @@ fn refresh_resume_projection(
             .ok()
         })
         .collect::<Vec<_>>();
-    let summaries = state
+    let mut summaries = state
         .broker
         .resume_entries(&requests)
         .map_err(|error| error.to_string())?;
+    if matches!(state.journey, ProductJourneyState::FocusHome { .. }) {
+        summaries.retain(|summary| entries.iter().any(|entry| entry.id == summary.content_id));
+    }
     let entries = summaries
         .into_iter()
         .map(|summary| {
@@ -3557,12 +3570,33 @@ mod tests {
     #[test]
     fn focus_home_filters_rendered_rows_and_controller_selection() {
         let (mut state, catalog, broker_root) = test_state(Route::Library, ui_model::Route::Home);
+        let launch_catalog =
+            launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
+        for entry in &catalog.entries {
+            state
+                .broker
+                .submit(
+                    launch_request(
+                        entry,
+                        &launch_catalog,
+                        &state.input_profile,
+                        &state.input_mappings,
+                    )
+                    .expect("launch request"),
+                    &launch_catalog,
+                )
+                .expect("submit session");
+            state.broker.complete(0, 0).expect("complete session");
+        }
+        refresh_resume_projection(&mut state, &catalog, &launch_catalog)
+            .expect("unrestricted resume projection");
         let unrestricted_rows = screen_for_state(&state, &catalog)
             .expect("unrestricted Home screen")
             .game_rows
             .into_iter()
             .map(|row| row.id)
             .collect::<Vec<_>>();
+        let unrestricted_resume = state.presentation.ui.resume_entries.clone();
         let approved = ["nebula-nes", "mirror-ps1"];
         state.persisted.focus = approved.iter().map(|id| (*id).into()).collect();
         state.persisted.focus_home = true;
@@ -3580,12 +3614,35 @@ mod tests {
                 !row.label.contains("Orbit Garden") && !row.label.contains("Signal Workshop")
             }));
         }
+        assert_eq!(
+            focus_screen
+                .resume
+                .iter()
+                .map(|entry| entry.content_id.as_str())
+                .collect::<Vec<_>>(),
+            approved,
+            "Focus resume affordances must use the approved stable IDs"
+        );
+        assert!(focus_screen.resume.iter().all(|entry| {
+            !entry.label.contains("Orbit Garden") && !entry.label.contains("Signal Workshop")
+        }));
+        refresh_resume_projection(&mut state, &catalog, &launch_catalog)
+            .expect("Focus resume projection");
+        assert_eq!(
+            state
+                .presentation
+                .ui
+                .resume_entries
+                .iter()
+                .map(|entry| entry.content_id.as_str())
+                .collect::<Vec<_>>(),
+            approved,
+            "Focus resume projections must use the approved stable IDs"
+        );
 
         let evidence_root = broker_root.join("evidence");
         let evidence = Evidence::new(&evidence_root).expect("evidence");
         let mut log = EventLog::new(&evidence.root, "focus-filter").expect("event log");
-        let launch_catalog =
-            launch_contract::parse_catalog_json(LAUNCH_CATALOG_BYTES).expect("launch catalog");
         let mut platform = TestPlatform;
         for button in [Button::Down, Button::Up] {
             press_controller_button(
@@ -3635,6 +3692,8 @@ mod tests {
         }
         assert!(!state.persisted.kid_safe);
         assert!(matches!(state.journey, ProductJourneyState::Home { .. }));
+        refresh_resume_projection(&mut state, &catalog, &launch_catalog)
+            .expect("full Home resume projection");
         let full_home = screen_for_state(&state, &catalog).expect("full Home screen");
         assert_eq!(
             full_home
@@ -3644,6 +3703,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             unrestricted_rows
         );
+        assert_eq!(state.presentation.ui.resume_entries, unrestricted_resume);
 
         state.persisted.focus = approved.iter().map(|id| (*id).into()).collect();
         state.selected_content_id = "orbit-garden".into();

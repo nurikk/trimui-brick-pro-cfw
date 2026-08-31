@@ -90,7 +90,7 @@ fn external_art_book_marker_is_bounded_before_product_loading(
 }
 
 #[test]
-fn brick_pro_compatibility_selects_bundled_art_book_4_3() -> Result<(), Box<dyn std::error::Error>>
+fn brick_pro_import_preserves_art_book_next_4_3_contract() -> Result<(), Box<dyn std::error::Error>>
 {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let compatibility: serde_json::Value = serde_json::from_slice(&fs::read(
@@ -102,22 +102,116 @@ fn brick_pro_compatibility_selects_bundled_art_book_4_3() -> Result<(), Box<dyn 
         .unwrap()
         .replace(':', "-");
     let theme = load_bundled_theme(&root.join("themes/upstream").join(theme_id), &aspect)?;
+    let data = theme.theme();
+    let contract = data.upstream_contract.as_ref().expect("upstream contract");
+
     assert_eq!(theme.name(), "Art Book Next (Batocera ES Edition)");
-    assert_eq!(theme.theme().metadata.license, "CC-BY-NC-SA");
+    assert_eq!(data.metadata.license, "CC-BY-NC-SA");
+    assert_eq!(contract.variant, "4:3");
+    assert_eq!(
+        contract.system_artwork_path,
+        "./_inc/systems/artwork-default/${system.theme}.png"
+    );
+    assert_eq!(
+        contract.system_logo_path,
+        "./_inc/systems/logos/${system.theme}.svg"
+    );
+    assert_eq!(
+        contract.revision,
+        "9a50ef366e750aabfab29e6915a2867607212971"
+    );
+    assert_eq!(contract.options.system_artwork, "default");
+    assert_eq!(contract.options.game_artwork, "image");
+    assert_eq!(contract.options.game_metadata, "on");
+    assert_eq!(contract.options.font_size, "default");
+    assert_eq!(
+        data.resources.font.reference,
+        "_inc/fonts/Roboto-Regular.ttf"
+    );
+    assert_ne!(data.resources.font.reference, "generated-sans");
+    assert_ne!(data.resources.background.reference, "flat-field");
+    assert!(
+        theme
+            .source_asset("./_inc/fonts/Roboto-Regular.ttf")
+            .unwrap()
+            .len()
+            > 100_000
+    );
+    assert!(
+        theme
+            .source_asset("./_inc/fonts/ChangaOne-Italic.ttf")
+            .unwrap()
+            .len()
+            > 10_000
+    );
     assert!(theme
         .asset("./_inc/systems/artwork-default/genesis.png")
         .is_some());
-    assert!(theme.asset("./_inc/systems/logos/genesis.png").is_some());
     assert!(theme
-        .theme()
-        .components
-        .as_ref()
+        .source_asset("./_inc/systems/logos/genesis.svg")
         .unwrap()
+        .windows(4)
+        .any(|part| part == b"<svg"));
+
+    let component = |id: &str| {
+        data.components
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|part| part.id == id)
+            .unwrap()
+    };
+    let game_list = component("gamelist");
+    assert_eq!(
+        (game_list.x, game_list.y, game_list.width, game_list.height),
+        (48, 196, 400, 438)
+    );
+    let artwork = component("game-artwork");
+    assert_eq!(artwork.media_binding, Some(MediaBinding::GameImage));
+    assert_eq!(
+        (artwork.x, artwork.y, artwork.width, artwork.height),
+        (560, 48, 416, 352)
+    );
+    assert_eq!(
+        component("system-logo").media_binding,
+        Some(MediaBinding::SystemLogo)
+    );
+    assert!(component("system-logo").path.is_none());
+
+    let first = serialize_json(&scene(&theme))?;
+    assert_eq!(first, serialize_json(&scene(&theme))?);
+    let scene = scene(&theme);
+    assert_eq!(scene.upstream_contract.as_ref().unwrap().variant, "4:3");
+    assert!(scene
+        .source_assets
         .iter()
-        .any(|component| component.path.as_deref() == Some("./_inc/systems/logos/genesis.png")));
-    assert!(root
-        .join("themes/upstream/art-book-next-es/aspect-ratio-4-3.xml")
-        .is_file());
+        .any(|asset| asset.path.ends_with("genesis.svg")));
+    Ok(())
+}
+
+#[test]
+fn art_book_rejects_an_unsupported_include_before_activation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!(
+        "launcher-theme-artbook-include-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root)?;
+    fs::write(
+        root.join("SOURCE-COMMIT.txt"),
+        "Pinned commit: 9a50ef366e750aabfab29e6915a2867607212971\n",
+    )?;
+    fs::write(root.join("theme.xml"), "<theme>Art Book Next (Batocera ES Edition) Anthony Caccese creative commons CC-BY-NC-SA <include>./fonts.xml</include><include>./colors.xml</include><include ifSubset=\"aspect-ratio:4-3|4-3-auto\">./aspect-ratio-4-3.xml</include><include>./escape.xml</include></theme>")?;
+    fs::write(
+        root.join("fonts.xml"),
+        "<theme>Roboto-Bold.ttf Roboto-Regular.ttf Roboto-Light.ttf ChangaOne-Italic.ttf</theme>",
+    )?;
+    fs::write(root.join("colors.xml"), "<theme><systemBackgroundColor>000000</systemBackgroundColor><gamelistListBackgroundColor>222222</gamelistListBackgroundColor><menuSelectorColor>444444</menuSelectorColor></theme>")?;
+    fs::write(root.join("aspect-ratio-4-3.xml"), "<theme><formatVersion>7</formatVersion><maxLogoCount>4</maxLogoCount><w>0.390625</w><pos>0.75 0.2916666666666667</pos></theme>")?;
+    let error = load_bundled_theme(&root, "4-3").expect_err("unknown include must not activate");
+    assert_eq!(error.reason, Reason::UnsupportedXml);
+    let _ = fs::remove_dir_all(root);
     Ok(())
 }
 

@@ -153,6 +153,8 @@ pub struct Theme {
     pub assets: Option<Assets>,
     #[serde(default)]
     pub components: Option<Vec<Component>>,
+    #[serde(rename = "upstreamContract", default)]
+    pub upstream_contract: Option<UpstreamContract>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -203,6 +205,16 @@ pub enum ComponentKind {
     Textlist,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MediaBinding {
+    SystemArtwork,
+    SystemLogo,
+    GameImage,
+    GameVideo,
+    GameMarquee,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
@@ -217,6 +229,63 @@ pub struct Component {
     pub color: Option<String>,
     #[serde(rename = "fontSize")]
     pub font_size: Option<u16>,
+    #[serde(rename = "mediaBinding", default)]
+    pub media_binding: Option<MediaBinding>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamContract {
+    pub source: String,
+    pub revision: String,
+    pub variant: String,
+    #[serde(rename = "systemArtworkPath")]
+    pub system_artwork_path: String,
+    #[serde(rename = "systemLogoPath")]
+    pub system_logo_path: String,
+    pub fonts: Vec<UpstreamAsset>,
+    #[serde(rename = "systemArtwork")]
+    pub system_artwork: Vec<UpstreamAsset>,
+    #[serde(rename = "systemLogos")]
+    pub system_logos: Vec<UpstreamAsset>,
+    #[serde(rename = "menuAssets")]
+    pub menu_assets: Vec<UpstreamAsset>,
+    pub options: UpstreamOptions,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamAsset {
+    pub path: String,
+    pub kind: UpstreamAssetKind,
+    #[serde(rename = "maxBytes")]
+    pub max_bytes: u32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpstreamAssetKind {
+    Font,
+    Image,
+    Svg,
+    Sound,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamOptions {
+    #[serde(rename = "systemArtwork")]
+    pub system_artwork: String,
+    #[serde(rename = "systemLogos")]
+    pub system_logos: String,
+    #[serde(rename = "gameArtwork")]
+    pub game_artwork: String,
+    #[serde(rename = "gameMetadata")]
+    pub game_metadata: String,
+    #[serde(rename = "fontSize")]
+    pub font_size: String,
+    #[serde(rename = "colorScheme")]
+    pub color_scheme: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -262,6 +331,7 @@ pub struct Resource {
 pub enum ResourceKind {
     Generated,
     Builtin,
+    ThemeAsset,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -369,6 +439,8 @@ pub struct ValidatedTheme {
     theme: Theme,
     #[serde(skip)]
     assets: Vec<LoadedAsset>,
+    #[serde(skip)]
+    source_assets: Vec<LoadedSourceAsset>,
 }
 
 #[derive(Clone, Debug)]
@@ -377,6 +449,13 @@ struct LoadedAsset {
     width: u32,
     height: u32,
     pixels: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+struct LoadedSourceAsset {
+    path: String,
+    kind: UpstreamAssetKind,
+    bytes: Vec<u8>,
 }
 
 impl ValidatedTheme {
@@ -393,6 +472,13 @@ impl ValidatedTheme {
             .iter()
             .find(|asset| asset.path == path)
             .map(|asset| (asset.pixels.as_slice(), asset.width, asset.height))
+    }
+
+    pub fn source_asset(&self, path: &str) -> Option<&[u8]> {
+        self.source_assets
+            .iter()
+            .find(|asset| asset.path == path)
+            .map(|asset| asset.bytes.as_slice())
     }
 }
 
@@ -411,6 +497,10 @@ pub struct Scene {
     pub regions: Vec<SceneRegion>,
     pub components: Vec<SceneComponent>,
     pub assets: Vec<SceneAsset>,
+    #[serde(rename = "upstreamContract")]
+    pub upstream_contract: Option<UpstreamContract>,
+    #[serde(rename = "sourceAssets")]
+    pub source_assets: Vec<SceneSourceAsset>,
     pub synthetic: SyntheticMetadata,
 }
 
@@ -424,6 +514,13 @@ pub struct SceneAsset {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct SceneSourceAsset {
+    pub path: String,
+    pub kind: UpstreamAssetKind,
+    pub bytes: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct SceneComponent {
     pub id: String,
     pub kind: String,
@@ -433,6 +530,8 @@ pub struct SceneComponent {
     pub color: Option<String>,
     #[serde(rename = "fontSize")]
     pub font_size: Option<u16>,
+    #[serde(rename = "mediaBinding")]
+    pub media_binding: Option<MediaBinding>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1091,10 +1190,13 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
                     "component is outside canvas",
                 ));
             }
-            if component.kind == ComponentKind::Image && component.path.is_none() {
+            if component.kind == ComponentKind::Image
+                && component.path.is_none()
+                && component.media_binding.is_none()
+            {
                 return Err(ThemeError::new(
                     Reason::InvalidAsset,
-                    "image component has no path",
+                    "image component has no path or media binding",
                 ));
             }
             if let Some(path) = &component.path {
@@ -1173,6 +1275,7 @@ fn validate_theme(theme: Theme) -> Result<ValidatedTheme, ThemeError> {
     Ok(ValidatedTheme {
         theme,
         assets: Vec::new(),
+        source_assets: Vec::new(),
     })
 }
 
@@ -1183,6 +1286,54 @@ fn upstream_xml_value(xml: &str, name: &str) -> Option<String> {
     xml[start..]
         .find(&close)
         .map(|end| xml[start..start + end].trim().to_string())
+}
+
+fn art_book_include_paths(xml: &str) -> Result<Vec<String>, ThemeError> {
+    const ALLOWED: &[&str] = &[
+        "./_inc/lang/default_en.xml",
+        "./_inc/lang/${lang}.xml",
+        "./fonts.xml",
+        "${themeCustomizationsPath}fonts.xml",
+        "./colors.xml",
+        "${themeCustomizationsPath}colors.xml",
+        "./aspect-ratio-16-9.xml",
+        "./aspect-ratio-4-3.xml",
+        "./aspect-ratio-16-10.xml",
+        "./aspect-ratio-1-1.xml",
+        "./aspect-ratio-3-2.xml",
+    ];
+    let mut paths = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find("<include") {
+        rest = &rest[start..];
+        let end = rest.find('>').ok_or_else(|| {
+            ThemeError::new(
+                Reason::InvalidXml,
+                "Art Book Next include tag is not closed",
+            )
+        })?;
+        let tag = &rest[..=end];
+        rest = &rest[end + 1..];
+        if tag.ends_with("/>") {
+            continue;
+        }
+        let close = rest.find("</include>").ok_or_else(|| {
+            ThemeError::new(
+                Reason::InvalidXml,
+                "Art Book Next include body is not closed",
+            )
+        })?;
+        let include = rest[..close].trim();
+        if include.is_empty() || include.contains('<') || !ALLOWED.contains(&include) {
+            return Err(ThemeError::new(
+                Reason::UnsupportedXml,
+                format!("unsupported Art Book Next include {include:?}"),
+            ));
+        }
+        paths.push(include.to_string());
+        rest = &rest[close + "</include>".len()..];
+    }
+    Ok(paths)
 }
 
 fn read_bounded_art_book_file(
@@ -1259,135 +1410,282 @@ fn validate_art_book_next_tree(path: &Path) -> Result<(), ThemeError> {
 }
 
 fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, ThemeError> {
-    let theme_xml = read_bounded_art_book_xml(path, Path::new("theme.xml"))?;
-    if !theme_xml.contains("Art Book Next (Batocera ES Edition)")
-        || !theme_xml.contains("Anthony Caccese")
-        || !theme_xml.contains("creative commons CC-BY-NC-SA")
-        || !theme_xml.contains("./aspect-ratio-4-3.xml")
-    {
-        return Err(ThemeError::new(
-            Reason::UnsupportedXml,
-            "XML theme is not the inspected Art Book Next source",
-        ));
-    }
-    let colors_xml = read_bounded_art_book_xml(path, Path::new("colors.xml"))?;
-    let fonts_xml = read_bounded_art_book_xml(path, Path::new("fonts.xml"))?;
+    validate_art_book_next_tree(path)?;
     if aspect != "4-3" {
         return Err(ThemeError::new(
             Reason::UnsupportedXml,
-            format!("Art Book Next product renderer supports only the configured 4:3 layout, not {aspect}"),
+            format!("Art Book Next supports only its inspected 4:3 variant, not {aspect}"),
         ));
     }
-    let aspect_xml =
-        read_bounded_art_book_xml(path, Path::new(&format!("aspect-ratio-{aspect}.xml")))?;
-    for (name, xml, needles) in [
+    let theme_xml = read_bounded_art_book_xml(path, Path::new("theme.xml"))?;
+    let includes = art_book_include_paths(&theme_xml)?;
+    for required in ["./fonts.xml", "./colors.xml", "./aspect-ratio-4-3.xml"] {
+        if !includes.iter().any(|include| include == required) {
+            return Err(ThemeError::new(
+                Reason::UnsupportedXml,
+                format!("Art Book Next required include {required} is missing"),
+            ));
+        }
+    }
+    let colors_xml = read_bounded_art_book_xml(path, Path::new("colors.xml"))?;
+    let fonts_xml = read_bounded_art_book_xml(path, Path::new("fonts.xml"))?;
+    let aspect_xml = read_bounded_art_book_xml(path, Path::new("aspect-ratio-4-3.xml"))?;
+    for (name, xml, required) in [
+        (
+            "theme.xml",
+            theme_xml.as_str(),
+            &[
+                "Art Book Next (Batocera ES Edition)",
+                "Anthony Caccese",
+                "creative commons CC-BY-NC-SA",
+                "<include>./fonts.xml</include>",
+                "<include>./colors.xml</include>",
+                "<include ifSubset=\"aspect-ratio:4-3|4-3-auto\">./aspect-ratio-4-3.xml</include>",
+            ][..],
+        ),
+        (
+            "fonts.xml",
+            fonts_xml.as_str(),
+            &[
+                "Roboto-Bold.ttf",
+                "Roboto-Regular.ttf",
+                "Roboto-Light.ttf",
+                "ChangaOne-Italic.ttf",
+            ][..],
+        ),
         (
             "colors.xml",
             colors_xml.as_str(),
             &[
                 "<systemBackgroundColor>000000</systemBackgroundColor>",
                 "<gamelistListBackgroundColor>222222</gamelistListBackgroundColor>",
+                "<menuSelectorColor>444444</menuSelectorColor>",
             ][..],
-        ),
-        (
-            "fonts.xml",
-            fonts_xml.as_str(),
-            &["Roboto-Regular.ttf", "ChangaOne-Italic.ttf"][..],
         ),
         (
             "aspect-ratio-4-3.xml",
             aspect_xml.as_str(),
-            &["<video", "name=\"game-artwork\"", "name=\"gamelist\""][..],
+            &[
+                "<formatVersion>7</formatVersion>",
+                "<maxLogoCount>4</maxLogoCount>",
+                "<w>0.390625</w>",
+                "<pos>0.75 0.2916666666666667</pos>",
+            ][..],
         ),
     ] {
-        if needles.iter().any(|needle| !xml.contains(needle)) {
+        if !xml.contains("<theme") || required.iter().any(|value| !xml.contains(value)) {
             return Err(ThemeError::new(
                 Reason::UnsupportedXml,
-                format!("Art Book Next include {name} is incomplete"),
+                format!("Art Book Next include {name} is malformed or unsupported"),
             ));
         }
     }
-    let background = upstream_xml_value(&colors_xml, "systemBackgroundColor")
-        .map(|value| format!("#{value}"))
-        .unwrap_or_else(|| "#000000".into());
-    let surface = upstream_xml_value(&colors_xml, "gamelistListBackgroundColor")
-        .map(|value| format!("#{value}"))
-        .unwrap_or_else(|| "#222222".into());
-    let text = upstream_xml_value(&colors_xml, "gamelistListDescriptionColor")
-        .map(|value| format!("#{value}"))
-        .unwrap_or_else(|| "#FFFFFF".into());
-    let muted = upstream_xml_value(&colors_xml, "gamelistListTextlistUnselectedColor")
-        .map(|value| format!("#{value}"))
-        .unwrap_or_else(|| "#333333".into());
-    let highlight = upstream_xml_value(&colors_xml, "gamelistListTextlistSelectedColor")
-        .map(|value| format!("#{value}"))
-        .unwrap_or_else(|| "#FFFFFF".into());
-    let system_asset_paths = [
-        "./_inc/systems/artwork-default/nes.png",
-        "./_inc/systems/artwork-default/genesis.png",
-        "./_inc/systems/artwork-default/snes.png",
-        "./_inc/systems/artwork-default/psx.png",
-    ];
-    let logo_path = "./_inc/systems/logos/genesis.png";
+
+    let source = "https://github.com/anthonycaccese/art-book-next-es".to_string();
+    let revision = fs::read_to_string(path.join("SOURCE-COMMIT.txt"))
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("Pinned commit: ").map(str::to_owned))
+        })
+        .filter(|revision| {
+            revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .ok_or_else(|| {
+            ThemeError::new(
+                Reason::UnsupportedXml,
+                "Art Book Next provenance pin is missing or malformed",
+            )
+        })?;
+    let asset = |path: &str, kind| UpstreamAsset {
+        path: path.into(),
+        kind,
+        max_bytes: MAX_ART_BOOK_NEXT_ASSET_BYTES as u32,
+    };
+    let contract = UpstreamContract {
+        source,
+        revision,
+        variant: "4:3".into(),
+        system_artwork_path: "./_inc/systems/artwork-default/${system.theme}.png".into(),
+        system_logo_path: "./_inc/systems/logos/${system.theme}.svg".into(),
+        fonts: vec![
+            asset("_inc/fonts/Roboto-Bold.ttf", UpstreamAssetKind::Font),
+            asset("_inc/fonts/Roboto-Regular.ttf", UpstreamAssetKind::Font),
+            asset("_inc/fonts/Roboto-Light.ttf", UpstreamAssetKind::Font),
+            asset("_inc/fonts/ChangaOne-Italic.ttf", UpstreamAssetKind::Font),
+        ],
+        system_artwork: vec![
+            asset(
+                "_inc/systems/artwork-default/_default.png",
+                UpstreamAssetKind::Image,
+            ),
+            asset(
+                "_inc/systems/artwork-default/genesis.png",
+                UpstreamAssetKind::Image,
+            ),
+            asset(
+                "_inc/systems/artwork-default/nes.png",
+                UpstreamAssetKind::Image,
+            ),
+            asset(
+                "_inc/systems/artwork-default/snes.png",
+                UpstreamAssetKind::Image,
+            ),
+            asset(
+                "_inc/systems/artwork-default/psx.png",
+                UpstreamAssetKind::Image,
+            ),
+        ],
+        system_logos: vec![
+            asset("_inc/systems/logos/genesis.svg", UpstreamAssetKind::Svg),
+            asset("_inc/systems/logos/nes.svg", UpstreamAssetKind::Svg),
+            asset("_inc/systems/logos/snes.svg", UpstreamAssetKind::Svg),
+            asset("_inc/systems/logos/psx.svg", UpstreamAssetKind::Svg),
+        ],
+        menu_assets: vec![
+            asset("_inc/images/space.png", UpstreamAssetKind::Image),
+            asset("_inc/images/menu-textinput.png", UpstreamAssetKind::Image),
+            asset("_inc/images/menu-icon-system.svg", UpstreamAssetKind::Svg),
+            asset(
+                "_inc/images/metadata-icon-releasedate.svg",
+                UpstreamAssetKind::Svg,
+            ),
+            asset("_inc/images/help-button-east.svg", UpstreamAssetKind::Svg),
+            asset("_inc/sounds/scroll.wav", UpstreamAssetKind::Sound),
+        ],
+        options: UpstreamOptions {
+            system_artwork: "default".into(),
+            system_logos: "default".into(),
+            game_artwork: "image".into(),
+            game_metadata: "on".into(),
+            font_size: "default".into(),
+            color_scheme: "default".into(),
+        },
+    };
     let mut assets = Vec::new();
-    for asset_path in system_asset_paths.iter().copied().chain([logo_path]) {
-        if asset_path == logo_path {
-            assets.push(decode_asset(
-                asset_path,
-                include_bytes!("../../../themes/media/systems/genesis-wordmark.png"),
-            )?);
-            continue;
-        }
-        let relative = Path::new(asset_path.strip_prefix("./").unwrap_or(asset_path));
+    let mut source_assets = Vec::new();
+    for spec in contract
+        .fonts
+        .iter()
+        .chain(&contract.system_artwork)
+        .chain(&contract.system_logos)
+        .chain(&contract.menu_assets)
+    {
         let bytes = read_bounded_art_book_file(
             path,
-            relative,
-            MAX_ART_BOOK_NEXT_ASSET_BYTES,
+            Path::new(&spec.path),
+            u64::from(spec.max_bytes),
             Reason::MissingTheme,
         )
         .map_err(|error| {
             if error.reason == Reason::Io {
                 ThemeError::new(
                     Reason::MissingTheme,
-                    format!(
-                        "Art Book Next asset {asset_path} is missing: {}",
-                        error.message
-                    ),
+                    format!("Art Book Next resource {} is missing", spec.path),
                 )
             } else {
                 error
             }
         })?;
-        assets.push(decode_asset(asset_path, &bytes)?);
+        if spec.kind == UpstreamAssetKind::Image {
+            assets.push(decode_asset(&format!("./{}", spec.path), &bytes)?);
+        }
+        source_assets.push(LoadedSourceAsset {
+            path: format!("./{}", spec.path),
+            kind: spec.kind,
+            bytes,
+        });
     }
-    let components = system_asset_paths
-        .iter()
-        .enumerate()
-        .map(|(index, asset_path)| Component {
-            id: format!("system-artwork-{index}"),
+    let color = |name| {
+        upstream_xml_value(&colors_xml, name)
+            .map(|value| format!("#{}", &value[..6]))
+            .ok_or_else(|| {
+                ThemeError::new(
+                    Reason::UnsupportedXml,
+                    format!("Art Book Next color {name} is missing"),
+                )
+            })
+    };
+    let components = vec![
+        Component {
+            id: "system-artwork".into(),
             kind: ComponentKind::Image,
-            x: index as u16 * 256,
+            x: 0,
             y: 0,
-            width: 280,
+            width: 1024,
             height: 768,
-            path: Some((*asset_path).into()),
+            path: None,
             text: None,
-            color: None,
+            color: Some("#FFFFFF".into()),
             font_size: None,
-        })
-        .chain([Component {
+            media_binding: Some(MediaBinding::SystemArtwork),
+        },
+        Component {
             id: "system-logo".into(),
             kind: ComponentKind::Image,
-            x: 352,
-            y: 346,
-            width: 320,
-            height: 76,
-            path: Some(logo_path.into()),
+            x: 205,
+            y: 230,
+            width: 614,
+            height: 307,
+            path: None,
+            text: None,
+            color: Some("#FFFFFF".into()),
+            font_size: None,
+            media_binding: Some(MediaBinding::SystemLogo),
+        },
+        Component {
+            id: "gamelist".into(),
+            kind: ComponentKind::Textlist,
+            x: 48,
+            y: 196,
+            width: 400,
+            height: 438,
+            path: None,
+            text: None,
+            color: Some("#FFFFFF".into()),
+            font_size: Some(29),
+            media_binding: None,
+        },
+        Component {
+            id: "game-artwork".into(),
+            kind: ComponentKind::Image,
+            x: 560,
+            y: 48,
+            width: 416,
+            height: 352,
+            path: None,
             text: None,
             color: None,
             font_size: None,
-        }])
-        .collect();
+            media_binding: Some(MediaBinding::GameImage),
+        },
+        Component {
+            id: "game-description".into(),
+            kind: ComponentKind::Text,
+            x: 564,
+            y: 446,
+            width: 408,
+            height: 192,
+            path: None,
+            text: Some("{game:desc}".into()),
+            color: Some("#FFFFFF".into()),
+            font_size: Some(32),
+            media_binding: None,
+        },
+        Component {
+            id: "menu-textinput".into(),
+            kind: ComponentKind::Image,
+            x: 208,
+            y: 120,
+            width: 608,
+            height: 528,
+            path: Some("./_inc/images/menu-textinput.png".into()),
+            text: None,
+            color: None,
+            font_size: None,
+            media_binding: None,
+        },
+    ];
     let theme = Theme {
         schema: "urn:project:theme-v2".into(),
         format: "theme-v2".into(),
@@ -1403,55 +1701,55 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
             aspect: "4:3".into(),
         },
         colors: Colors {
-            background,
-            surface,
-            accent: "#444444".into(),
-            text,
-            muted,
-            highlight,
+            background: color("systemBackgroundColor")?,
+            surface: color("gamelistListBackgroundColor")?,
+            accent: color("menuSelectorColor")?,
+            text: color("gamelistListDescriptionColor")?,
+            muted: color("gamelistListTextlistUnselectedColor")?,
+            highlight: color("gamelistListTextlistSelectedColor")?,
         },
         resources: Resources {
             font: Resource {
-                kind: ResourceKind::Builtin,
-                reference: "generated-sans".into(),
+                kind: ResourceKind::ThemeAsset,
+                reference: "_inc/fonts/Roboto-Regular.ttf".into(),
                 budget_bytes: 0,
             },
             icon: Resource {
-                kind: ResourceKind::Generated,
-                reference: "controller-mark".into(),
+                kind: ResourceKind::ThemeAsset,
+                reference: "_inc/images/menu-icon-system.svg".into(),
                 budget_bytes: 0,
             },
             background: Resource {
-                kind: ResourceKind::Generated,
-                reference: "flat-field".into(),
+                kind: ResourceKind::ThemeAsset,
+                reference: "_inc/images/space.png".into(),
                 budget_bytes: 0,
             },
             sound: Resource {
-                kind: ResourceKind::Builtin,
-                reference: "silent".into(),
+                kind: ResourceKind::ThemeAsset,
+                reference: "_inc/sounds/scroll.wav".into(),
                 budget_bytes: 0,
             },
         },
         layout: Layout {
             preset: LayoutPreset::Artbook,
-            max_visible_games: 9,
+            max_visible_games: 7,
             regions: vec![
                 ("system-art", RegionKind::SystemArt, 0, 0, 1024, 768),
-                ("game-list", RegionKind::GameList, 0, 0, 400, 768),
-                ("box-art", RegionKind::BoxArtPlaceholder, 768, 192, 256, 352),
+                ("game-list", RegionKind::GameList, 0, 0, 512, 768),
+                ("box-art", RegionKind::BoxArtPlaceholder, 560, 48, 416, 352),
                 (
                     "screenshot",
                     RegionKind::ScreenshotPlaceholder,
-                    512,
+                    560,
                     192,
-                    512,
+                    464,
                     416,
                 ),
-                ("metadata", RegionKind::Metadata, 512, 608, 512, 160),
+                ("metadata", RegionKind::Metadata, 564, 446, 408, 192),
                 ("menu", RegionKind::Menu, 208, 120, 608, 528),
-                ("help", RegionKind::HelpStrip, 0, 720, 1024, 48),
-                ("clock", RegionKind::Clock, 760, 12, 104, 36),
-                ("battery", RegionKind::Battery, 880, 12, 112, 36),
+                ("help", RegionKind::HelpStrip, 0, 680, 1024, 88),
+                ("clock", RegionKind::Clock, 760, 32, 104, 32),
+                ("battery", RegionKind::Battery, 876, 32, 116, 32),
             ]
             .into_iter()
             .map(|(id, kind, x, y, width, height)| Region {
@@ -1476,15 +1774,20 @@ fn load_art_book_next(path: &Path, aspect: &str) -> Result<ValidatedTheme, Theme
             on_invalid: OnInvalid::SafeArtbook,
         },
         typography: Some(Typography {
-            family: "project-sans".into(),
-            title_size: 42,
-            body_size: 22,
-            small_size: 16,
+            family: "Roboto".into(),
+            title_size: 48,
+            body_size: 32,
+            small_size: 24,
         }),
         assets: None,
         components: Some(components),
+        upstream_contract: Some(contract),
     };
-    Ok(ValidatedTheme { theme, assets })
+    Ok(ValidatedTheme {
+        theme,
+        assets,
+        source_assets,
+    })
 }
 
 pub fn load_theme_dir(path: &Path) -> Result<ValidatedTheme, ThemeError> {
@@ -1722,30 +2025,6 @@ pub fn load_bundled_theme(path: &Path, aspect: &str) -> Result<ValidatedTheme, T
 }
 
 pub fn safe_artbook() -> Result<ValidatedTheme, ThemeError> {
-    let config_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/platform");
-    if let Ok(devices) = fs::read_dir(config_root) {
-        for device in devices.flatten() {
-            let config_path = device.path().join("compatibility.json");
-            let Ok(config) = fs::read(config_path) else {
-                continue;
-            };
-            let Ok(config) = serde_json::from_slice::<Value>(&config) else {
-                continue;
-            };
-            let Some(theme_id) = config["display"]["defaultTheme"].as_str() else {
-                continue;
-            };
-            let Some(theme_aspect) = config["display"]["themeAspect"].as_str() else {
-                continue;
-            };
-            let bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../themes/upstream")
-                .join(theme_id);
-            if bundled.is_dir() {
-                return load_bundled_theme(&bundled, &theme_aspect.replace(':', "-"));
-            }
-        }
-    }
     project_artbook_fallback()
 }
 
@@ -1896,6 +2175,7 @@ pub fn scene(theme: &ValidatedTheme) -> Scene {
                 text: component.text.clone(),
                 color: component.color.clone(),
                 font_size: component.font_size,
+                media_binding: component.media_binding,
             })
             .collect(),
         assets: theme
@@ -1906,6 +2186,16 @@ pub fn scene(theme: &ValidatedTheme) -> Scene {
                 width: asset.width,
                 height: asset.height,
                 pixels: asset.pixels.clone(),
+            })
+            .collect(),
+        upstream_contract: theme.theme.upstream_contract.clone(),
+        source_assets: theme
+            .source_assets
+            .iter()
+            .map(|asset| SceneSourceAsset {
+                path: asset.path.clone(),
+                kind: asset.kind,
+                bytes: asset.bytes.len(),
             })
             .collect(),
         synthetic: SyntheticMetadata {
@@ -2005,27 +2295,35 @@ pub fn render_png(theme: &ValidatedTheme, path: &Path) -> Result<(), ThemeError>
             data[offset..offset + 4].copy_from_slice(&color);
         }
     }
-    if let Some(asset) = theme.assets.first() {
-        for region in &theme.theme.layout.regions {
-            if !region.visible
-                || !matches!(
-                    region.kind,
-                    RegionKind::SystemArt
-                        | RegionKind::BoxArtPlaceholder
-                        | RegionKind::ScreenshotPlaceholder
-                )
-            {
-                continue;
-            }
-            for y in 0..u32::from(region.height) {
-                for x in 0..u32::from(region.width) {
-                    let sx = x * asset.width / u32::from(region.width);
-                    let sy = y * asset.height / u32::from(region.height);
-                    let source = ((sy * asset.width + sx) * 4) as usize;
-                    let target = (((u32::from(region.y) + y) * width + u32::from(region.x) + x) * 4)
-                        as usize;
-                    data[target..target + 4].copy_from_slice(&asset.pixels[source..source + 4]);
-                }
+    for component in theme.theme.components.as_deref().unwrap_or_default() {
+        if component.kind != ComponentKind::Image
+            || !matches!(component.id.as_str(), "system-artwork" | "game-artwork")
+        {
+            continue;
+        }
+        let fallback_path = (component.media_binding == Some(MediaBinding::SystemArtwork))
+            .then(|| {
+                theme.theme.upstream_contract.as_ref().map(|contract| {
+                    contract
+                        .system_artwork_path
+                        .replace("${system.theme}", "_default")
+                })
+            })
+            .flatten();
+        let Some(path) = component.path.as_deref().or(fallback_path.as_deref()) else {
+            continue;
+        };
+        let Some(asset) = theme.assets.iter().find(|asset| asset.path == path) else {
+            continue;
+        };
+        for y in 0..u32::from(component.height) {
+            for x in 0..u32::from(component.width) {
+                let sx = x * asset.width / u32::from(component.width);
+                let sy = y * asset.height / u32::from(component.height);
+                let source = ((sy * asset.width + sx) * 4) as usize;
+                let target = (((u32::from(component.y) + y) * width + u32::from(component.x) + x)
+                    * 4) as usize;
+                data[target..target + 4].copy_from_slice(&asset.pixels[source..source + 4]);
             }
         }
     }

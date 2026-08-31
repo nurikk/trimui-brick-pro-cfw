@@ -24,6 +24,16 @@
     },
     "status": "available"
   },
+  "healthChecks": [
+    {"id": "build-sku", "status": "pass", "detail": "TG4040 build verified", "nextStep": "Continue recovery"},
+    {"id": "storage", "status": "warn", "detail": "SD1 mounted with 32 GB free SD2 unavailable state clean", "nextStep": "Choose internal storage or insert SD2"},
+    {"id": "battery-power", "status": "pass", "detail": "Battery 78 percent external power absent", "nextStep": "Continue recovery"},
+    {"id": "input", "status": "pass", "detail": "Required controls available", "nextStep": "Continue recovery"},
+    {"id": "display", "status": "pass", "detail": "1024 by 768 display available", "nextStep": "Continue recovery"},
+    {"id": "audio", "status": "pass", "detail": "Speaker route available", "nextStep": "Continue recovery"},
+    {"id": "wifi", "status": "unavailable", "detail": "WiFi capability not supplied", "nextStep": "Keep network disabled"},
+    {"id": "last-failed-stage", "status": "unavailable", "detail": "No failed launcher or update stage supplied", "nextStep": "Retry only the reported stage"}
+  ],
   "ram": {
     "availableBytes": 402653184,
     "status": "available",

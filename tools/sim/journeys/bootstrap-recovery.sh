@@ -50,8 +50,11 @@ check_recovery() {
     expected_code=$2
     expected_reason=$3
     expected_selection=$4
+    case_root=$WORK/recovery-fixture-$(basename "$input")
+    rm -rf "$case_root"
+    cp -a "$input" "$case_root"
     output=$WORK/recovery-$(basename "$input").json
-    if "$RECOVERY" --simulation-fixture-root "$input" ${5-} >"$output"; then
+    if "$RECOVERY" --simulation-fixture-root "$case_root" ${5-} >"$output"; then
         code=0
     else
         code=$?

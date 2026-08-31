@@ -1364,6 +1364,15 @@ struct ResumeArgs {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ResumeDeleteArgs {
+    #[serde(rename = "contentId")]
+    content_id: String,
+    generation: u64,
+    confirmed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PresentationArgs {
     action: String,
 }
@@ -2100,6 +2109,8 @@ fn handle_request<P: Platform>(
         }),
         "resume" => parse::<ResumeArgs>(request.args)
             .and_then(|args| resume_control(state, catalog, launch_catalog, args)),
+        "resume.delete" => parse::<ResumeDeleteArgs>(request.args)
+            .and_then(|args| resume_delete_control(state, catalog, launch_catalog, args)),
         "checkpoint" => parse::<ArtifactArgs>(request.args).and_then(|args| {
             capture_artifact(
                 platform,
@@ -2146,6 +2157,7 @@ fn refresh_resume_projection(
             label: resume_label(&summary.content_id),
             content_id: summary.content_id,
             status: summary.status,
+            timestamp_ms: summary.timestamp_ms,
             screenshot: format!("generated-resume-{}", summary.generation),
             choices: summary
                 .choices
@@ -2166,6 +2178,8 @@ fn resume_decision_name(decision: ResumeDecision) -> String {
         ResumeDecision::Resume => "resume",
         ResumeDecision::RetainedMatchingCore => "retained-matching-core",
         ResumeDecision::ColdStartSram => "cold-start-sram",
+        ResumeDecision::RestorePrevious => "restore-previous",
+        ResumeDecision::FreshStart => "fresh-start",
         ResumeDecision::Cancel => "cancel",
     }
     .into()
@@ -2603,6 +2617,29 @@ fn resolve_sync_view(
     refresh_sync_view(state)
 }
 
+fn resume_delete_control(
+    state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    args: ResumeDeleteArgs,
+) -> Result<Value, String> {
+    if !args.confirmed {
+        return Err("resume deletion requires explicit confirmation".into());
+    }
+    let entry = catalog
+        .entries
+        .iter()
+        .find(|entry| entry.id == args.content_id)
+        .ok_or_else(|| "resume content is not allowlisted".to_string())?;
+    let request = launch_request(entry, launch_catalog).map_err(|error| error.to_string())?;
+    state
+        .broker
+        .resume_delete(request, args.generation, true)
+        .map_err(|error| error.to_string())?;
+    refresh_resume_projection(state, catalog, launch_catalog)?;
+    Ok(json!({"deleted": true, "generation": args.generation}))
+}
+
 fn resume_control(
     state: &mut AppState,
     catalog: &UiCatalog,
@@ -2614,6 +2651,8 @@ fn resume_control(
         "resume" => ResumeDecision::Resume,
         "retained-matching-core" => ResumeDecision::RetainedMatchingCore,
         "cold-start-sram" => ResumeDecision::ColdStartSram,
+        "restore-previous" => ResumeDecision::RestorePrevious,
+        "fresh-start" => ResumeDecision::FreshStart,
         "cancel" => ResumeDecision::Cancel,
         _ => return Err("resume decision is not allowlisted".into()),
     };
@@ -2641,7 +2680,7 @@ fn resume_control(
     }
     request.resume_mode = if matches!(
         decision,
-        ResumeDecision::Cancel | ResumeDecision::ColdStartSram
+        ResumeDecision::Cancel | ResumeDecision::ColdStartSram | ResumeDecision::FreshStart
     ) {
         ResumeMode::Fresh
     } else {

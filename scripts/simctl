@@ -168,7 +168,7 @@ validate_command() {
         resume)
             [ "$#" -ge 4 ] && [ "$1" = --content-id ] && [ "$3" = --decision ] || usage
             case "$2" in nebula-nes|mirror-ps1|orbit-garden|signal-workshop) ;; *) usage ;; esac
-            case "$4" in resume|retained-matching-core|cold-start-sram|cancel) ;; *) usage ;; esac
+            case "$4" in resume|retained-matching-core|cold-start-sram|restore-previous|fresh-start|cancel) ;; *) usage ;; esac
             shift 4
             while [ "$#" -gt 0 ]; do
                 [ "$#" -ge 2 ] || usage
@@ -179,6 +179,11 @@ validate_command() {
                 esac
                 shift 2
             done ;;
+        resume.delete)
+            [ "$#" -eq 6 ] && [ "$1" = --content-id ] && [ "$3" = --generation ] && [ "$5" = --confirmed ] || usage
+            case "$2" in nebula-nes|mirror-ps1|orbit-garden|signal-workshop) ;; *) usage ;; esac
+            case "$4" in ''|*[!0-9]*) usage ;; esac
+            validate_bool "$6" ;;
         clock)
             [ "$#" -eq 3 ] && { [ "$2" = --minutes ] || [ "$2" = --milliseconds ]; } || usage
             case "$1" in advance|jump) ;; *) usage ;; esac

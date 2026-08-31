@@ -275,6 +275,17 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 
+    fn resume_delete(
+        &mut self,
+        request: LaunchRequest,
+        generation: u64,
+        confirmed: bool,
+    ) -> Result<(), BrokerError> {
+        self.store
+            .delete(&request, generation, confirmed)
+            .map_err(|error| BrokerError::new(error.to_string()))
+    }
+
     fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
         Ok(self
             .vault

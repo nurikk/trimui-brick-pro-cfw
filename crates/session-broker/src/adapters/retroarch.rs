@@ -53,6 +53,10 @@ pub fn plan(
                 ))
                 .display()
                 .to_string(),
+            "--save".to_string(),
+            paths.save.display().to_string(),
+            "--state".to_string(),
+            paths.state.display().to_string(),
             paths.content.display().to_string(),
         ],
         cwd: fixture_root.to_path_buf(),

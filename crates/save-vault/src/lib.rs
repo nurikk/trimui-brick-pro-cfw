@@ -1046,6 +1046,23 @@ impl SaveVault {
                 &mut files,
             )?;
         }
+        collect_optional_standard(
+            &source.join("config/mappings"),
+            Path::new("config/mappings"),
+            &mut files,
+        )?;
+        let launcher_state = source.join("launcher-state.json");
+        if launcher_state.exists() {
+            let metadata = fs::symlink_metadata(&launcher_state).map_err(error)?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(err("launcher state backup boundary is invalid"));
+            }
+            files.push(SnapshotFile {
+                kind: SaveKind::DeclaredState,
+                relative: "launcher-state.json".into(),
+                source: launcher_state,
+            });
+        }
         let outcome = vault.snapshot(
             Identity {
                 content_version: "standard",
@@ -1226,14 +1243,28 @@ fn collect_standard(
     }
     Ok(())
 }
+fn collect_optional_standard(
+    path: &Path,
+    relative: &Path,
+    files: &mut Vec<SnapshotFile>,
+) -> Result<(), SaveVaultError> {
+    if path.exists() {
+        collect_standard(path, relative, SaveKind::DeclaredState, files)?;
+    }
+    Ok(())
+}
 fn validate_source_relative(kind: SaveKind, value: &str) -> Result<(), SaveVaultError> {
     validate_relative(value)?;
-    let prefix = match kind {
-        SaveKind::Sram | SaveKind::Save => "saves/",
-        SaveKind::State => "states/",
-        SaveKind::DeclaredState => "declared/",
+    let valid = match kind {
+        SaveKind::Sram | SaveKind::Save => value.starts_with("saves/"),
+        SaveKind::State => value.starts_with("states/"),
+        SaveKind::DeclaredState => {
+            value.starts_with("declared/")
+                || value.starts_with("config/mappings/")
+                || value == "launcher-state.json"
+        }
     };
-    if !value.starts_with(prefix) {
+    if !valid {
         return Err(err("save source is outside its declared kind boundary"));
     }
     if value.to_ascii_lowercase().contains("rom") || value.to_ascii_lowercase().contains("bios") {

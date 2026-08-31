@@ -1,6 +1,8 @@
 # Save Vault
 
-`save-vault` is the typed recovery boundary for SRAM, save files, state files, and explicitly declared state files. Its source-relative allowlist is limited to `saves/`, `states/`, and `declared/`; ROM, BIOS, absolute, traversal, and symlink paths are rejected.
+`save-vault` is the typed recovery boundary for SRAM, save files, state files, and declared launcher state. Its source-relative allowlist is limited to `saves/`, `states/`, `declared/`, `config/mappings/`, and `launcher-state.json`; ROM, BIOS, absolute, traversal, and symlink paths are rejected.
+
+Standard snapshots cover native saves, manual states, launcher favorites/recent history (`launcher-state.json`), and optional input mappings (`config/mappings/`). Autosaves remain in `data/resume/` and are not treated as manual-state backups.
 
 A generation contains a versioned manifest, SHA-256 content IDs, immutable content objects, and a durable commit marker. Objects and manifests are written and synced in staging before generation rename and current-pointer publication. A per-vault advisory file lock covers source reads, generation allocation, publication, pointer replacement, restore, and pruning, so competing operations cannot reuse a generation or staging path. Invalid, incomplete, corrupt, or quarantined generations are never current. Source files and stored objects are verified before publication, so a race is a failed snapshot rather than live-data mutation.
 

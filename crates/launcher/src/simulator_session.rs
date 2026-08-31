@@ -14,7 +14,7 @@ use session_broker::resume::{
     ResumeResult, ResumeStore, ResumeSummary,
 };
 use session_broker::{
-    accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary, SessionBrokerClient,
+    accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary,
     SessionHandle, SessionResult,
 };
 use sha2::Digest;
@@ -198,8 +198,8 @@ impl SimulatorSessionAdapter {
     }
 }
 
-impl SessionBrokerClient for SimulatorSessionAdapter {
-    fn submit(
+impl SimulatorSessionAdapter {
+    pub(crate) fn submit(
         &mut self,
         request: LaunchRequest,
         catalog: &Catalog,
@@ -214,7 +214,11 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         Ok(handle)
     }
 
-    fn complete(&mut self, exit_code: i32, duration_ms: u64) -> Result<SessionResult, BrokerError> {
+    pub(crate) fn complete(
+        &mut self,
+        exit_code: i32,
+        duration_ms: u64,
+    ) -> Result<SessionResult, BrokerError> {
         let (_, request) = self
             .active
             .as_ref()
@@ -251,7 +255,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         })
     }
 
-    fn checkpoint(
+    pub(crate) fn checkpoint(
         &mut self,
         reason: CheckpointReason,
         fault: CommitFault,
@@ -270,21 +274,21 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         result
     }
 
-    fn resume_entries(
+    pub(crate) fn resume_entries(
         &mut self,
         requests: &[LaunchRequest],
     ) -> Result<Vec<ResumeSummary>, BrokerError> {
         Ok(self.store.list(requests))
     }
 
-    fn resume_choices(
+    pub(crate) fn resume_choices(
         &mut self,
         request: &LaunchRequest,
     ) -> Result<Vec<ResumeDecision>, BrokerError> {
         Ok(self.store.choices(request))
     }
 
-    fn resume_decision(
+    pub(crate) fn resume_decision(
         &mut self,
         request: LaunchRequest,
         decision: ResumeDecision,
@@ -294,7 +298,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 
-    fn resume_delete(
+    pub(crate) fn resume_delete(
         &mut self,
         request: LaunchRequest,
         generation: u64,
@@ -305,7 +309,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 
-    fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
+    pub(crate) fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
         Ok(self
             .vault
             .history()
@@ -318,7 +322,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .collect())
     }
 
-    fn save_vault_preview(&mut self) -> Result<SaveVaultPreview, BrokerError> {
+    pub(crate) fn save_vault_preview(&mut self) -> Result<SaveVaultPreview, BrokerError> {
         let generation = self
             .vault
             .current_generation()
@@ -343,7 +347,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
         })
     }
 
-    fn save_sync_status(&mut self) -> Result<save_sync::SyncStatus, BrokerError> {
+    pub(crate) fn save_sync_status(&mut self) -> Result<save_sync::SyncStatus, BrokerError> {
         let reconciler = self.sync_reconciler()?;
         let local = reconciler
             .local_candidate(Device {
@@ -363,7 +367,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 
-    fn save_sync_resolve(
+    pub(crate) fn save_sync_resolve(
         &mut self,
         action: ResolutionAction,
     ) -> Result<save_sync::ResolutionReceipt, BrokerError> {
@@ -386,7 +390,7 @@ impl SessionBrokerClient for SimulatorSessionAdapter {
             .map_err(|error| BrokerError::new(error.to_string()))
     }
 
-    fn save_vault_restore(&mut self, confirmed: bool) -> Result<(), BrokerError> {
+    pub(crate) fn save_vault_restore(&mut self, confirmed: bool) -> Result<(), BrokerError> {
         let generation = self
             .vault
             .current_generation()

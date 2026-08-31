@@ -2,7 +2,7 @@ pub mod resume;
 
 use std::{fmt, time::Duration};
 
-use launch_contract::{Catalog, LaunchRequest};
+use launch_contract::LaunchRequest;
 use save_vault::SaveKind;
 use serde::Serialize;
 
@@ -104,80 +104,6 @@ impl fmt::Display for BrokerError {
 }
 
 impl std::error::Error for BrokerError {}
-
-pub trait SessionBrokerClient {
-    fn submit(
-        &mut self,
-        request: BrokerRequest,
-        catalog: &Catalog,
-    ) -> Result<SessionHandle, BrokerError>;
-
-    fn complete(&mut self, exit_code: i32, duration_ms: u64) -> Result<SessionResult, BrokerError>;
-
-    fn checkpoint(
-        &mut self,
-        _reason: resume::CheckpointReason,
-        _fault: resume::CommitFault,
-    ) -> Result<resume::ResumeRecord, BrokerError> {
-        Err(BrokerError::new("resume checkpoint is unavailable"))
-    }
-
-    fn resume_entries(
-        &mut self,
-        requests: &[BrokerRequest],
-    ) -> Result<Vec<resume::ResumeSummary>, BrokerError> {
-        let _ = requests;
-        Err(BrokerError::new("resume listing is unavailable"))
-    }
-
-    fn resume_choices(
-        &mut self,
-        _request: &BrokerRequest,
-    ) -> Result<Vec<resume::ResumeDecision>, BrokerError> {
-        Err(BrokerError::new("resume choices are unavailable"))
-    }
-
-    fn resume_decision(
-        &mut self,
-        _request: BrokerRequest,
-        _decision: resume::ResumeDecision,
-    ) -> Result<resume::ResumeResult, BrokerError> {
-        Err(BrokerError::new("resume decision is unavailable"))
-    }
-
-    fn resume_delete(
-        &mut self,
-        _request: BrokerRequest,
-        _generation: u64,
-        _confirmed: bool,
-    ) -> Result<(), BrokerError> {
-        Err(BrokerError::new("resume deletion is unavailable"))
-    }
-
-    fn save_vault_history(&mut self) -> Result<Vec<SaveVaultSummary>, BrokerError> {
-        Err(BrokerError::new("save vault is unavailable"))
-    }
-
-    fn save_vault_preview(&mut self) -> Result<SaveVaultPreview, BrokerError> {
-        Err(BrokerError::new("save vault is unavailable"))
-    }
-
-    fn save_vault_restore(&mut self, _confirmed: bool) -> Result<(), BrokerError> {
-        Err(BrokerError::new("save vault is unavailable"))
-    }
-
-    fn save_sync_status(&mut self) -> Result<save_sync::SyncStatus, BrokerError> {
-        Err(BrokerError::new("save synchronization is unavailable"))
-    }
-
-    fn save_sync_resolve(
-        &mut self,
-        _action: save_sync::ResolutionAction,
-    ) -> Result<save_sync::ResolutionReceipt, BrokerError> {
-        Err(BrokerError::new("save synchronization is unavailable"))
-    }
-}
-
 pub fn accepted_handle(request: &BrokerRequest) -> SessionHandle {
     SessionHandle {
         schema: HANDLE_SCHEMA.into(),

@@ -1,0 +1,32 @@
+{
+  "schema": "brickpro-storage-onboarding/v1",
+  "twoCardRequested": true,
+  "sd1": {
+    "uuid": "11111111-2222-3333-4444-555555555555",
+    "root": "sd1",
+    "partitionTable": "gpt",
+    "filesystem": {"kind":"exfat","maxFileBytes":17592186044415,"maxPathBytes":4096,"maxComponentBytes":255,"caseSensitive":false,"supportsAtomicRename":true,"supportsFileSync":true,"supportsDirectorySync":true,"supportsSymlinks":false,"supportsPosixOwnership":false,"supportsPosixModes":false},
+    "capacityBytes": 137438953472,
+    "freeBytes": 128849018880,
+    "readOnly": false,
+    "counterfeitSuspected": false,
+    "dirty": false,
+    "verificationFileBytes": 4294967296,
+    "remountedAfterFormat": true
+  },
+  "sd2": {
+    "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "root": "sd2",
+    "partitionTable": "mbr",
+    "filesystem": {"kind":"exfat","maxFileBytes":17592186044415,"maxPathBytes":4096,"maxComponentBytes":255,"caseSensitive":false,"supportsAtomicRename":true,"supportsFileSync":true,"supportsDirectorySync":true,"supportsSymlinks":false,"supportsPosixOwnership":false,"supportsPosixModes":false},
+    "capacityBytes": 549755813888,
+    "freeBytes": 515396075520,
+    "readOnly": false,
+    "counterfeitSuspected": false,
+    "dirty": false,
+    "verificationFileBytes": 4294967296,
+    "remountedAfterFormat": true
+  },
+  "usb": {"requested": true,"activeUsers":0,"locallyUnmounted":true,"ejectAcknowledged":true},
+  "bundle": {"root": "bundle"}
+}

@@ -2064,7 +2064,10 @@ fn run_session<P: Platform>(
 
     let mut fixture_done = false;
     let lifecycle_policy = LifecycleCheckpointPolicy::default();
-    let mut periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
+    let periodic_interval_ms = lifecycle_policy.periodic_interval().as_millis() as u64;
+    let mut periodic_deadline = platform
+        .logical_time_ms()
+        .saturating_add(periodic_interval_ms);
     loop {
         if stop.load(Ordering::SeqCst) {
             break;
@@ -2075,13 +2078,15 @@ fn run_session<P: Platform>(
         let mut did_work = false;
         if state.lifecycle.is_awake()
             && state.active_session.is_some()
-            && Instant::now() >= periodic_deadline
+            && platform.logical_time_ms() >= periodic_deadline
         {
             let _ = state
                 .broker
                 .checkpoint(CheckpointReason::Periodic, CommitFault::None);
             let _ = refresh_resume_projection(&mut state, &catalog, &launch_catalog);
-            periodic_deadline = Instant::now() + lifecycle_policy.periodic_interval();
+            periodic_deadline = platform
+                .logical_time_ms()
+                .saturating_add(periodic_interval_ms);
             did_work = true;
         }
         if !fixture_done || keep_alive {

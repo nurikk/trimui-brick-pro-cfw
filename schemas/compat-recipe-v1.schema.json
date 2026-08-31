@@ -236,8 +236,9 @@
         },
         "powerProfileId": {
           "enum": [
+            "eco",
             "balanced",
-            "battery-saver"
+            "performance"
           ]
         }
       }

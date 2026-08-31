@@ -16,6 +16,6 @@
   "statePath": {"root": "data/states", "relative": "experimental/gameboy"},
   "capabilities": ["display", "audio", "input", "rumble", "save-state", "rewind"],
   "deviceLimits": {"maxWidth": 1024, "maxHeight": 768, "maxControllers": 1, "maxAudioChannels": 2},
-  "settingsDefaults": {"displayWidth": 1024, "displayHeight": 768, "displayMode": "fit", "frameSkip": 0, "rumble": false, "audioLatencyMs": 64},
+  "settingsDefaults": {"displayWidth": 1024, "displayHeight": 768, "displayMode": "fit", "frameSkip": 0, "rumble": false, "audioLatencyMs": 64, "powerProfile": "eco"},
   "licenseProvenanceUrl": "https://docs.libretro.com/"
 }

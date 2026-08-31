@@ -219,11 +219,11 @@
         {
           "operation": "propose-change",
           "field": "power.performance-profile",
-          "value": "quiet",
+          "value": "eco",
           "expect": {
             "result": "pending",
             "current-value": "balanced",
-            "pending-value": "quiet"
+            "pending-value": "eco"
           }
         },
         {
@@ -236,7 +236,7 @@
             },
             "pending": {
               "power.sleep-timeout-seconds": 900,
-              "power.performance-profile": "quiet"
+              "power.performance-profile": "eco"
             }
           }
         },
@@ -247,7 +247,7 @@
             "result": "cancelled",
             "current-value": 300,
             "pending": {
-              "power.performance-profile": "quiet"
+              "power.performance-profile": "eco"
             }
           }
         }
@@ -343,7 +343,7 @@
       "initial": {
         "current": {
           "power.sleep-timeout-seconds": 900,
-          "power.performance-profile": "quiet"
+          "power.performance-profile": "eco"
         },
         "pending": {}
       },
@@ -372,7 +372,7 @@
           "expect": {
             "result": "pending",
             "pending-value": "balanced",
-            "current-value": "quiet"
+            "current-value": "eco"
           }
         },
         {
@@ -380,7 +380,7 @@
           "field": "power.performance-profile",
           "expect": {
             "result": "cancelled",
-            "current-value": "quiet",
+            "current-value": "eco",
             "pending": {}
           }
         }

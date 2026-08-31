@@ -18,7 +18,7 @@
       {"relative": "games", "settings": {"frameSkip": 1}},
       {"relative": "games/adventure", "settings": {"frameSkip": 2}}
     ],
-    "game": {"rumble": true},
+    "game": {"rumble": true, "powerProfile": "performance"},
     "session": {"audioLatencyMs": 32}
   }
 }

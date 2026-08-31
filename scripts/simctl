@@ -116,6 +116,18 @@ validate_command() {
             [ "$1" = --action ] || usage
             validate_semantic_action "$2"
             if [ "$#" -eq 4 ]; then case "$4" in press|release) ;; *) usage ;; esac; fi ;;
+        power)
+            case "$1" in
+                override)
+                    [ "$#" -eq 3 ] && [ "$2" = --profile ] || usage
+                    case "$3" in eco|balanced|performance) ;; *) usage ;; esac ;;
+                temperature)
+                    [ "$#" -eq 3 ] && [ "$2" = --celsius ] || usage
+                    case "$3" in -[0-9]*|[0-9]*) ;; *) usage ;; esac
+                    case "$3" in *[!0-9-]*) usage ;; esac
+                    [ "$3" -ge -20 ] && [ "$3" -le 150 ] || usage ;;
+                *) usage ;;
+            esac ;;
         hardware)
             [ "$#" -ge 2 ] && [ "$1" = set ] || usage
             shift

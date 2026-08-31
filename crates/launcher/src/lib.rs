@@ -40,6 +40,7 @@ use sim_platform_contract::{
         CheckpointHook, LifecycleClock, LifecycleController, LifecycleFault, LifecycleMarker,
         LifecyclePhase, ResumeRequest, SuspendRequest, WakeSource, DEFAULT_SLEEP_DURATION_MINUTES,
     },
+    power::PowerPolicyController,
     Button, ButtonAction, ButtonEvent, HardwareChanges, Platform, PlatformResult, StorageMode,
 };
 use ui_model::{Action as UiAction, PlatformCapabilities as UiCapabilities};
@@ -143,6 +144,7 @@ struct AppState {
     presentation: PresentationState,
     session_step: u32,
     lifecycle: LifecycleController,
+    power: PowerPolicyController,
     journey: ProductJourneyState,
     resume_content: Option<DemoContent>,
     resume_marker: u32,
@@ -1166,11 +1168,11 @@ fn settings_form_rows(section: SettingsSection) -> Vec<String> {
         ),
         SettingsSection::Power => (
             "Power settings",
-            "Idle sleep timeout",
-            "10 minutes",
-            "Autosave the active session before bounded sleep.",
-            "Apply mode: immediate",
-            "Pending changes: 0",
+            "Game power profile",
+            "Balanced · 59.9 FPS · p99 17.4 ms · 61 C · 3.4 W",
+            "Synthetic simulator trade-off; hardware unverified. Thermal limit: 75 C (always on).",
+            "Apply mode: active game only; launcher and suspend use Eco",
+            "60 Hz · Real-device operations denied",
         ),
         SettingsSection::Library => (
             "Library settings",
@@ -1315,6 +1317,16 @@ struct HardwareArgs {
     battery: Option<BatteryChanges>,
     storage: Option<StorageChanges>,
     radio: Option<RadioChanges>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PowerArgs {
+    operation: String,
+    #[serde(default)]
+    profile: Option<String>,
+    #[serde(default, rename = "temperatureC")]
+    temperature_c: Option<i16>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1692,6 +1704,7 @@ fn run_session<P: Platform>(
         presentation,
         session_step: 0,
         lifecycle: load_lifecycle(&evidence.root),
+        power: PowerPolicyController::new().map_err(anyhow::Error::msg)?,
         journey: ProductJourneyState::default(),
         resume_content: None,
         resume_marker: 0,
@@ -1901,6 +1914,7 @@ fn handle_request<P: Platform>(
         "wait-ready" => wait_ready(request.args),
         "state" => parse_empty(request.args)
             .and_then(|_| state_json(platform, evidence, log, catalog, state)),
+        "power" => parse::<PowerArgs>(request.args).and_then(|args| power_control(state, args)),
         "button" => parse::<ButtonArgs>(request.args).and_then(|args| {
             let event = ButtonEvent {
                 at_ms: platform.logical_time_ms().saturating_add(1),
@@ -1953,6 +1967,7 @@ fn handle_request<P: Platform>(
                 let _ = state.lifecycle.low_battery(platform);
                 sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
                 if !state.lifecycle.is_awake() {
+                    state.power.game_exit();
                     state.active_session = None;
                     state.last_session = None;
                     state.route = Route::Library;
@@ -2224,6 +2239,7 @@ fn presentation_action(state: &mut AppState, args: PresentationArgs) -> Result<(
         "home" => {
             reduce_route(state, ui_model::Route::Home);
             state.route = Route::Library;
+            state.power.game_exit();
         }
         "systems" => reduce_route(state, ui_model::Route::Systems),
         "games" => {
@@ -2728,6 +2744,7 @@ fn resume_control(
         .broker
         .submit(request, launch_catalog)
         .map_err(|error| error.to_string())?;
+    state.power.begin_game(&entry.system, &entry.id)?;
     state.active_session = Some(accepted);
     state.last_session = None;
     state.route = Route::Session;
@@ -2928,6 +2945,7 @@ mod tests {
             presentation,
             session_step: 0,
             lifecycle: LifecycleController::new(),
+            power: PowerPolicyController::new().expect("validated power policy fixture"),
             journey: ProductJourneyState::default(),
             resume_content: None,
             resume_marker: 0,
@@ -3806,6 +3824,22 @@ fn wait_ready(args: Value) -> Result<Value, String> {
     Ok(json!({"ready": true, "generation": 1}))
 }
 
+fn power_control(state: &mut AppState, args: PowerArgs) -> Result<Value, String> {
+    match args.operation.as_str() {
+        "override" => state.power.set_game_override(
+            args.profile
+                .as_deref()
+                .ok_or_else(|| "power override requires profile".to_string())?,
+        ),
+        "temperature" => state.power.set_temperature(
+            args.temperature_c
+                .ok_or_else(|| "power temperature requires temperatureC".to_string())?,
+        ),
+        _ => Err("power operation must be override or temperature".into()),
+    }?;
+    Ok(state.power.evidence())
+}
+
 struct BrokerCheckpoint<'a> {
     broker: &'a mut dyn SessionBrokerClient,
     fault: CommitFault,
@@ -3839,6 +3873,7 @@ fn lifecycle_control<P: Platform>(
         .find_map(|name| LifecycleFault::from_name(name));
     let result = match args.operation.as_str() {
         "suspend" => {
+            state.power.suspend();
             let checkpoint_fault = if state.faults.iter().any(|fault| fault == "checkpoint-fail") {
                 CommitFault::Artifact
             } else {
@@ -3866,19 +3901,25 @@ fn lifecycle_control<P: Platform>(
                 },
             )
         }
-        "resume" => state.lifecycle.resume(
-            platform,
-            ResumeRequest {
-                timeout,
-                clock: LifecycleClock {
-                    monotonic_ms: platform.logical_time_ms(),
-                    boot_time_ms: platform.wall_clock_ms(),
+        "resume" => {
+            state.power.wake();
+            state.lifecycle.resume(
+                platform,
+                ResumeRequest {
+                    timeout,
+                    clock: LifecycleClock {
+                        monotonic_ms: platform.logical_time_ms(),
+                        boot_time_ms: platform.wall_clock_ms(),
+                    },
+                    source: args.wake_source,
+                    fault,
                 },
-                source: args.wake_source,
-                fault,
-            },
-        ),
-        "shutdown" => state.lifecycle.orderly_shutdown(platform, fault),
+            )
+        }
+        "shutdown" => {
+            state.power.game_exit();
+            state.lifecycle.orderly_shutdown(platform, fault)
+        }
         _ => return Err("lifecycle operation must be suspend, resume, or shutdown".into()),
     };
     sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
@@ -3887,6 +3928,7 @@ fn lifecycle_control<P: Platform>(
         phase,
         LifecyclePhase::ResumedForDeadline | LifecyclePhase::OrderlyShutdown
     ) {
+        state.power.wake();
         state.active_session = None;
         state.last_session = None;
         state.route = Route::Library;
@@ -4029,6 +4071,7 @@ fn adapter_result(
         )
         .map_err(|error| error.to_string())?;
     state.active_session = None;
+    state.power.game_exit();
     state.last_session = Some(result.clone());
     refresh_resume_projection(state, catalog, launch_catalog)?;
     state
@@ -4223,6 +4266,10 @@ fn handle_semantic_action<P: Platform>(
                 }
                 _ => {}
             }
+            if canonical_route_id(&state.journey) == Some("diagnostics-safe-mode") {
+                state.power.safe_mode_reset();
+                state.route = Route::Library;
+            }
             if matches!(state.journey, ProductJourneyState::Session { .. })
                 && before != canonical_route_id(&state.journey)
             {
@@ -4250,6 +4297,7 @@ fn handle_semantic_action<P: Platform>(
                     .complete(0, 0)
                     .map_err(|error| anyhow!(error.to_string()))?;
                 state.active_session = None;
+                state.power.game_exit();
                 state.last_session = Some(result);
                 log.emit(
                     "session_checkpoint",
@@ -4376,17 +4424,15 @@ fn handle_semantic_action<P: Platform>(
         (Route::Games, input_profile::Action::Start)
         | (Route::Session, input_profile::Action::Start) => {
             state.route = Route::Library;
+            state.power.game_exit();
             route_changed = true;
         }
         (Route::Games, input_profile::Action::Primary)
             if route_before_presentation == Route::Games
                 && state.presentation.ui.route == ui_model::Route::Games =>
         {
-            let request = launch_request(
-                &catalog.entries[selected_catalog_index(state, catalog)],
-                launch_catalog,
-            )
-            .map_err(|error| anyhow!(error))?;
+            let entry = &catalog.entries[selected_catalog_index(state, catalog)];
+            let request = launch_request(entry, launch_catalog).map_err(|error| anyhow!(error))?;
             let bytes = launch_contract::request_json(&request)
                 .map_err(|error| anyhow!(error.to_string()))?
                 .into_bytes();
@@ -4398,6 +4444,10 @@ fn handle_semantic_action<P: Platform>(
                 .broker
                 .submit(parsed, launch_catalog)
                 .map_err(|error| anyhow!(error.to_string()))?;
+            state
+                .power
+                .begin_game(&entry.system, &entry.id)
+                .map_err(anyhow::Error::msg)?;
             write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
             state.route = Route::Session;
             state.session_step = 0;
@@ -5120,6 +5170,10 @@ fn launch_product_session(
         .broker
         .submit(request, launch_catalog)
         .map_err(|error| anyhow!(error.to_string()))?;
+    state
+        .power
+        .begin_game(&entry.system, &entry.id)
+        .map_err(anyhow::Error::msg)?;
     write_bytes(evidence.root.join("launch-request.json"), &bytes)?;
     state.active_session = Some(accepted);
     state.route = Route::Session;
@@ -5236,6 +5290,7 @@ fn state_json<P: Platform>(
         "saveVault": save_vault_json(state),
         "controllerRoute": { "navigatorVisible": false, "selectedIndex": 0, "currentId": canonical_route_id(&state.journey), "expectedCount": 64 },
         "presentation": presentation,
+        "power": state.power.evidence(),
     }))
 }
 

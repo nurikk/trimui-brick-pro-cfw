@@ -7,6 +7,7 @@
 use std::{fmt, path::Path};
 
 pub mod lifecycle;
+pub mod power;
 
 pub use launcher_presentation::Screen;
 use serde::{Deserialize, Serialize};

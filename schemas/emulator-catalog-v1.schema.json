@@ -57,7 +57,7 @@
     "settingsDelta": {
       "type": "object", "additionalProperties": false,
       "minProperties": 1,
-      "properties": {"displayWidth": {"type": "integer", "minimum": 1}, "displayHeight": {"type": "integer", "minimum": 1}, "displayMode": {"enum": ["integer", "fit"]}, "frameSkip": {"type": "integer", "minimum": 0, "maximum": 10}, "rumble": {"type": "boolean"}, "audioLatencyMs": {"type": "integer", "minimum": 0}}
+      "properties": {"displayWidth": {"type": "integer", "minimum": 1}, "displayHeight": {"type": "integer", "minimum": 1}, "displayMode": {"enum": ["integer", "fit"]}, "frameSkip": {"type": "integer", "minimum": 0, "maximum": 10}, "rumble": {"type": "boolean"}, "audioLatencyMs": {"type": "integer", "minimum": 0}, "powerProfile": {"enum": ["eco", "balanced", "performance"]}}
     },
     "gameDelta": {
       "type": "object", "additionalProperties": false,
@@ -72,7 +72,7 @@
     "defaults": {
       "type": "object", "additionalProperties": false,
       "required": ["displayWidth", "displayHeight", "displayMode", "frameSkip", "rumble", "audioLatencyMs"],
-      "properties": {"displayWidth": {"type": "integer", "minimum": 1}, "displayHeight": {"type": "integer", "minimum": 1}, "displayMode": {"enum": ["integer", "fit"]}, "frameSkip": {"type": "integer", "minimum": 0, "maximum": 10}, "rumble": {"type": "boolean"}, "audioLatencyMs": {"type": "integer", "minimum": 0}}
+      "properties": {"displayWidth": {"type": "integer", "minimum": 1}, "displayHeight": {"type": "integer", "minimum": 1}, "displayMode": {"enum": ["integer", "fit"]}, "frameSkip": {"type": "integer", "minimum": 0, "maximum": 10}, "rumble": {"type": "boolean"}, "audioLatencyMs": {"type": "integer", "minimum": 0}, "powerProfile": {"enum": ["eco", "balanced", "performance"]}}
     },
     "bios": {
       "type": "object", "additionalProperties": false, "required": ["id", "expectedSha256", "locations"],

@@ -100,6 +100,7 @@ fn command_args<'a>(
             require_empty(args)?;
             Ok(("state", json!({})))
         }
+        "power" => Ok(("power", power_args(args)?)),
         "button" => Ok(("button", button_args(args)?)),
         "action" => Ok(("action", semantic_action_args(args)?)),
         "hardware" => {
@@ -240,6 +241,31 @@ fn semantic_action_args(args: &[String]) -> Result<Value, (&'static str, String)
         "press"
     };
     Ok(json!({"action": args[1], "phase": phase}))
+}
+
+fn power_args(args: &[String]) -> Result<Value, (&'static str, String)> {
+    match args {
+        [operation, flag, profile]
+            if operation == "override"
+                && flag == "--profile"
+                && ["eco", "balanced", "performance"].contains(&profile.as_str()) =>
+        {
+            Ok(json!({"operation": operation, "profile": profile}))
+        }
+        [operation, flag, temperature] if operation == "temperature" && flag == "--celsius" => {
+            let temperature = temperature
+                .parse::<i16>()
+                .map_err(|_| ("usage", "temperature must be an integer".into()))?;
+            if temperature < 0i16.saturating_sub(20) || temperature > 150 {
+                return Err(("usage", "temperature must be between -20 and 150".into()));
+            }
+            Ok(json!({"operation": operation, "temperatureC": temperature}))
+        }
+        _ => Err((
+            "usage",
+            "power override --profile eco|balanced|performance or power temperature --celsius N is required".into(),
+        )),
+    }
 }
 
 fn hardware_args(args: &[String]) -> Result<Value, (&'static str, String)> {

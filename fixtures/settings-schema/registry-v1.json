@@ -159,6 +159,19 @@
       "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
     },
     {
+      "id": "core.power.performance-profile", "namespace": "core", "section": "power", "group": "performance", "order": 20,
+      "labelKey": "settings.power.performanceProfile.label", "descriptionKey": "settings.power.performanceProfile.description", "kind": "enum-single",
+      "default": {"kind": "enum-single", "value": "balanced"}, "current": {"kind": "enum-single", "value": "balanced"}, "pending": null,
+      "constraints": {"range": null, "text": null, "options": [
+        {"value": "eco", "labelKey": "settings.power.performanceProfile.eco"},
+        {"value": "balanced", "labelKey": "settings.power.performanceProfile.balanced"},
+        {"value": "performance", "labelKey": "settings.power.performanceProfile.performance"}
+      ]},
+      "units": null, "display": {"unit": null, "format": "select", "redact": false}, "scope": "emulator-profile", "apply": ["on-confirm"],
+      "requiresCapabilities": [], "unsupportedReason": null, "visibility": null, "enabledIf": null, "redacted": false,
+      "validation": {"required": true, "trim": false, "allowEmpty": false}, "migration": null
+    },
+    {
       "id": "core.wifi.enabled", "namespace": "core", "section": "wifi", "group": "connection", "order": 10,
       "labelKey": "settings.wifi.enabled.label", "descriptionKey": "settings.wifi.enabled.description", "kind": "boolean",
       "default": {"kind": "boolean", "value": false}, "current": {"kind": "boolean", "value": false}, "pending": null, "constraints": null, "units": null,

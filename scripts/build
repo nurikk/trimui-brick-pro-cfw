@@ -218,6 +218,8 @@ install -m 0755 "$WORK/payload/network-services-journey" "$STAGE/usr/bin/brickpr
 install -m 0755 "$WORK/payload/aarch64-semantic-journey" "$STAGE/usr/bin/brickpro-launcher-aarch64-journey"
 install -m 0644 "$ROOT/config/platform/tg4040/compatibility.json" \
     "$STAGE/config/platform/tg4040/compatibility.json"
+install -m 0644 "$ROOT/config/platform/tg4040/power-policies.json" \
+    "$STAGE/config/platform/tg4040/power-policies.json"
 install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
 cp -a "$ROOT/themes/upstream/art-book-next-es" "$STAGE/usr/share/trimui/themes/art-book-next-es"
 

@@ -3,6 +3,7 @@ use launcher_theme::safe_artbook;
 use serde_json::{json, Value};
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
+use sim_platform_contract::power::PowerPolicyController;
 use ui_model::{Action, PlatformCapabilities, Route, UiState};
 use wifi_manager::{GeneratedWifiBackend, WifiManager};
 use wifi_settings_controller::{Metadata as WifiMetadata, WifiSettingsController};
@@ -25,6 +26,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut wifi = wifi()?;
     wifi.scan()?;
     let wifi_snapshot = wifi.snapshot();
+    let power = power()?;
 
     let initial = UiState::generated();
     let home = ui_model::reduce(
@@ -89,9 +91,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "settingsSections": screens[0].settings.as_ref().map_or(0, |settings| settings.sections.len()),
         "wifiPhase": wifi_snapshot.phase,
         "boundaryStates": boundary_states(&screens[0]),
+        "power": power,
     });
     println!("{}", serde_json::to_string(&result)?);
     Ok(())
+}
+
+fn power() -> Result<Value, Box<dyn std::error::Error>> {
+    let mut controller = PowerPolicyController::new()?;
+    let initial = controller.evidence();
+    if initial["effectiveProfile"] != "eco"
+        || initial["hardwareVerified"] != false
+        || initial["realDeviceOperations"] != "denied"
+        || initial["policy"]["display"]["refreshHz"] != 60
+    {
+        return Err("initial power policy is unsafe".into());
+    }
+    controller.begin_game("portmaster", "orbit-garden")?;
+    if controller.evidence()["effectiveProfile"] != "performance" {
+        return Err("game power override was not resolved".into());
+    }
+    controller.set_temperature(75)?;
+    if controller.evidence()["effectiveSource"] != "thermal-limit" {
+        return Err("thermal limit did not override performance".into());
+    }
+    controller.suspend();
+    if controller.evidence()["context"] != "suspend" {
+        return Err("suspend did not enter Eco".into());
+    }
+    controller.wake();
+    controller.set_temperature(69)?;
+    controller.begin_game("ps1", "mirror-ps1")?;
+    controller.set_game_override("performance")?;
+    if controller.evidence()["temporaryGamePolicy"] != true {
+        return Err("temporary override was not identified".into());
+    }
+    controller.game_exit();
+    controller.safe_mode_reset();
+    let final_state = controller.evidence();
+    if final_state["effectiveProfile"] != "eco" || final_state["safeModeReset"] != true {
+        return Err("safe-mode reset did not return to Eco".into());
+    }
+    Ok(json!({"initial": initial, "final": final_state}))
 }
 
 fn settings() -> Result<settings_ui::Scene, Box<dyn std::error::Error>> {

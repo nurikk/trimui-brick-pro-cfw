@@ -129,10 +129,17 @@ impl SimulatorSessionAdapter {
             status: CandidateStatus::Candidate,
             deleted: false,
         };
-        reconciler
+        if reconciler
             .exchange()
-            .stage_remote(remote, payload, false)
-            .expect("remote save candidate");
+            .quarantined()
+            .expect("remote save candidate")
+            .is_empty()
+        {
+            reconciler
+                .exchange()
+                .stage_remote(remote, payload, false)
+                .expect("remote save candidate");
+        }
         Self {
             active: None,
             store: ResumeStore::for_simulator(root.join("resume"), config)

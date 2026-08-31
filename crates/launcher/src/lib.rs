@@ -1917,9 +1917,17 @@ fn handle_request<P: Platform>(
                 .map(|_| CheckpointReason::LowBattery);
             apply_hardware(platform, log, args)?;
             if let Some(reason) = checkpoint_reason {
-                let _ = state.broker.checkpoint(reason, CommitFault::None);
-                refresh_resume_projection(state, catalog, launch_catalog)?;
-                let _ = state.lifecycle.low_battery(platform);
+                if state.active_session.is_some() {
+                    state
+                        .broker
+                        .checkpoint(reason, CommitFault::None)
+                        .map_err(|error| error.to_string())?;
+                    refresh_resume_projection(state, catalog, launch_catalog)?;
+                }
+                state
+                    .lifecycle
+                    .low_battery(platform)
+                    .map_err(|error| error.to_string())?;
                 sync_lifecycle_marker(&evidence.root, &state.lifecycle)?;
                 if !state.lifecycle.is_awake() {
                     state.active_session = None;
@@ -3748,10 +3756,18 @@ fn wait_ready(args: Value) -> Result<Value, String> {
 struct BrokerCheckpoint<'a> {
     broker: &'a mut dyn SessionBrokerClient,
     fault: CommitFault,
+    active: bool,
 }
 
 impl CheckpointHook for BrokerCheckpoint<'_> {
     fn checkpoint(&mut self) -> Result<u64, String> {
+        if !self.active {
+            return if self.fault == CommitFault::None {
+                Ok(0)
+            } else {
+                Err("injected checkpoint fault".into())
+            };
+        }
         self.broker
             .checkpoint(CheckpointReason::PreSuspend, self.fault)
             .map(|record| record.generation)
@@ -3786,6 +3802,7 @@ fn lifecycle_control<P: Platform>(
             let mut checkpoint = BrokerCheckpoint {
                 broker: state.broker.as_mut(),
                 fault: checkpoint_fault,
+                active: state.active_session.is_some(),
             };
             let now_ms = platform.logical_time_ms();
             let wall_clock_ms = platform.wall_clock_ms();

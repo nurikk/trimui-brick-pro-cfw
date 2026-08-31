@@ -227,6 +227,9 @@ struct QuiesceRollback<'a> {
     snapshot: &'a PlatformState,
     touched_audio: bool,
     touched_input: bool,
+    touched_rumble: bool,
+    touched_usb: bool,
+    touched_leds: bool,
     touched_radios: bool,
 }
 
@@ -365,6 +368,9 @@ impl LifecycleController {
         for domain in [
             HardwareDomain::Audio,
             HardwareDomain::Input,
+            HardwareDomain::Rumble,
+            HardwareDomain::Usb,
+            HardwareDomain::Leds,
             HardwareDomain::Radios,
             HardwareDomain::Suspend,
         ] {
@@ -470,6 +476,9 @@ impl LifecycleController {
             snapshot: &snapshot,
             touched_audio: false,
             touched_input: false,
+            touched_rumble: false,
+            touched_usb: false,
+            touched_leds: false,
             touched_radios: false,
         };
         if fault == Some(LifecycleFault::QuiesceAudio) {
@@ -500,6 +509,32 @@ impl LifecycleController {
         }
         rollback_state.touched_input = true;
         self.record("quiesce-input");
+        if let Err(error) = platform.set_rumble(crate::RumbleState { active: false }) {
+            return Err(self.quiesce_failed(
+                platform,
+                &rollback_state,
+                "rumble",
+                &error.to_string(),
+            ));
+        }
+        rollback_state.touched_rumble = true;
+        self.record("quiesce-rumble");
+        if let Err(error) = platform.set_usb(crate::UsbState {
+            connected: snapshot.usb.connected,
+            role: crate::UsbRole::None,
+        }) {
+            return Err(self.quiesce_failed(platform, &rollback_state, "usb", &error.to_string()));
+        }
+        rollback_state.touched_usb = true;
+        self.record("quiesce-usb");
+        if let Err(error) = platform.set_leds(crate::LedState {
+            on: false,
+            brightness_percent: 0,
+        }) {
+            return Err(self.quiesce_failed(platform, &rollback_state, "leds", &error.to_string()));
+        }
+        rollback_state.touched_leds = true;
+        self.record("quiesce-leds");
         if fault == Some(LifecycleFault::QuiesceRadios) {
             return Err(self.quiesce_failed(platform, &rollback_state, "radios", "injected fault"));
         }
@@ -678,6 +713,9 @@ impl LifecycleController {
         for domain in [
             HardwareDomain::Suspend,
             HardwareDomain::Radios,
+            HardwareDomain::Leds,
+            HardwareDomain::Usb,
+            HardwareDomain::Rumble,
             HardwareDomain::Input,
             HardwareDomain::Audio,
         ] {
@@ -699,11 +737,25 @@ impl LifecycleController {
             .set_radios(snapshot.radios)
             .map_err(|error| self.resume_failed("radios", error.to_string()))?;
         self.record("restore-radios");
+        platform
+            .set_leds(snapshot.leds)
+            .map_err(|error| self.resume_failed("leds", error.to_string()))?;
+        self.record("restore-leds");
+        platform
+            .set_usb(snapshot.usb)
+            .map_err(|error| self.resume_failed("usb", error.to_string()))?;
+        self.record("restore-usb");
+        platform
+            .set_rumble(snapshot.rumble)
+            .map_err(|error| self.resume_failed("rumble", error.to_string()))?;
+        self.record("restore-rumble");
         if fault == Some(LifecycleFault::ResumeInput) {
             return Err(self.resume_failed("input", "injected fault".into()));
         }
         platform
-            .set_input(snapshot.input.clone())
+            .set_input(InputState {
+                pressed: Vec::new(),
+            })
             .map_err(|error| self.resume_failed("input", error.to_string()))?;
         self.record("restore-input");
         if fault == Some(LifecycleFault::ResumeAudio) {
@@ -945,6 +997,21 @@ fn rollback<P: Platform>(
     if rollback_state.touched_radios {
         platform
             .set_radios(rollback_state.snapshot.radios)
+            .map_err(|error| error.to_string())?;
+    }
+    if rollback_state.touched_leds {
+        platform
+            .set_leds(rollback_state.snapshot.leds)
+            .map_err(|error| error.to_string())?;
+    }
+    if rollback_state.touched_usb {
+        platform
+            .set_usb(rollback_state.snapshot.usb)
+            .map_err(|error| error.to_string())?;
+    }
+    if rollback_state.touched_rumble {
+        platform
+            .set_rumble(rollback_state.snapshot.rumble)
             .map_err(|error| error.to_string())?;
     }
     if rollback_state.touched_input {

@@ -134,8 +134,8 @@ impl ServiceController {
     }
 
     pub fn set_network(&mut self, wifi: &WifiState, ip_address: Option<&str>) {
-        self.wifi_connected =
-            wifi.phase == WifiPhase::Connected && wifi.connected_network_id.is_some();
+        self.wifi_connected = matches!(wifi.phase, WifiPhase::Lan | WifiPhase::Internet)
+            && wifi.connected_network_id.is_some();
         self.ip_address = ip_address
             .filter(|address| valid_ip(address))
             .map(str::to_owned);

@@ -339,6 +339,7 @@ pub struct NetworkSnapshot {
     pub known: bool,
     pub connected: bool,
     pub selected: bool,
+    pub priority: Option<u8>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -367,6 +368,7 @@ pub struct Snapshot {
     pub security_choices: Vec<Security>,
     pub keyboard: Option<KeyboardRequest>,
     pub open_confirmation: bool,
+    pub retry_after_ms: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -433,6 +435,7 @@ impl std::error::Error for ControllerError {}
 pub enum ControllerAction {
     Press(virtual_keyboard::Button),
     SetSecurity { security: Security },
+    SetPriority { priority: u8 },
     SelectNetwork { network_id: NetworkId },
     OpenManual,
     Connect,
@@ -514,6 +517,11 @@ impl WifiSettingsController {
                 known: entry.known,
                 connected: entry.connected,
                 selected: self.selected_network_id.as_ref() == Some(&entry.network_id),
+                priority: saved
+                    .networks
+                    .iter()
+                    .find(|record| record.network_id == entry.network_id)
+                    .map(|record| record.priority),
             })
             .collect::<Vec<_>>();
         let selected_network = state
@@ -527,6 +535,11 @@ impl WifiSettingsController {
                 known: entry.known,
                 connected: entry.connected,
                 selected: true,
+                priority: saved
+                    .networks
+                    .iter()
+                    .find(|record| record.network_id == entry.network_id)
+                    .map(|record| record.priority),
             });
         Snapshot {
             width: SCENE_WIDTH,
@@ -555,6 +568,7 @@ impl WifiSettingsController {
             security_choices: self.metadata.security_choices.clone(),
             keyboard: self.keyboard_request(),
             open_confirmation: self.open_confirmation,
+            retry_after_ms: state.retry_after_ms,
         }
     }
 
@@ -602,6 +616,13 @@ impl WifiSettingsController {
         }
         self.selected_security = security;
         Ok(())
+    }
+
+    pub fn set_priority(&mut self, priority: u8) -> Result<(), ControllerError> {
+        let network_id = self.selected_id()?;
+        self.manager
+            .set_profile_priority(&network_id, priority)
+            .map_err(|error| self.manager_error(error.0))
     }
 
     pub fn scan(&mut self) -> Result<(), ControllerError> {
@@ -655,6 +676,7 @@ impl WifiSettingsController {
         match action {
             ControllerAction::Press(button) => self.press(button),
             ControllerAction::SetSecurity { security } => self.set_security(security),
+            ControllerAction::SetPriority { priority } => self.set_priority(priority),
             ControllerAction::SelectNetwork { network_id } => self.select_network(network_id),
             ControllerAction::OpenManual => self.open_manual(),
             ControllerAction::Connect => self.connect(),

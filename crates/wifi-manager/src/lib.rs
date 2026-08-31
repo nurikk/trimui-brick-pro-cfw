@@ -9,6 +9,7 @@ pub const MAX_SSID_BYTES: usize = 32;
 pub const MAX_CREDENTIAL_REFERENCE_BYTES: usize = 128;
 pub const MAX_NETWORK_ID_BYTES: usize = 64;
 pub const LOW_BATTERY_PERCENT: u8 = 20;
+pub const MAX_RETRY_ATTEMPTS: u8 = 3;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NetworkId(String);
@@ -139,11 +140,15 @@ impl Security {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WifiPhase {
+    RadioOff,
     Idle,
     Scanning,
     AwaitingCredentials,
-    Connecting,
-    Connected,
+    Associating,
+    Authenticating,
+    Dhcp,
+    Lan,
+    Internet,
     Failed,
     Cancelled,
 }
@@ -155,6 +160,10 @@ pub enum ReasonCode {
     ConfirmationRequired,
     MissingCredential,
     BadCredentials,
+    DhcpFailed,
+    DnsFailed,
+    NoInternet,
+    RetryExhausted,
     Timeout,
     RadioUnavailable,
     UnsupportedSecurity,
@@ -198,6 +207,10 @@ pub struct SavedNetworkRecord {
     pub display_ssid: String,
     pub security: Security,
     pub credential_reference: Option<CredentialReference>,
+    #[serde(default)]
+    pub priority: u8,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -218,6 +231,7 @@ pub struct WifiState {
     pub selected_network_id: Option<NetworkId>,
     pub connected_network_id: Option<NetworkId>,
     pub scan_results: Vec<ScanResultEntry>,
+    pub retry_after_ms: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -340,6 +354,7 @@ pub enum ReconnectBlock {
     GameplayActive,
     CapabilityUnavailable,
     Disabled,
+    RadioOff,
     NoSavedNetwork,
     OpenNetworkNeedsConfirmation,
 }
@@ -363,7 +378,11 @@ pub struct ReconnectConditions {
 #[serde(rename_all = "kebab-case")]
 pub enum GeneratedConnectOutcome {
     Success,
+    LanOnly,
     BadPassword,
+    DhcpFailure,
+    DnsFailure,
+    NoInternet,
     Timeout,
     RadioUnavailable,
     Unsupported,
@@ -406,6 +425,9 @@ pub struct BackendAccessPoint {
 pub enum BackendError {
     RadioUnavailable,
     BadPassword,
+    DhcpFailure,
+    DnsFailure,
+    NoInternet,
     Timeout,
     Unsupported,
     Cancelled,
@@ -414,6 +436,9 @@ pub enum BackendError {
 
 pub trait WifiBackend {
     fn capability_available(&self) -> bool;
+    fn internet_available(&self, _network_id: &NetworkId) -> bool {
+        true
+    }
     fn scan(&mut self) -> Result<Vec<BackendAccessPoint>, BackendError>;
     fn connect(
         &mut self,
@@ -471,6 +496,13 @@ impl WifiBackend for GeneratedWifiBackend {
         self.fixture.radio_available
     }
 
+    fn internet_available(&self, network_id: &NetworkId) -> bool {
+        !matches!(
+            self.fixture.connect_outcomes.get(network_id),
+            Some(GeneratedConnectOutcome::LanOnly)
+        )
+    }
+
     fn scan(&mut self) -> Result<Vec<BackendAccessPoint>, BackendError> {
         if self.cancelled {
             self.cancelled = false;
@@ -513,8 +545,11 @@ impl WifiBackend for GeneratedWifiBackend {
             .copied()
             .unwrap_or(GeneratedConnectOutcome::Success)
         {
-            GeneratedConnectOutcome::Success => Ok(()),
+            GeneratedConnectOutcome::Success | GeneratedConnectOutcome::LanOnly => Ok(()),
             GeneratedConnectOutcome::BadPassword => Err(BackendError::BadPassword),
+            GeneratedConnectOutcome::DhcpFailure => Err(BackendError::DhcpFailure),
+            GeneratedConnectOutcome::DnsFailure => Err(BackendError::DnsFailure),
+            GeneratedConnectOutcome::NoInternet => Err(BackendError::NoInternet),
             GeneratedConnectOutcome::Timeout => Err(BackendError::Timeout),
             GeneratedConnectOutcome::RadioUnavailable => Err(BackendError::RadioUnavailable),
             GeneratedConnectOutcome::Unsupported => Err(BackendError::Unsupported),
@@ -548,6 +583,7 @@ pub struct WifiManager<B: WifiBackend> {
     events: Vec<WifiEvent>,
     last_credential_reference: Option<CredentialReference>,
     last_open_confirmation: bool,
+    retry_attempts: u8,
 }
 
 impl<B: WifiBackend> WifiManager<B> {
@@ -578,15 +614,21 @@ impl<B: WifiBackend> WifiManager<B> {
             state: WifiState {
                 enabled: saved.enabled,
                 automatic_reconnect: saved.automatic_reconnect,
-                phase: WifiPhase::Idle,
+                phase: if saved.enabled {
+                    WifiPhase::Idle
+                } else {
+                    WifiPhase::RadioOff
+                },
                 reason: None,
                 selected_network_id: None,
                 connected_network_id: None,
                 scan_results: Vec::new(),
+                retry_after_ms: None,
             },
             events: Vec::new(),
             last_credential_reference: None,
             last_open_confirmation: false,
+            retry_attempts: 0,
         })
     }
 
@@ -614,12 +656,32 @@ impl<B: WifiBackend> WifiManager<B> {
         self.state.enabled = enabled;
         self.state.scan_results.clear();
         self.state.selected_network_id = None;
-        self.set_phase(WifiPhase::Idle, None);
+        self.retry_attempts = 0;
+        self.state.retry_after_ms = None;
+        self.set_phase(
+            if enabled {
+                WifiPhase::Idle
+            } else {
+                WifiPhase::RadioOff
+            },
+            None,
+        );
         Ok(())
     }
 
     pub fn set_automatic_reconnect(&mut self, enabled: bool) {
         self.state.automatic_reconnect = enabled;
+    }
+
+    pub fn set_profile_priority(
+        &mut self,
+        network_id: &NetworkId,
+        priority: u8,
+    ) -> Result<(), WifiError> {
+        self.saved_networks
+            .get_mut(network_id)
+            .map(|record| record.priority = priority)
+            .ok_or(WifiError(ReasonCode::NotFound))
     }
 
     pub fn scan(&mut self, _request: ScanRequest) -> Result<(), WifiError> {
@@ -651,11 +713,19 @@ impl<B: WifiBackend> WifiManager<B> {
             .iter()
             .find(|entry| entry.connected)
             .map(|entry| entry.network_id.clone());
-        if self.state.connected_network_id.is_some() {
-            self.set_phase(WifiPhase::Connected, None);
-        } else {
-            self.set_phase(WifiPhase::Idle, None);
-        }
+        let phase = self
+            .state
+            .connected_network_id
+            .as_ref()
+            .map(|network_id| {
+                if self.backend.internet_available(network_id) {
+                    WifiPhase::Internet
+                } else {
+                    WifiPhase::Lan
+                }
+            })
+            .unwrap_or(WifiPhase::Idle);
+        self.set_phase(phase, None);
         self.events.push(WifiEvent::ScanCompleted {
             count: self.state.scan_results.len(),
         });
@@ -738,7 +808,11 @@ impl<B: WifiBackend> WifiManager<B> {
         self.state.selected_network_id = Some(request.network_id.clone());
         self.last_credential_reference = request.credential_reference.clone();
         self.last_open_confirmation = request.open_confirmation;
-        self.set_phase(WifiPhase::Connecting, None);
+        self.set_phase(WifiPhase::Associating, None);
+        if entry.security.needs_credential() {
+            self.set_phase(WifiPhase::Authenticating, None);
+        }
+        self.set_phase(WifiPhase::Dhcp, None);
         match self
             .backend
             .connect(&request.network_id, request.credential_reference.as_ref())
@@ -750,11 +824,34 @@ impl<B: WifiBackend> WifiManager<B> {
                     result.connected = result.network_id == request.network_id;
                     result.known = self.saved_networks.contains_key(&result.network_id);
                 }
-                self.set_phase(WifiPhase::Connected, None);
+                self.set_phase(
+                    if self.backend.internet_available(&request.network_id) {
+                        WifiPhase::Internet
+                    } else {
+                        WifiPhase::Lan
+                    },
+                    None,
+                );
                 self.events.push(WifiEvent::ConnectionChanged {
                     network_id: Some(request.network_id),
                 });
+                self.retry_attempts = 0;
+                self.state.retry_after_ms = None;
                 Ok(())
+            }
+            Err(error @ (BackendError::DnsFailure | BackendError::NoInternet)) => {
+                self.state.connected_network_id = Some(request.network_id.clone());
+                self.save_successful_connection(&entry, request.credential_reference);
+                for result in &mut self.state.scan_results {
+                    result.connected = result.network_id == request.network_id;
+                    result.known = self.saved_networks.contains_key(&result.network_id);
+                }
+                let reason = map_backend(error).0;
+                self.set_phase(WifiPhase::Lan, Some(reason));
+                self.events.push(WifiEvent::ConnectionChanged {
+                    network_id: Some(request.network_id),
+                });
+                Err(WifiError(reason))
             }
             Err(BackendError::Cancelled) => {
                 self.set_phase(WifiPhase::Cancelled, Some(ReasonCode::Cancelled));
@@ -798,6 +895,9 @@ impl<B: WifiBackend> WifiManager<B> {
     }
 
     pub fn retry(&mut self) -> Result<(), WifiError> {
+        if self.retry_attempts >= MAX_RETRY_ATTEMPTS {
+            return self.fail_result(ReasonCode::RetryExhausted);
+        }
         let network_id = self
             .state
             .selected_network_id
@@ -815,7 +915,7 @@ impl<B: WifiBackend> WifiManager<B> {
                 .get(&network_id)
                 .and_then(|record| record.credential_reference.clone())
         });
-        self.connect(ConnectRequest {
+        let result = self.connect(ConnectRequest {
             network_id,
             open_confirmation: self.last_open_confirmation,
             credential_reference: if entry.security.needs_credential() {
@@ -823,7 +923,13 @@ impl<B: WifiBackend> WifiManager<B> {
             } else {
                 None
             },
-        })
+        });
+        if result.is_err() {
+            self.retry_attempts += 1;
+            self.state.retry_after_ms =
+                Some(1_000_u32.saturating_mul(1_u32 << self.retry_attempts));
+        }
+        result
     }
 
     pub fn cancel(&mut self) -> Result<(), WifiError> {
@@ -833,7 +939,9 @@ impl<B: WifiBackend> WifiManager<B> {
     }
 
     pub fn auto_reconnect(&mut self, conditions: ReconnectConditions) -> AutoReconnectDecision {
-        let block = if !self.state.automatic_reconnect {
+        let block = if !self.state.enabled {
+            Some(ReconnectBlock::RadioOff)
+        } else if !self.state.automatic_reconnect {
             Some(ReconnectBlock::Disabled)
         } else if conditions.battery_percent < LOW_BATTERY_PERCENT {
             Some(ReconnectBlock::LowBattery)
@@ -849,6 +957,27 @@ impl<B: WifiBackend> WifiManager<B> {
         if let Some(block) = block {
             return AutoReconnectDecision::Blocked(block);
         }
+        if self.state.scan_results.is_empty() && self.rescan().is_err() {
+            return AutoReconnectDecision::Blocked(ReconnectBlock::NoSavedNetwork);
+        }
+        for record in self.saved_networks.values().filter(|record| record.hidden) {
+            if self
+                .state
+                .scan_results
+                .iter()
+                .all(|entry| entry.network_id != record.network_id)
+            {
+                self.state.scan_results.push(ScanResultEntry {
+                    network_id: record.network_id.clone(),
+                    display_ssid: "Hidden network".into(),
+                    security: record.security,
+                    signal_quality: 0,
+                    known: true,
+                    connected: false,
+                });
+            }
+        }
+        self.state.scan_results.sort_by(scan_order);
         let candidate = self
             .state
             .scan_results
@@ -863,7 +992,11 @@ impl<B: WifiBackend> WifiManager<B> {
                     })
                     .map(|record| (entry.clone(), record.clone()))
             })
-            .next();
+            .max_by(|(_, left), (_, right)| {
+                left.priority
+                    .cmp(&right.priority)
+                    .then_with(|| right.network_id.as_str().cmp(left.network_id.as_str()))
+            });
         let (entry, record) = match candidate {
             Some(candidate) => candidate,
             None => return AutoReconnectDecision::Blocked(ReconnectBlock::NoSavedNetwork),
@@ -924,15 +1057,29 @@ impl<B: WifiBackend> WifiManager<B> {
             WifiPhase::AwaitingCredentials => self
                 .password_keyboard_request()
                 .unwrap_or_else(|| self.access_points_scene()),
-            WifiPhase::Connecting | WifiPhase::Scanning => ScenePayload::Progress {
+            WifiPhase::Scanning
+            | WifiPhase::Associating
+            | WifiPhase::Authenticating
+            | WifiPhase::Dhcp => ScenePayload::Progress {
                 phase: self.state.phase,
                 network_id: self.state.selected_network_id.clone(),
             },
             WifiPhase::Failed | WifiPhase::Cancelled => ScenePayload::Error {
                 reason: self.state.reason.unwrap_or(ReasonCode::InvalidRequest),
             },
-            WifiPhase::Idle | WifiPhase::Connected => self.access_points_scene(),
+            WifiPhase::RadioOff | WifiPhase::Idle | WifiPhase::Lan | WifiPhase::Internet => {
+                self.access_points_scene()
+            }
         }
+    }
+
+    fn next_priority(&self) -> u8 {
+        self.saved_networks
+            .values()
+            .map(|record| record.priority)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
     }
 
     fn save_successful_connection(
@@ -940,6 +1087,11 @@ impl<B: WifiBackend> WifiManager<B> {
         entry: &ScanResultEntry,
         credential_reference: Option<CredentialReference>,
     ) {
+        let priority = self
+            .saved_networks
+            .get(&entry.network_id)
+            .map(|record| record.priority)
+            .unwrap_or_else(|| self.next_priority());
         self.saved_networks.insert(
             entry.network_id.clone(),
             SavedNetworkRecord {
@@ -947,6 +1099,8 @@ impl<B: WifiBackend> WifiManager<B> {
                 display_ssid: entry.display_ssid.clone(),
                 security: entry.security,
                 credential_reference,
+                priority,
+                hidden: entry.display_ssid == "Hidden network",
             },
         );
     }
@@ -978,6 +1132,9 @@ fn map_backend(error: BackendError) -> WifiError {
     WifiError(match error {
         BackendError::RadioUnavailable => ReasonCode::RadioUnavailable,
         BackendError::BadPassword => ReasonCode::BadCredentials,
+        BackendError::DhcpFailure => ReasonCode::DhcpFailed,
+        BackendError::DnsFailure => ReasonCode::DnsFailed,
+        BackendError::NoInternet => ReasonCode::NoInternet,
         BackendError::Timeout => ReasonCode::Timeout,
         BackendError::Unsupported => ReasonCode::UnsupportedSecurity,
         BackendError::Cancelled => ReasonCode::Cancelled,

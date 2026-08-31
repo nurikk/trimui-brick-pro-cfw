@@ -14,6 +14,7 @@
     "saved-reference-only-restart-reconnect",
     "disconnect-forget",
     "bad-credential-timeout-radio-unsupported",
+    "dhcp-dns-offline-and-utf8",
     "retry-cancel",
     "privacy-assertions"
   ]

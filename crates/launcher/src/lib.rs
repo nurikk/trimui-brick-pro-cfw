@@ -3606,7 +3606,7 @@ mod tests {
         );
 
         snapshot.keyboard = None;
-        snapshot.phase = wifi_manager::WifiPhase::Connecting;
+        snapshot.phase = wifi_manager::WifiPhase::Associating;
         assert_eq!(
             wifi_route_for_snapshot(&ui_model::WifiRoute::Scan, &snapshot),
             ui_model::WifiRoute::Progress
@@ -3755,7 +3755,13 @@ fn wifi_route_for_snapshot(
     if snapshot.reason.is_some() || snapshot.phase == wifi_manager::WifiPhase::Failed {
         return ui_model::WifiRoute::Error;
     }
-    if snapshot.phase == wifi_manager::WifiPhase::Connecting {
+    if matches!(
+        snapshot.phase,
+        wifi_manager::WifiPhase::Scanning
+            | wifi_manager::WifiPhase::Associating
+            | wifi_manager::WifiPhase::Authenticating
+            | wifi_manager::WifiPhase::Dhcp
+    ) {
         return ui_model::WifiRoute::Progress;
     }
     if snapshot.view == wifi_settings_controller::View::Menu {

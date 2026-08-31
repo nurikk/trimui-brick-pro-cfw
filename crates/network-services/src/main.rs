@@ -39,11 +39,12 @@ fn run() -> Result<(), String> {
     let connected = WifiState {
         enabled: true,
         automatic_reconnect: true,
-        phase: WifiPhase::Connected,
+        phase: WifiPhase::Lan,
         reason: None,
         selected_network_id: None,
         connected_network_id: Some(NetworkId::new("net-lan").map_err(|error| error.to_string())?),
         scan_results: Vec::new(),
+        retry_after_ms: None,
     };
     services.set_network(&connected, Some("192.168.50.2"));
     services.start_on_boot();

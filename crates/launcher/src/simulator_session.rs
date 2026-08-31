@@ -14,8 +14,7 @@ use session_broker::resume::{
     ResumeResult, ResumeStore, ResumeSummary,
 };
 use session_broker::{
-    accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary,
-    SessionHandle, SessionResult,
+    accepted_handle, BrokerError, SaveVaultPreview, SaveVaultSummary, SessionHandle, SessionResult,
 };
 use sha2::Digest;
 

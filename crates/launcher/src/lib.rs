@@ -1831,9 +1831,7 @@ where
     P: Platform,
     F: FnOnce() -> PlatformResult<P>,
 {
-    let broker = simulator_session::SimulatorSessionAdapter::with_root(
-        evidence_path.join("data"),
-    );
+    let broker = simulator_session::SimulatorSessionAdapter::with_root(evidence_path.join("data"));
     let evidence = Evidence::new(evidence_path)?;
     let run_id = format!(
         "run-{}",
@@ -3385,9 +3383,7 @@ mod tests {
             input_profile: input_profile::Catalog::from_json(INPUT_PROFILE_BYTES)
                 .expect("input profile"),
             input_mappings: input_profile::InputMappings::default(),
-            broker: simulator_session::SimulatorSessionAdapter::with_root(
-                broker_root.clone(),
-            ),
+            broker: simulator_session::SimulatorSessionAdapter::with_root(broker_root.clone()),
             save_vault: SaveVaultUi::default(),
             save_sync: None,
             active_session: None,

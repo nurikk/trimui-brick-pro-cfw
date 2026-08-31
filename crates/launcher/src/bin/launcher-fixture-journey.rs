@@ -103,8 +103,7 @@ fn rom_index_corpus() {
         fs::create_dir_all(path.parent().expect("corpus parent")).expect("create corpus parent");
         fs::write(path, bytes).expect("write corpus ROM");
     }
-    fs::write(roms.join("PS1/Multi Disc.m3u"), "disc-1.bin\ndisc-2.bin\n")
-        .expect("write playlist");
+    fs::write(roms.join("PS1/Multi Disc.m3u"), "disc-1.bin\ndisc-2.bin\n").expect("write playlist");
     let cancelled = AtomicBool::new(false);
     let first = sim_launcher::rom_index::refresh(&roms, &root.join("data"), &cancelled);
     assert_eq!(first.report.entry_count, 7, "nested corpus count");

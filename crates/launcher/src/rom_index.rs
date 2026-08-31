@@ -306,7 +306,10 @@ fn scan_roms(root: &Path, previous: &[Entry], cancelled: &AtomicBool) -> (Vec<En
     files.sort();
     let playlist_members = files
         .iter()
-        .filter(|path| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("m3u")))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("m3u"))
+        })
         .filter_map(|path| playlist_members(root, path).ok())
         .flatten()
         .collect::<HashSet<_>>();
@@ -486,9 +489,12 @@ fn playlist_members(root: &Path, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         .map(|line| {
             let relative = Path::new(line);
             if relative.is_absolute()
-                || relative
-                    .components()
-                    .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+                || relative.components().any(|component| {
+                    matches!(
+                        component,
+                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                    )
+                })
             {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,

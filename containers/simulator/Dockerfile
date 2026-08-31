@@ -19,6 +19,7 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY config ./config
+COPY corpus ./corpus
 COPY fixtures ./fixtures
 COPY schemas ./schemas
 COPY themes ./themes

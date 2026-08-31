@@ -6,6 +6,8 @@ use std::{
 
 use launcher_presentation::{build_with_sync, SaveSyncCandidateView, SaveSyncView};
 use launcher_theme::safe_artbook;
+use serde::Deserialize;
+use serde_json::Value;
 use settings_schema::{ProjectionContext, Registry};
 use settings_ui::SettingsUi;
 use sim_host_platform::{Backend, HostPlatform};
@@ -21,6 +23,14 @@ const REGISTRY: &[u8] = include_bytes!("../../../../fixtures/settings-schema/reg
 const WIFI_METADATA: &[u8] =
     include_bytes!("../../../../fixtures/wifi-settings-controller/generated-v1/workflow.json");
 const WIFI_FIXTURE: &[u8] = include_bytes!("../../../../fixtures/wifi-manager/journeys.json");
+
+#[derive(Deserialize)]
+struct LocaleCase {
+    locale: String,
+    title: String,
+    game: String,
+    description: String,
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -283,6 +293,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &save_sync,
         &states,
     )?;
+    run_localization_corpus(
+        &root,
+        &profile,
+        &theme,
+        &settings,
+        &wifi_snapshot,
+        &save_sync,
+        &base,
+    )?;
+    assert_theme_recovery(&root)?;
     println!("evidence={}", root.display());
     Ok(())
 }
@@ -386,6 +406,112 @@ fn run_layout_matrix(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn run_localization_corpus(
+    root: &Path,
+    profile: &Path,
+    theme: &launcher_theme::ValidatedTheme,
+    settings: &settings_ui::Scene,
+    wifi: &wifi_settings_controller::Snapshot,
+    save_sync: &SaveSyncView,
+    base: &UiState,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<LocaleCase> =
+        serde_json::from_slice(include_bytes!("../../../../corpus/launcher-locales.json"))?;
+    for case in cases {
+        if !sim_host_platform::supports_text(&case.title)
+            || !sim_host_platform::supports_text(&case.game)
+            || !sim_host_platform::supports_text(&case.description)
+        {
+            return Err(format!("{} corpus has an unsupported glyph", case.locale).into());
+        }
+        for size in [ui_model::UiSize::Large, ui_model::UiSize::ExtraLarge] {
+            let mut localized = base.clone();
+            localized.games[0].title = case.game.clone();
+            localized.games[0].description = case.description.clone();
+            localized.preferences.ui_size = size;
+            let localized = reduce(&localized, Action::Navigate(Route::Games));
+            let mut screen = build_with_sync(
+                &localized,
+                theme,
+                None,
+                Some(settings),
+                Some(wifi),
+                &launcher_presentation::IndexView::default(),
+                &[],
+                Some(save_sync),
+            );
+            screen.title = case.title.clone();
+            assert_layout_contract(&screen, (1024, 768), 100, &case.locale, size)?;
+            let mut platform = HostPlatform::new(
+                profile,
+                &PathBuf::from("config/platform/tg4040/compatibility.json"),
+                Backend::Dummy,
+            )?;
+            platform.present(&screen)?;
+            platform.capture_png(&root.join(format!("locale-{}-{size:?}.png", case.locale)))?;
+        }
+    }
+    Ok(())
+}
+
+fn assert_theme_recovery(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let broken = root.join("broken-theme");
+    fs::create_dir_all(&broken)?;
+    fs::write(
+        broken.join("theme.json"),
+        include_bytes!("../../../../themes/default/theme.json"),
+    )?;
+    let preview = launcher_theme::preview_path_or_fallback(&broken)?;
+    if preview.fallback_reason != Some(launcher_theme::Reason::MissingTheme) {
+        return Err("deleted theme asset did not activate the safe fallback".into());
+    }
+    fn low_contrast(theme: &mut Value) {
+        theme["colors"]["text"] = Value::String("#000000".into());
+    }
+    fn overlapping_status(theme: &mut Value) {
+        let regions = theme["layout"]["regions"].as_array_mut().expect("regions");
+        regions
+            .iter_mut()
+            .find(|region| region["kind"] == "clock")
+            .expect("clock")["x"] = Value::from(880);
+    }
+    for (name, mutator, reason) in [
+        (
+            "low-contrast",
+            low_contrast as fn(&mut Value),
+            launcher_theme::Reason::InvalidColor,
+        ),
+        (
+            "overlapping-status",
+            overlapping_status as fn(&mut Value),
+            launcher_theme::Reason::InvalidLayout,
+        ),
+    ] {
+        let path = root.join(name);
+        fs::create_dir_all(&path)?;
+        let mut theme: Value =
+            serde_json::from_slice(include_bytes!("../../../../themes/default/theme.json"))?;
+        mutator(&mut theme);
+        fs::write(path.join("theme.json"), serde_json::to_vec(&theme)?)?;
+        let preview = launcher_theme::preview_path_or_fallback(&path)?;
+        if preview.fallback_reason != Some(reason) {
+            return Err(format!("{name} theme was accepted").into());
+        }
+    }
+
+    let theme = launcher_theme::load_theme_dir(Path::new("themes/default"))?;
+    let wide = device_profile::DeviceProfile::from_path(Path::new(
+        "fixtures/platform/synthetic-wide/compatibility.json",
+    ))?;
+    if !matches!(
+        launcher_theme::validate_for_device(theme, &wide),
+        Err(error) if error.reason == launcher_theme::Reason::InvalidLayout
+    ) {
+        return Err("incompatible theme resolution was accepted".into());
     }
     Ok(())
 }

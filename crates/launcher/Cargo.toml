@@ -11,6 +11,7 @@ simulator = []
 [dependencies]
 anyhow.workspace = true
 launch-contract = { path = "../launch-contract" }
+device-profile = { path = "../device-profile" }
 compatibility-recipes = { path = "../compatibility-recipes" }
 session-broker = { path = "../session-broker" }
 signal-hook = { workspace = true, optional = true }

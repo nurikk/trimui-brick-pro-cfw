@@ -10,6 +10,12 @@ Human-maintained list for the TrimUI Brick Pro CFW release.
 
 - Art Book Next (Batocera ES Edition), Anthony Caccese — CC-BY-NC-SA — <https://github.com/anthonycaccese/art-book-next-es> — pinned source `9a50ef366e750aabfab29e6915a2867607212971`
 
+## Bundled fonts
+
+- Lato Regular — SIL Open Font License 1.1 — bundled in `crates/host-platform/assets/fonts`.
+- Droid Sans Fallback CJK coverage font — Apache-2.0 — bundled in `crates/host-platform/assets/fonts/DroidSansFallbackCjk.ttf`; license notice is adjacent.
+- Nanum Barun Gothic Korean coverage font — SIL Open Font License 1.1 — bundled in `crates/host-platform/assets/fonts/NanumBarunGothicKorean.ttf`; license notice is adjacent.
+
 ## Rust dependencies
 
 - anyhow — MIT OR Apache-2.0

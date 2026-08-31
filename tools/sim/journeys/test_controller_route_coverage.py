@@ -25,9 +25,9 @@ class ControllerCoverageTests(unittest.TestCase):
         def button(_container, _run_dir, name):
             calls.append(name)
             if name == "menu" or name == "secondary":
-                return {"controllerRoute": {"navigatorVisible": False, "expectedCount": 64, "currentId": None}}
+                return {"controllerRoute": {"navigatorVisible": False, "expectedCount": 66, "currentId": None}}
             return {
-                "controllerRoute": {"navigatorVisible": False, "expectedCount": 64, "currentId": next(primary_targets)},
+                "controllerRoute": {"navigatorVisible": False, "expectedCount": 66, "currentId": next(primary_targets)},
                 "presentation": {"route": "product"},
             }
 
@@ -162,7 +162,7 @@ class ControllerCoverageTests(unittest.TestCase):
             calls.append(name)
             if name == "primary":
                 raise RuntimeError("smoke failed")
-            return {"controllerRoute": {"navigatorVisible": False, "expectedCount": 64, "currentId": None}}
+            return {"controllerRoute": {"navigatorVisible": False, "expectedCount": 66, "currentId": None}}
 
         with tempfile.TemporaryDirectory() as temp:
             with mock.patch.object(coverage, "paths", return_value=paths), mock.patch.object(

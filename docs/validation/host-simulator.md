@@ -21,7 +21,7 @@ The caller-owned `$RUN` directory contains `logs/launcher.jsonl`, readiness, sem
 
 Use `--backend=x11` only for the container-private SDL fixture lane. For headed acceptance, use an existing local X server with `--backend=host-x11 --display :N`. That mode mounts the host X11 socket read-only while retaining the read-only root, dropped capabilities, non-root UID, PID limit, and `--network none`; it never starts the private Xvfb. The SDL window follows the device profile (1024×768 for TG4040) and is titled `Host-native simulator acceptance — not physical TG4040 evidence`. Arrow keys, Return/Z/A, Escape/X/B, Space, Tab, Home, PageUp, and PageDown map to controller buttons. `clean-run` removes the simulator's known artifacts, including durable state/index data, in the external run directory before starting a new run. `run` rejects any existing managed evidence and structurally validates readiness and the first-frame event before returning success.
 
-The launcher and `tools/sim/journeys/controller-route-coverage.py` consume the canonical 64-route graph at `sim/routes/controller-routes.json`. Home/Menu resets to Home, Up/Down selects a route, Primary enters it, and Secondary cancels. Coverage starts one fresh simulator for pass 1 and one for pass 2, reusing each instance for all 64 sequential routes; it never restarts per route or calls the direct `presentation` fixture command. Each pass runs the representative smoke subset first (Home, settings, diagnostics, PortMaster, and a launch/checkpoint/resume path), then exhaustive coverage. `--smoke-only` runs only that subset. Per-control (15s), per-route (60s), whole-pass (600s), startup/shutdown (45s), and shutdown verification (30s) bounds fail fast with the run directory and event log in the diagnostic. Shutdown verification is deliberately last because it terminates the simulator. Results compare normalized semantic route/event/presentation records only; run IDs, timestamps, container identity, output directories, and artifact filenames/paths are excluded.
+The launcher and `tools/sim/journeys/controller-route-coverage.py` consume the canonical 66-route graph at `sim/routes/controller-routes.json`. Home/Menu resets to Home, Up/Down selects a route, Primary enters it, and Secondary cancels. Coverage starts one fresh simulator for pass 1 and one for pass 2, reusing each instance for all 66 sequential routes; it never restarts per route or calls the direct `presentation` fixture command. Each pass runs the representative smoke subset first (Home, settings, diagnostics, PortMaster, and a launch/checkpoint/resume path), then exhaustive coverage. `--smoke-only` runs only that subset. Per-control (15s), per-route (60s), whole-pass (600s), startup/shutdown (45s), and shutdown verification (30s) bounds fail fast with the run directory and event log in the diagnostic. Shutdown verification is deliberately last because it terminates the simulator. Results compare normalized semantic route/event/presentation records only; run IDs, timestamps, container identity, output directories, and artifact filenames/paths are excluded.
 
 ## Contract and boundaries
 
@@ -68,7 +68,7 @@ rm -rf "$SMOKE"
 tools/sim/journeys/controller-route-coverage.py --out "$SMOKE" --backend dummy --smoke-only
 COVERAGE=$(mktemp -d)
 rm -rf "$COVERAGE"
-# Estimate 64 routes × 2 passes before launching this bounded exhaustive run.
+# Estimate 66 routes × 2 passes before launching this bounded exhaustive run.
 tools/sim/journeys/controller-route-coverage.py --out "$COVERAGE" --backend dummy
 
 STALE=$(mktemp -d)

@@ -71,6 +71,8 @@ const SETTINGS_REGISTRY_BYTES: &[u8] =
 const WIFI_METADATA_BYTES: &[u8] =
     include_bytes!("../../../fixtures/wifi-settings-controller/generated-v1/workflow.json");
 const WIFI_FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/wifi-manager/journeys.json");
+const CONTROLLER_ROUTE_COUNT: usize = 66;
+const PARENT_GESTURE: [Button; 4] = [Button::Start, Button::Select, Button::Start, Button::Select];
 const FAULTS: &[&str] = &[
     "adapter-fail",
     "adapter-crash",
@@ -159,6 +161,7 @@ struct AppState {
     package_root: PathBuf,
     shutdown_pressed: bool,
     exit_requested: bool,
+    parent_gesture: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -209,6 +212,19 @@ enum ProductJourneyState {
         page: PortmasterPage,
     },
     ShutdownConfirm,
+    FocusAdmin {
+        selected: FocusAdminItem,
+    },
+    FocusHome {
+        selected: usize,
+    },
+    FocusRecovery,
+    KidQuickMenu {
+        selected: KidQuickItem,
+        content: DemoContent,
+        marker: u32,
+        saved: bool,
+    },
 }
 
 impl Default for ProductJourneyState {
@@ -217,6 +233,23 @@ impl Default for ProductJourneyState {
             selected: HomeItem::Systems,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FocusAdminItem {
+    Add,
+    Remove,
+    MoveUp,
+    MoveDown,
+    DefaultHome,
+    KidSafe,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum KidQuickItem {
+    Continue,
+    Save,
+    Exit,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -470,6 +503,10 @@ fn canonical_route_id(state: &ProductJourneyState) -> Option<&'static str> {
             PortmasterPage::UninstallProtected => "portmaster-uninstall-protected-data",
         }),
         ShutdownConfirm => Some("shutdown-confirm"),
+        FocusAdmin { .. } => Some("focus-admin"),
+        FocusHome { .. } => Some("focus-home"),
+        FocusRecovery => Some("focus-recovery"),
+        KidQuickMenu { .. } => Some("kid-quick-menu"),
     }
 }
 
@@ -767,6 +804,24 @@ fn screen_for_state(state: &AppState, catalog: &UiCatalog) -> Result<Presentatio
             } => {
                 screen.system_media = launcher_presentation::media_for_system("portmaster");
                 screen.focus = "Preview canvas · Apply selected".into();
+            }
+            ProductJourneyState::FocusAdmin { .. }
+            | ProductJourneyState::FocusHome { .. }
+            | ProductJourneyState::FocusRecovery
+            | ProductJourneyState::KidQuickMenu { .. } => {
+                screen.menu = focus_rows(state, catalog);
+                screen.title = match state.journey {
+                    ProductJourneyState::FocusAdmin { .. } => "Focus library".into(),
+                    ProductJourneyState::FocusHome { .. } => "Focus library".into(),
+                    ProductJourneyState::FocusRecovery => "Focus needs attention".into(),
+                    ProductJourneyState::KidQuickMenu { .. } => "Game menu".into(),
+                    _ => unreachable!(),
+                };
+                screen.selected_label = screen
+                    .menu
+                    .iter()
+                    .find(|row| row.selected)
+                    .map_or_else(|| "Ready".into(), |row| row.label.clone());
             }
             _ => {}
         }
@@ -1167,6 +1222,10 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             "Protected save retained".into(),
             "Signal Workshop remains installed".into(),
         ],
+        FocusAdmin { .. } => vec!["Focus library".into()],
+        FocusHome { .. } => vec!["Focus library".into()],
+        FocusRecovery => vec!["Focus needs attention".into()],
+        KidQuickMenu { .. } => vec!["Game menu".into()],
         ShutdownConfirm => vec![
             "Power off".into(),
             "A: orderly shutdown".into(),
@@ -1182,6 +1241,144 @@ fn product_surface_rows(state: &ProductJourneyState) -> Vec<launcher_presentatio
             enabled: true,
         })
         .collect()
+}
+
+fn focus_rows(state: &AppState, catalog: &UiCatalog) -> Vec<launcher_presentation::ScreenItem> {
+    match state.journey {
+        ProductJourneyState::FocusAdmin { selected } => {
+            let actions = [
+                (FocusAdminItem::Add, "Add selected game"),
+                (FocusAdminItem::Remove, "Remove selected game"),
+                (FocusAdminItem::MoveUp, "Move selected up"),
+                (FocusAdminItem::MoveDown, "Move selected down"),
+                (FocusAdminItem::DefaultHome, "Use Focus as home"),
+                (FocusAdminItem::KidSafe, "Kid-safe mode"),
+            ];
+            let mut rows = actions
+                .into_iter()
+                .map(|(item, label)| launcher_presentation::ScreenItem {
+                    id: format!("focus-{label}"),
+                    label: match item {
+                        FocusAdminItem::DefaultHome => {
+                            format!(
+                                "{label}: {}",
+                                if state.persisted.focus_home {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                }
+                            )
+                        }
+                        FocusAdminItem::KidSafe => {
+                            format!(
+                                "{label}: {}",
+                                if state.persisted.kid_safe {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                }
+                            )
+                        }
+                        _ => label.into(),
+                    },
+                    selected: std::mem::discriminant(&item) == std::mem::discriminant(&selected),
+                    enabled: !matches!(item, FocusAdminItem::KidSafe)
+                        || !state.persisted.focus.is_empty(),
+                })
+                .collect::<Vec<_>>();
+            rows.extend(state.persisted.focus.iter().map(|id| {
+                launcher_presentation::ScreenItem {
+                    id: id.clone(),
+                    label: catalog
+                        .entries
+                        .iter()
+                        .find(|entry| entry.id == *id)
+                        .map_or_else(|| format!("Missing: {id}"), |entry| entry.title.clone()),
+                    selected: false,
+                    enabled: true,
+                }
+            }));
+            rows
+        }
+        ProductJourneyState::FocusHome { selected } => focus_catalog_entries(state, catalog)
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| launcher_presentation::ScreenItem {
+                id: entry.id.clone(),
+                label: entry.title.clone(),
+                selected: index == selected,
+                enabled: true,
+            })
+            .collect(),
+        ProductJourneyState::FocusRecovery => vec![launcher_presentation::ScreenItem {
+            id: "focus-recovery".into(),
+            label: "Focus entries are missing. Parent gesture opens the full library.".into(),
+            selected: true,
+            enabled: true,
+        }],
+        ProductJourneyState::KidQuickMenu {
+            selected, saved, ..
+        } => [
+            (KidQuickItem::Continue, "Continue"),
+            (KidQuickItem::Save, if saved { "Saved" } else { "Save" }),
+            (KidQuickItem::Exit, "Exit game"),
+        ]
+        .into_iter()
+        .map(|(item, label)| launcher_presentation::ScreenItem {
+            id: format!("kid-{label}"),
+            label: label.into(),
+            selected: std::mem::discriminant(&item) == std::mem::discriminant(&selected),
+            enabled: true,
+        })
+        .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn focus_catalog_entries<'a>(
+    state: &AppState,
+    catalog: &'a UiCatalog,
+) -> Vec<&'a sim_domain::CatalogEntry> {
+    state
+        .persisted
+        .focus
+        .iter()
+        .filter_map(|id| catalog.entries.iter().find(|entry| entry.id == *id))
+        .collect()
+}
+
+fn demo_content(id: &str) -> Option<DemoContent> {
+    match id {
+        "nebula-nes" => Some(DemoContent::Nebula),
+        "mirror-ps1" => Some(DemoContent::Mirror),
+        "orbit-garden" => Some(DemoContent::Orbit),
+        "signal-workshop" => Some(DemoContent::Signal),
+        _ => None,
+    }
+}
+
+fn enter_focus_home(state: &mut AppState, catalog: &UiCatalog) {
+    if !state.persisted.focus_home && !state.persisted.kid_safe {
+        return;
+    }
+    let entries = focus_catalog_entries(state, catalog);
+    if entries.is_empty() {
+        state.journey = ProductJourneyState::FocusRecovery;
+        state.route = Route::Library;
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::Navigate(ui_model::Route::Home),
+        );
+        state.modal = Some("Focus needs attention".into());
+    } else {
+        state.selected_content_id = entries[0].id.clone();
+        state.journey = ProductJourneyState::FocusHome { selected: 0 };
+        state.route = Route::Games;
+        state.presentation.ui = ui_model::reduce(
+            &state.presentation.ui,
+            UiAction::Navigate(ui_model::Route::Games),
+        );
+    }
 }
 
 fn settings_form_rows(section: SettingsSection) -> Vec<String> {
@@ -1785,7 +1982,9 @@ fn run_session<P: Platform>(
         package_root: state_root.join("portmaster-packages"),
         shutdown_pressed: false,
         exit_requested: false,
+        parent_gesture: 0,
     };
+    enter_focus_home(&mut state, &catalog);
     launcher_state::save(&state_root, &state.persisted)
         .map_err(|error| anyhow!(error.to_string()))?;
     refresh_resume_projection(&mut state, &catalog, &launch_catalog)
@@ -3089,6 +3288,7 @@ mod tests {
             package_root: broker_root.join("packages"),
             shutdown_pressed: false,
             exit_requested: false,
+            parent_gesture: 0,
         };
         (state, catalog, broker_root)
     }
@@ -4553,6 +4753,263 @@ fn handle_button<P: Platform>(
     )
 }
 
+fn handle_focus_controller(
+    state: &mut AppState,
+    catalog: &UiCatalog,
+    launch_catalog: &LaunchCatalog,
+    button: Button,
+) -> bool {
+    if state.persisted.kid_safe {
+        state.parent_gesture = if button == PARENT_GESTURE[state.parent_gesture] {
+            state.parent_gesture + 1
+        } else {
+            usize::from(button == PARENT_GESTURE[0])
+        };
+        if state.parent_gesture == PARENT_GESTURE.len() {
+            state.persisted.kid_safe = false;
+            state.parent_gesture = 0;
+            state.journey = ProductJourneyState::default();
+            state.route = Route::Library;
+            state.presentation.ui = ui_model::reduce(
+                &state.presentation.ui,
+                UiAction::Navigate(ui_model::Route::Home),
+            );
+            state.modal = Some("Parent mode restored".into());
+            return true;
+        }
+    }
+
+    if let ProductJourneyState::FocusAdmin { selected } = &state.journey {
+        match button {
+            Button::Down => {
+                state.journey = ProductJourneyState::FocusAdmin {
+                    selected: next_focus_admin(*selected, true),
+                };
+            }
+            Button::Up => {
+                state.journey = ProductJourneyState::FocusAdmin {
+                    selected: next_focus_admin(*selected, false),
+                };
+            }
+            Button::Menu => {
+                state.journey = ProductJourneyState::default();
+                state.route = Route::Library;
+                state.presentation.ui = ui_model::reduce(
+                    &state.presentation.ui,
+                    UiAction::Navigate(ui_model::Route::Home),
+                );
+            }
+            Button::Secondary => {
+                state.journey = ProductJourneyState::Settings {
+                    section: SettingsSection::Library,
+                    pending: None,
+                    validation: None,
+                };
+            }
+            Button::Primary => match selected {
+                FocusAdminItem::Add => {
+                    let candidate = catalog
+                        .entries
+                        .iter()
+                        .find(|entry| {
+                            entry.id == state.selected_content_id
+                                && !state.persisted.focus.contains(&entry.id)
+                        })
+                        .or_else(|| {
+                            catalog
+                                .entries
+                                .iter()
+                                .find(|entry| !state.persisted.focus.contains(&entry.id))
+                        });
+                    if let Some(entry) = candidate {
+                        state.persisted.focus.push(entry.id.clone());
+                    }
+                }
+                FocusAdminItem::Remove => {
+                    state
+                        .persisted
+                        .focus
+                        .retain(|id| id != &state.selected_content_id);
+                    if state.persisted.focus.is_empty() {
+                        state.persisted.kid_safe = false;
+                    }
+                }
+                FocusAdminItem::MoveUp | FocusAdminItem::MoveDown => {
+                    if let Some(index) = state
+                        .persisted
+                        .focus
+                        .iter()
+                        .position(|id| id == &state.selected_content_id)
+                    {
+                        let other = if matches!(selected, FocusAdminItem::MoveUp) {
+                            index.checked_sub(1)
+                        } else {
+                            (index + 1 < state.persisted.focus.len()).then_some(index + 1)
+                        };
+                        if let Some(other) = other {
+                            state.persisted.focus.swap(index, other);
+                        }
+                    }
+                }
+                FocusAdminItem::DefaultHome => {
+                    state.persisted.focus_home = !state.persisted.focus_home
+                }
+                FocusAdminItem::KidSafe => {
+                    if !state.persisted.focus.is_empty() {
+                        state.persisted.kid_safe = true;
+                        state.persisted.focus_home = true;
+                        enter_focus_home(state, catalog);
+                    }
+                }
+            },
+            _ => {}
+        }
+        return true;
+    }
+
+    if let ProductJourneyState::FocusHome { selected } = &state.journey {
+        let entries = focus_catalog_entries(state, catalog);
+        if entries.is_empty() {
+            state.journey = ProductJourneyState::FocusRecovery;
+            return true;
+        }
+        match button {
+            Button::Down | Button::Up => {
+                let next = if button == Button::Down {
+                    (*selected + 1) % entries.len()
+                } else {
+                    selected.checked_sub(1).unwrap_or(entries.len() - 1)
+                };
+                state.selected_content_id = entries[next].id.clone();
+                state.journey = ProductJourneyState::FocusHome { selected: next };
+            }
+            Button::Primary => {
+                if let Some(content) = demo_content(&entries[*selected].id) {
+                    state.selected_content_id = entries[*selected].id.clone();
+                    state.journey = ProductJourneyState::Session {
+                        content,
+                        marker: 0,
+                        restored: false,
+                    };
+                }
+            }
+            Button::Menu if !state.persisted.kid_safe => {
+                state.journey = ProductJourneyState::default();
+                state.route = Route::Library;
+                state.presentation.ui = ui_model::reduce(
+                    &state.presentation.ui,
+                    UiAction::Navigate(ui_model::Route::Home),
+                );
+            }
+            _ => {}
+        }
+        return true;
+    }
+
+    if matches!(state.journey, ProductJourneyState::FocusRecovery) {
+        if !state.persisted.kid_safe && button == Button::Secondary {
+            state.persisted.focus_home = false;
+            state.journey = ProductJourneyState::Home {
+                selected: HomeItem::Settings,
+            };
+        }
+        return state.persisted.kid_safe || button == Button::Secondary;
+    }
+
+    if state.persisted.kid_safe {
+        match &state.journey {
+            ProductJourneyState::Session {
+                content, marker, ..
+            } if button == Button::Menu => {
+                state.journey = ProductJourneyState::KidQuickMenu {
+                    selected: KidQuickItem::Continue,
+                    content: *content,
+                    marker: *marker,
+                    saved: false,
+                };
+                return true;
+            }
+            ProductJourneyState::KidQuickMenu {
+                selected,
+                content,
+                marker,
+                saved,
+            } => {
+                let (selected, content, marker, saved) = (*selected, *content, *marker, *saved);
+                match button {
+                    Button::Down | Button::Up => {
+                        let selected = match (selected, button) {
+                            (KidQuickItem::Continue, Button::Down) => KidQuickItem::Save,
+                            (KidQuickItem::Save, Button::Down) => KidQuickItem::Exit,
+                            (KidQuickItem::Exit, Button::Down) => KidQuickItem::Continue,
+                            (KidQuickItem::Continue, Button::Up) => KidQuickItem::Exit,
+                            (KidQuickItem::Save, Button::Up) => KidQuickItem::Continue,
+                            (KidQuickItem::Exit, Button::Up) => KidQuickItem::Save,
+                            _ => selected,
+                        };
+                        state.journey = ProductJourneyState::KidQuickMenu {
+                            selected,
+                            content,
+                            marker,
+                            saved,
+                        };
+                    }
+                    Button::Primary if matches!(selected, KidQuickItem::Continue) => {
+                        state.journey = ProductJourneyState::Session {
+                            content,
+                            marker,
+                            restored: false,
+                        };
+                    }
+                    Button::Primary if matches!(selected, KidQuickItem::Save) => {
+                        let _ = state
+                            .broker
+                            .checkpoint(CheckpointReason::Periodic, CommitFault::None);
+                        let _ = refresh_resume_projection(state, catalog, launch_catalog);
+                        state.journey = ProductJourneyState::KidQuickMenu {
+                            selected,
+                            content,
+                            marker,
+                            saved: true,
+                        };
+                    }
+                    Button::Primary if matches!(selected, KidQuickItem::Exit) => {
+                        state.journey = ProductJourneyState::QuickMenu {
+                            selected: QuickMenuItem::Exit,
+                            content,
+                            marker,
+                            preview: "kid exit",
+                        };
+                        return false;
+                    }
+                    _ => {}
+                }
+                return true;
+            }
+            _ => return true,
+        }
+    }
+    false
+}
+
+fn next_focus_admin(item: FocusAdminItem, forward: bool) -> FocusAdminItem {
+    use FocusAdminItem::*;
+    match (item, forward) {
+        (Add, true) => Remove,
+        (Remove, true) => MoveUp,
+        (MoveUp, true) => MoveDown,
+        (MoveDown, true) => DefaultHome,
+        (DefaultHome, true) => KidSafe,
+        (KidSafe, true) => Add,
+        (Add, false) => KidSafe,
+        (Remove, false) => Add,
+        (MoveUp, false) => Remove,
+        (MoveDown, false) => MoveUp,
+        (DefaultHome, false) => MoveDown,
+        (KidSafe, false) => DefaultHome,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_semantic_action<P: Platform>(
     platform: &mut P,
@@ -4627,6 +5084,39 @@ fn handle_semantic_action<P: Platform>(
     if state.controller_routes {
         if let Some(button) = frontend_button {
             let before = canonical_route_id(&state.journey);
+            if handle_focus_controller(state, catalog, launch_catalog, button) {
+                let after = canonical_route_id(&state.journey);
+                if before != after {
+                    if let Some(route_id) = after {
+                        log.emit(
+                            "controller_route_visit",
+                            at_ms,
+                            json_map([("routeId", json!(route_id))]),
+                        )?;
+                    }
+                }
+                if matches!(state.journey, ProductJourneyState::Session { .. })
+                    && state.active_session.is_none()
+                    && before != canonical_route_id(&state.journey)
+                {
+                    launch_product_session(state, catalog, launch_catalog, evidence, false)?;
+                    write_session(&evidence.root, SessionState::Started)?;
+                }
+
+                launcher_state::save(&evidence.root.join("data"), &state.persisted)
+                    .map_err(|error| anyhow!(error.to_string()))?;
+                let screen = screen_for_state(state, catalog)?;
+                present(platform, &screen)?;
+                log.emit(
+                    "input_to_frame",
+                    at_ms,
+                    json_map([
+                        ("latencyUs", json!(0)),
+                        ("sessionStep", json!(state.session_step)),
+                    ]),
+                )?;
+                return Ok(());
+            }
             if button == Button::Secondary && before == Some("shutdown-confirm") {
                 state.shutdown_pressed = false;
             }
@@ -4663,6 +5153,11 @@ fn handle_semantic_action<P: Platform>(
                 _ => None,
             };
             let changed = reduce_product_state(&mut state.journey, button);
+            if state.persisted.kid_safe && matches!(state.journey, ProductJourneyState::Home { .. })
+            {
+                enter_focus_home(state, catalog);
+            }
+
             if changed {
                 if matches!(
                     state.journey,
@@ -5278,6 +5773,9 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
                 pending: None,
                 validation: Some("controller mapping conflicts with Menu"),
             }),
+            Button::Primary if matches!(section, SettingsSection::Library) => Some(FocusAdmin {
+                selected: FocusAdminItem::Add,
+            }),
             Button::Primary if matches!(section, SettingsSection::System) => Some(Wifi {
                 view: WifiJourneyView::Scan,
             }),
@@ -5582,6 +6080,7 @@ fn reduce_product_state(state: &mut ProductJourneyState, button: Button) -> bool
             }),
             _ => None,
         },
+        FocusAdmin { .. } | FocusHome { .. } | FocusRecovery | KidQuickMenu { .. } => None,
         ShutdownConfirm => match button {
             Button::Secondary => Some(Home {
                 selected: HomeItem::Settings,
@@ -5841,10 +6340,16 @@ fn state_json<P: Platform>(
         "lifecycle": state.lifecycle.evidence(),
         "clock": {"monotonicMs": platform.logical_time_ms(), "wallClockMs": platform.wall_clock_ms()},
         "saveVault": save_vault_json(state),
-        "controllerRoute": { "navigatorVisible": false, "selectedIndex": 0, "currentId": canonical_route_id(&state.journey), "expectedCount": 64 },
+        "controllerRoute": { "navigatorVisible": false, "selectedIndex": 0, "currentId": canonical_route_id(&state.journey), "expectedCount": CONTROLLER_ROUTE_COUNT },
         "presentation": presentation,
         "power": state.power.evidence(),
         "battery": state.battery.evidence(),
+        "focus": {
+            "entries": state.persisted.focus,
+            "defaultHome": state.persisted.focus_home,
+            "kidSafe": state.persisted.kid_safe,
+            "missing": state.persisted.focus.iter().filter(|id| !catalog.entries.iter().any(|entry| entry.id == **id)).count(),
+        },
     }))
 }
 

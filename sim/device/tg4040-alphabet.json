@@ -7,6 +7,8 @@
   "battery": {
     "levelPercent": 73,
     "charging": false,
+    "full": false,
+    "health": "good",
     "externalPower": false
   },
   "led": {

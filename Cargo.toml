@@ -51,7 +51,7 @@ hex = "0.4"
 jiff = "0.2.31"
 signal-hook = "0.3"
 png = "0.17"
-sdl2 = "0.37"
+sdl2 = "0.38"
 unicode-normalization = "=0.1.24"
 unicode-segmentation = "=1.12.0"
 
